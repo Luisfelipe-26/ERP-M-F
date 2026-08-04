@@ -139,7 +139,7 @@ export default function Productos() {
             <form onSubmit={save} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>ID Producto *</label>
-                <input className="input" value={form.id_prod} onChange={e => setForm({ ...form, id_prod: e.target.value })} required disabled={!!editing} placeholder="P-001" />
+                <input className="input" value={form.id_prod} required disabled />
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Nombre del Producto *</label>

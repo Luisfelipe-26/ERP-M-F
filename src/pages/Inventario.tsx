@@ -520,7 +520,7 @@ const ModalArticulo = ({ item, onClose, onDone }) => {
     <Modal title={editing ? 'Editar Artículo' : 'Nuevo Artículo'} onClose={onClose} width={620}>
       <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <Field label="ID Artículo *">
-          <input className="input" value={form.id_prod} onChange={e => f('id_prod', e.target.value)} required disabled={editing} placeholder="P-031" />
+          <input className="input" value={form.id_prod} required disabled />
         </Field>
         <Field label="Tipo">
           <select className="select" value={form.tipo} onChange={e => f('tipo', e.target.value)}>
