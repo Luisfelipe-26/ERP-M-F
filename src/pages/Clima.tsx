@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import api from '../api'
+import { useApi } from '../hooks/useApi'
 import toast from 'react-hot-toast'
 import {
   Thermometer, Droplets, Wind, Sun, CloudRain, RefreshCw, Bell, BellOff,
@@ -9,38 +10,41 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ComposedChart, Legend, CartesianGrid
 } from 'recharts'
+import RuleForm from '../components/clima/RuleForm'
 
 const TABS = ['Actual', 'Pronóstico', 'Historial']
 
-const severityColor = { info: '#3b82f6', warning: '#f59e0b', critical: '#ef4444' }
-const riskBadge = (val) => {
+const severityColor: Record<string, string> = { info: '#3b82f6', warning: '#f59e0b', critical: '#ef4444' }
+
+const riskBadge = (val: number | null) => {
   if (val == null) return { bg: '#e5e7eb', color: '#6b7280', label: 'N/A' }
   if (val <= 3) return { bg: '#dcfce7', color: '#166534', label: 'Bajo' }
   if (val <= 6) return { bg: '#fef9c3', color: '#854d0e', label: 'Medio' }
   return { bg: '#fee2e2', color: '#991b1b', label: 'Alto' }
 }
 
-const dayName = (dateStr) => {
+const dayName = (dateStr: string) => {
   const d = new Date(dateStr + 'T12:00:00')
   return d.toLocaleDateString('es-DO', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 export default function Clima() {
   const [tab, setTab] = useState('Actual')
-  const [current, setCurrent] = useState(null)
-  const [forecast, setForecast] = useState([])
-  const [history, setHistory] = useState([])
-  const [alerts, setAlerts] = useState([])
-  const [rules, setRules] = useState([])
+  const [current, setCurrent] = useState<any>(null)
+  const [forecast, setForecast] = useState<any[]>([])
+  const [history, setHistory] = useState<any[]>([])
+  const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [showRules, setShowRules] = useState(false)
-  const [editRule, setEditRule] = useState(null)
+  const [editRule, setEditRule] = useState<any>(null)
   const [fechaDesde, setFechaDesde] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30)
     return d.toISOString().split('T')[0]
   })
   const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0])
+
+  const { data: rules = [], refetch: loadRules } = useApi<any[]>('/clima/alert-rules', { immediate: false })
 
   const loadCurrent = useCallback(async () => {
     try {
@@ -69,13 +73,6 @@ export default function Clima() {
     finally { setLoading(false) }
   }, [fechaDesde, fechaHasta])
 
-  const loadRules = useCallback(async () => {
-    try {
-      const r = await api.get('/clima/alert-rules')
-      setRules(r.data)
-    } catch {}
-  }, [])
-
   useEffect(() => {
     if (tab === 'Actual') { loadCurrent(); loadRules() }
     if (tab === 'Pronóstico') loadForecast()
@@ -95,12 +92,12 @@ export default function Clima() {
       const r = await api.post('/clima/sync')
       toast.success(`${r.data.message}: ${r.data.readings_stored} lecturas, ${r.data.days_summarized} días`)
       if (tab === 'Historial') loadHistory()
-    } catch (e) {
+    } catch (e: any) {
       toast.error(e.response?.data?.detail || 'Error al sincronizar')
     } finally { setSyncing(false) }
   }
 
-  async function saveRule(rule) {
+  async function saveRule(rule: any) {
     try {
       if (rule.id) {
         await api.put(`/clima/alert-rules/${rule.id}`, rule)
@@ -111,10 +108,10 @@ export default function Clima() {
       }
       setEditRule(null)
       loadRules()
-    } catch (e) { toast.error(e.response?.data?.detail || 'Error al guardar regla') }
+    } catch (e: any) { toast.error(e.response?.data?.detail || 'Error al guardar regla') }
   }
 
-  async function deleteRule(id) {
+  async function deleteRule(id: number) {
     if (!confirm('¿Eliminar esta regla de alerta?')) return
     try {
       await api.delete(`/clima/alert-rules/${id}`)
@@ -123,7 +120,7 @@ export default function Clima() {
     } catch { toast.error('Error al eliminar') }
   }
 
-  async function acknowledgeAlert(id) {
+  async function acknowledgeAlert(id: number) {
     try {
       await api.post(`/clima/alerts/${id}/acknowledge`, { action_taken: 'Revisado' })
       toast.success('Alerta reconocida')
@@ -131,7 +128,6 @@ export default function Clima() {
     } catch { toast.error('Error') }
   }
 
-  // ─── Styles ───
   const card = {
     background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     border: '1px solid #e5e7eb'
@@ -161,7 +157,7 @@ export default function Clima() {
               borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 13,
             }}
           >
-            <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+            <RefreshCw size={16} style={syncing ? { animation: 'spin 1s linear infinite' } : undefined} />
             {syncing ? 'Sincronizando...' : 'Sincronizar Datos'}
           </button>
         </div>
@@ -200,7 +196,7 @@ export default function Clima() {
       {/* Alert Rules Panel */}
       <div style={{ ...card, marginTop: 20 }}>
         <button
-          onClick={() => setShowRules(!showRules)}
+          onClick={() => { setShowRules(!showRules); if (!showRules) loadRules() }}
           style={{
             display: 'flex', alignItems: 'center', gap: 8, width: '100%',
             background: 'none', border: 'none', cursor: 'pointer', padding: 0,
@@ -215,7 +211,7 @@ export default function Clima() {
         {showRules && (
           <div style={{ marginTop: 16 }}>
             <button
-              onClick={() => setEditRule({ name: '', variable: 'temperature_c', condition: 'gt', threshold_value: '', severity: 'warning', is_active: true, cooldown_minutes: 60 })}
+              onClick={() => setEditRule({ name: '', variable: 'temperature_c', condition: 'gt', threshold_value: null, severity: 'warning', is_active: true, cooldown_minutes: 60 })}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px',
                 background: '#166534', color: '#fff', border: 'none', borderRadius: 6,
@@ -239,7 +235,7 @@ export default function Clima() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rules.map(r => (
+                  {rules.map((r: any) => (
                     <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '8px 12px', fontWeight: 500 }}>{r.name}</td>
                       <td style={{ padding: '8px 12px' }}>{r.variable}</td>
@@ -273,7 +269,7 @@ export default function Clima() {
 
 // ════════════════════ Tab Actual ════════════════════
 
-function TabActual({ current, alerts, acknowledge, card }) {
+function TabActual({ current, alerts, acknowledge, card }: any) {
   if (!current) return (
     <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
       <Thermometer size={40} style={{ margin: '0 auto 12px' }} />
@@ -290,7 +286,7 @@ function TabActual({ current, alerts, acknowledge, card }) {
     { icon: <Zap size={28} color="#8b5cf6" />, label: 'VPD', value: `${current.vpd_kpa} kPa`, bg: '#f5f3ff' },
   ]
 
-  const activeAlerts = alerts.filter(a => !a.acknowledged_at)
+  const activeAlerts = alerts.filter((a: any) => !a.acknowledged_at)
 
   return (
     <div>
@@ -317,7 +313,7 @@ function TabActual({ current, alerts, acknowledge, card }) {
           <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1F3A5F', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
             <AlertTriangle size={18} color="#f59e0b" /> Alertas Activas ({activeAlerts.length})
           </h3>
-          {activeAlerts.map(a => (
+          {activeAlerts.map((a: any) => (
             <div
               key={a.id}
               style={{
@@ -351,7 +347,7 @@ function TabActual({ current, alerts, acknowledge, card }) {
 
 // ════════════════════ Tab Pronóstico ════════════════════
 
-function TabPronostico({ forecast, card }) {
+function TabPronostico({ forecast, card }: any) {
   if (!forecast.length) return (
     <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
       <Sun size={40} style={{ margin: '0 auto 12px' }} />
@@ -359,7 +355,7 @@ function TabPronostico({ forecast, card }) {
     </div>
   )
 
-  const weatherIcon = (rain, uv) => {
+  const weatherIcon = (rain: number, uv: number) => {
     if (rain > 10) return '🌧️'
     if (rain > 2) return '🌦️'
     if (uv > 8) return '☀️'
@@ -368,7 +364,7 @@ function TabPronostico({ forecast, card }) {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
-      {forecast.map((d, i) => (
+      {forecast.map((d: any, i: number) => (
         <div key={i} style={{ ...card, textAlign: 'center', padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#1F3A5F', marginBottom: 8 }}>
             {dayName(d.date)}
@@ -393,8 +389,8 @@ function TabPronostico({ forecast, card }) {
 
 // ════════════════════ Tab Historial ════════════════════
 
-function TabHistorial({ history, loading, card, fechaDesde, fechaHasta, setFechaDesde, setFechaHasta, onSearch }) {
-  const chartData = [...history].reverse().map(h => ({
+function TabHistorial({ history, loading, card, fechaDesde, fechaHasta, setFechaDesde, setFechaHasta, onSearch }: any) {
+  const chartData = [...history].reverse().map((h: any) => ({
     date: h.date?.slice(5) || '',
     'T.Máx': h.temp_max,
     'T.Mín': h.temp_min,
@@ -460,7 +456,7 @@ function TabHistorial({ history, loading, card, fechaDesde, fechaHasta, setFecha
               </tr>
             </thead>
             <tbody>
-              {history.map(r => {
+              {history.map((r: any) => {
                 const arisk = riskBadge(r.anthracnose_risk)
                 const prisk = riskBadge(r.phytophthora_risk)
                 return (
@@ -497,74 +493,6 @@ function TabHistorial({ history, loading, card, fechaDesde, fechaHasta, setFecha
           </table>
         </div>
       )}
-    </div>
-  )
-}
-
-// ════════════════════ Rule Form ════════════════════
-
-function RuleForm({ rule, onSave, onCancel }) {
-  const [form, setForm] = useState({ ...rule })
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
-
-  const inputStyle = {
-    padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6,
-    fontSize: 13, width: '100%',
-  }
-
-  return (
-    <div style={{
-      background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8,
-      padding: 16, marginBottom: 16,
-    }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-        <div>
-          <label style={{ fontSize: 12, color: '#64748b' }}>Nombre</label>
-          <input style={inputStyle} value={form.name} onChange={e => set('name', e.target.value)} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, color: '#64748b' }}>Variable</label>
-          <select style={inputStyle} value={form.variable} onChange={e => set('variable', e.target.value)}>
-            {['temperature_c', 'humidity_pct', 'rainfall_mm', 'wind_speed_kmh', 'wind_gust_kmh', 'uv_index'].map(v => (
-              <option key={v} value={v}>{v}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label style={{ fontSize: 12, color: '#64748b' }}>Condición</label>
-          <select style={inputStyle} value={form.condition} onChange={e => set('condition', e.target.value)}>
-            {['gt', 'gte', 'lt', 'lte'].map(c => (
-              <option key={c} value={c}>{c === 'gt' ? '>' : c === 'gte' ? '≥' : c === 'lt' ? '<' : '≤'}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label style={{ fontSize: 12, color: '#64748b' }}>Umbral</label>
-          <input type="number" style={inputStyle} value={form.threshold_value} onChange={e => set('threshold_value', parseFloat(e.target.value) || 0)} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, color: '#64748b' }}>Severidad</label>
-          <select style={inputStyle} value={form.severity} onChange={e => set('severity', e.target.value)}>
-            {['info', 'warning', 'critical'].map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label style={{ fontSize: 12, color: '#64748b' }}>Cooldown (min)</label>
-          <input type="number" style={inputStyle} value={form.cooldown_minutes} onChange={e => set('cooldown_minutes', parseInt(e.target.value) || 60)} />
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-        <button onClick={() => onSave(form)} style={{
-          padding: '6px 16px', background: '#166534', color: '#fff', border: 'none',
-          borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-        }}>Guardar</button>
-        <button onClick={onCancel} style={{
-          padding: '6px 16px', background: '#e5e7eb', color: '#374151', border: 'none',
-          borderRadius: 6, cursor: 'pointer', fontSize: 13,
-        }}>Cancelar</button>
-      </div>
     </div>
   )
 }
