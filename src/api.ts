@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL as string
+  baseURL: (import.meta.env.VITE_API_URL as string) || 'https://erp-m-b.onrender.com/api'
 })
 
 api.interceptors.request.use(config => {

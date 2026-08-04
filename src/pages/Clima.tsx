@@ -10,9 +10,20 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ComposedChart, Legend, CartesianGrid
 } from 'recharts'
+import axios from 'axios'
 import RuleForm from '../components/clima/RuleForm'
 
 const TABS = ['Actual', 'Pronóstico', 'Historial']
+
+const FARM_LAT = 18.49
+const FARM_LON = -69.98
+const FARM_TZ = 'America/Santo_Domingo'
+
+function calcVpd(tempC: number, humPct: number) {
+  const es = 0.6108 * Math.exp((17.27 * tempC) / (tempC + 237.3))
+  const ea = es * (humPct / 100)
+  return Math.round((es - ea) * 1000) / 1000
+}
 
 const severityColor: Record<string, string> = { info: '#3b82f6', warning: '#f59e0b', critical: '#ef4444' }
 
@@ -49,20 +60,62 @@ export default function Clima() {
 
   const loadCurrent = useCallback(async () => {
     try {
-      const [c, a] = await Promise.all([
-        api.get('/clima/current'),
+      const [weatherRes, a] = await Promise.all([
+        axios.get('https://api.open-meteo.com/v1/forecast', {
+          params: {
+            latitude: FARM_LAT, longitude: FARM_LON,
+            current: 'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index',
+            timezone: FARM_TZ,
+          },
+          timeout: 15000,
+        }).then(r => {
+          const c = r.data.current
+          return {
+            timestamp: c.time,
+            temperature_c: c.temperature_2m,
+            humidity_pct: c.relative_humidity_2m,
+            precipitation_mm: c.precipitation,
+            wind_speed_kmh: c.wind_speed_10m,
+            wind_direction_deg: c.wind_direction_10m,
+            wind_gust_kmh: c.wind_gusts_10m,
+            uv_index: c.uv_index,
+            vpd_kpa: calcVpd(c.temperature_2m ?? 25, c.relative_humidity_2m ?? 70),
+          }
+        }).catch(() => api.get('/clima/current').then(r => r.data)),
         api.get('/clima/alerts'),
       ])
-      setCurrent(c.data)
+      setCurrent(weatherRes)
       setAlerts(a.data)
     } catch { toast.error('Error al cargar clima actual') }
   }, [])
 
   const loadForecast = useCallback(async () => {
     try {
-      const r = await api.get('/clima/forecast')
-      setForecast(r.data)
-    } catch { toast.error('Error al cargar pronóstico') }
+      const r = await axios.get('https://api.open-meteo.com/v1/forecast', {
+        params: {
+          latitude: FARM_LAT, longitude: FARM_LON,
+          daily: 'temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,uv_index_max,et0_fao_evapotranspiration',
+          timezone: FARM_TZ, forecast_days: 7,
+        },
+        timeout: 15000,
+      })
+      const daily = r.data.daily
+      const days = (daily.time as string[]).map((d: string, i: number) => ({
+        date: d,
+        temp_max: daily.temperature_2m_max[i],
+        temp_min: daily.temperature_2m_min[i],
+        precipitation_mm: daily.precipitation_sum[i],
+        wind_max_kmh: daily.wind_speed_10m_max[i],
+        uv_max: daily.uv_index_max[i],
+        et0_mm: daily.et0_fao_evapotranspiration[i],
+      }))
+      setForecast(days)
+    } catch {
+      try {
+        const fallback = await api.get('/clima/forecast')
+        setForecast(fallback.data)
+      } catch { toast.error('Error al cargar pronóstico') }
+    }
   }, [])
 
   const loadHistory = useCallback(async () => {
