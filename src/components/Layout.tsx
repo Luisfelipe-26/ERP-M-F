@@ -3,6 +3,7 @@ import {
   LayoutDashboard, MapPin, Users, Package, Wrench, ClipboardList, LogOut, Leaf,
   DollarSign, TrendingUp, ShoppingCart, Warehouse, CloudSun, Bug, Droplets, BarChart3
 } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 
 const nav = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -25,12 +26,10 @@ const nav = [
 
 export default function Layout() {
   const navigate = useNavigate()
-  let user = {}
-  try { user = JSON.parse(localStorage.getItem('user') || '{}') } catch { user = {} }
+  const { user, logout } = useAuth()
 
-  function logout() {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
+  function handleLogout() {
+    logout()
     navigate('/login')
   }
 
@@ -79,7 +78,7 @@ export default function Layout() {
             <div style={{ color: 'white', fontSize: 13, fontWeight: 600 }}>{user.nombre}</div>
             <div style={{ color: '#86efac', fontSize: 11, textTransform: 'capitalize' }}>{user.rol}</div>
           </div>
-          <button onClick={logout} className="sidebar-link" style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <button onClick={handleLogout} className="sidebar-link" style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer' }}>
             <LogOut size={18} />
             Cerrar sesión
           </button>

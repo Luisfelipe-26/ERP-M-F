@@ -2,20 +2,21 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import api from '../api'
+import { useAuth } from '../contexts/AuthContext'
 import { Leaf } from 'lucide-react'
 
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const { login } = useAuth()
 
   async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true)
     try {
       const { data } = await api.post('/auth/login', form)
-      localStorage.setItem('token', data.access_token)
-      localStorage.setItem('user', JSON.stringify(data.user))
+      login(data.access_token, data.user)
       navigate('/')
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al iniciar sesión')

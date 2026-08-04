@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL
+  baseURL: import.meta.env.VITE_API_URL as string
 })
 
 api.interceptors.request.use(config => {
@@ -20,6 +20,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
+      window.dispatchEvent(new Event('auth:logout'))
       window.location.href = '/login'
     }
 

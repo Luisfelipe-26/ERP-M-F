@@ -1,24 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import api from '../api'
+import { useApi } from '../hooks/useApi'
 import toast from 'react-hot-toast'
 import { Plus, Edit2, Trash2, MapPin } from 'lucide-react'
 
 const empty = { id_campo: '', bloque: '', nombre: '', area_ha: '', n_plantas: '', variedad: 'Hass', ano_siembra: '', sistema_riego: 'Goteo', etapa: 'E2', suelo: '' }
 
 export default function Campos() {
-  const [items, setItems] = useState([])
+  const { data: items = [], loading, error, refetch } = useApi('/campos')
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(empty)
   const [editing, setEditing] = useState(null)
-
-  useEffect(() => { load() }, [])
-
-  async function load() {
-    try {
-      const { data } = await api.get('/campos')
-      setItems(data)
-    } catch { toast.error('Error al cargar campos') }
-  }
 
   async function openNew() {
     try { const { data } = await api.get('/campos/next-id'); setForm({ ...empty, id_campo: data.next_id }) }
@@ -28,21 +20,21 @@ export default function Campos() {
   function openEdit(c) { setForm({ ...c, area_ha: c.area_ha ?? '', n_plantas: c.n_plantas ?? '', ano_siembra: c.ano_siembra ?? '' }); setEditing(c.id_campo); setModal(true) }
 
   async function save(e) {
-    e.preventDefault()
-    try {
-      const payload = { ...form, area_ha: Number(form.area_ha) || null, n_plantas: Number(form.n_plantas) || null, ano_siembra: Number(form.ano_siembra) || null }
-      if (editing) await api.put(`/campos/${editing}`, payload)
-      else await api.post('/campos', payload)
-      toast.success(editing ? 'Campo actualizado' : 'Campo creado')
-      setModal(false); load()
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
-  }
+      e.preventDefault()
+      try {
+        const payload = { ...form, area_ha: Number(form.area_ha) || null, n_plantas: Number(form.n_plantas) || null, ano_siembra: Number(form.ano_siembra) || null }
+        if (editing) await api.put(`/campos/${editing}`, payload)
+        else await api.post('/campos', payload)
+        toast.success(editing ? 'Campo actualizado' : 'Campo creado')
+        setModal(false); refetch()
+      } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
+    }
 
-  async function del(id_campo) {
-    if (!confirm('¿Eliminar campo?')) return
-    await api.delete(`/campos/${id_campo}`)
-    toast.success('Campo eliminado'); load()
-  }
+    async function del(id_campo) {
+      if (!confirm('¿Eliminar campo?')) return
+      await api.delete(`/campos/${id_campo}`)
+      toast.success('Campo eliminado'); refetch()
+    }
 
   return (
     <div>
@@ -62,7 +54,13 @@ export default function Campos() {
             </tr>
           </thead>
           <tbody>
-            {items.map(c => (
+                      {loading ? (
+                        <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+                      ) : error ? (
+                        <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#dc2626' }}>{error}</td></tr>
+                      ) : items.length === 0 ? (
+                        <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No hay campos registrados</td></tr>
+                      ) : items.map(c => (
               <tr key={c.id_campo}>
                 <td><span style={{ fontWeight: 700, color: '#166534' }}>{c.id_campo}</span></td>
                 <td>{c.bloque || '—'}</td>
@@ -80,9 +78,6 @@ export default function Campos() {
                 </td>
               </tr>
             ))}
-            {items.length === 0 && (
-              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No hay campos registrados</td></tr>
-            )}
           </tbody>
         </table>
       </div>
