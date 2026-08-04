@@ -183,7 +183,23 @@ export default function Clima() {
   async function doSync() {
     setSyncing(true)
     try {
-      const r = await api.post('/clima/sync')
+      const today = new Date()
+      const start = new Date(today)
+      start.setDate(start.getDate() - 7)
+      const fmt = d => d.toISOString().split('T')[0]
+
+      const meteo = await axios.get('https://api.open-meteo.com/v1/forecast', {
+        params: {
+          latitude: FARM_LAT, longitude: FARM_LON,
+          hourly: 'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,et0_fao_evapotranspiration',
+          timezone: FARM_TZ,
+          start_date: fmt(start),
+          end_date: fmt(today),
+        },
+        timeout: 15000,
+      })
+
+      const r = await api.post('/clima/sync-from-client', { hourly: meteo.data.hourly })
       toast.success(`${r.data.message}: ${r.data.readings_stored} lecturas, ${r.data.days_summarized} días`)
       if (tab === 'Historial') loadHistory()
     } catch (e) {
