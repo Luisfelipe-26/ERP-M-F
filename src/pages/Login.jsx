@@ -90,9 +90,7 @@ export default function Login() {
               {loading ? 'Ingresando...' : 'Ingresar'}
             </button>
           </form>
-          <p style={{ marginTop: 20, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
-            admin@corvus.do / Corvus2024!
-          </p>
+
         </div>
       </div>
     </div>
