@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import api from '../api'
 import toast from 'react-hot-toast'
 import {
@@ -63,6 +63,76 @@ const Field = ({ label, children, full }) => (
   </div>
 )
 
+const SearchSelect = ({ items, value, onChange, placeholder = 'Buscar artículo...' }) => {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef(null)
+  const inputRef = useRef(null)
+
+  const selected = items.find(p => p.id_prod === value)
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filtered = items.filter(p => {
+    if (!query) return true
+    const q = query.toLowerCase()
+    return p.id_prod.toLowerCase().includes(q) || p.producto.toLowerCase().includes(q)
+  })
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div
+        className="input"
+        onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0) }}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, minHeight: 38 }}
+      >
+        <Search size={14} style={{ color: '#9ca3af', flexShrink: 0 }} />
+        {open ? (
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder={placeholder}
+            style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', fontSize: 13, padding: 0 }}
+          />
+        ) : (
+          <span style={{ fontSize: 13, color: selected ? '#111827' : '#9ca3af' }}>
+            {selected ? `${selected.id_prod} — ${selected.producto}` : placeholder}
+          </span>
+        )}
+        {value && !open && (
+          <button type="button" onClick={e => { e.stopPropagation(); onChange(''); setQuery('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#9ca3af', marginLeft: 'auto' }}>
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'white', border: '1px solid #e5e7eb', borderRadius: 10, marginTop: 4, maxHeight: 220, overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.12)' }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: '12px 14px', color: '#9ca3af', fontSize: 13 }}>Sin resultados</div>
+          ) : filtered.map(p => (
+            <div
+              key={p.id_prod}
+              onClick={() => { onChange(p.id_prod); setOpen(false); setQuery('') }}
+              style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6', background: p.id_prod === value ? '#f0fdf4' : 'white' }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+              onMouseLeave={e => e.currentTarget.style.background = p.id_prod === value ? '#f0fdf4' : 'white'}
+            >
+              <span style={{ fontWeight: 700, color: '#166534' }}>{p.id_prod}</span>
+              <span style={{ color: '#6b7280' }}> — {p.producto}</span>
+              <span style={{ float: 'right', fontSize: 11, color: '#9ca3af' }}>{fmtN(p.stock_actual)} {p.unidad}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Modal GR — Entrada de Mercancía ──────────────────────────────────────────
 const ModalGR = ({ producto, articulos, onClose, onDone }) => {
   const [form, setForm] = useState({
@@ -114,17 +184,18 @@ const ModalGR = ({ producto, articulos, onClose, onDone }) => {
       <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         {!producto && (
           <Field label="Artículo *" full>
-            <select className="select" value={form.producto_id} onChange={e => {
-              const sel = (articulos || []).find(p => p.id_prod === e.target.value)
-              f('producto_id', e.target.value)
-              if (sel) {
-                f('precio_compra', sel.costo_promedio || sel.costo_unitario || '')
-                f('proveedor', sel.proveedor || '')
-              }
-            }} required>
-              <option value="">Seleccionar artículo...</option>
-              {(articulos || []).map(p => <option key={p.id_prod} value={p.id_prod}>{p.id_prod} — {p.producto}</option>)}
-            </select>
+            <SearchSelect
+              items={articulos || []}
+              value={form.producto_id}
+              onChange={id => {
+                const sel = (articulos || []).find(p => p.id_prod === id)
+                f('producto_id', id)
+                if (sel) {
+                  f('precio_compra', sel.costo_promedio || sel.costo_unitario || '')
+                  f('proveedor', sel.proveedor || '')
+                }
+              }}
+            />
           </Field>
         )}
         <Field label="Orden de Compra" full>
