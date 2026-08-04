@@ -64,7 +64,7 @@ const Field = ({ label, children, full }) => (
 )
 
 // ─── Modal GR — Entrada de Mercancía ──────────────────────────────────────────
-const ModalGR = ({ producto, onClose, onDone }) => {
+const ModalGR = ({ producto, articulos, onClose, onDone }) => {
   const [form, setForm] = useState({
     producto_id: producto?.id_prod || '',
     cantidad: '',
@@ -79,6 +79,8 @@ const ModalGR = ({ producto, onClose, onDone }) => {
   })
   const [saving, setSaving] = useState(false)
   const [ocs, setOcs] = useState([])
+
+  const prodSeleccionado = producto || (articulos || []).find(p => p.id_prod === form.producto_id) || null
 
   useEffect(() => {
     api.get('/inventario/ordenes-compra-lista').then(r => setOcs(r.data)).catch(() => {})
@@ -108,11 +110,21 @@ const ModalGR = ({ producto, onClose, onDone }) => {
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   return (
-    <Modal title="Entrada de Mercancía (GR)" subtitle={producto ? `Artículo: ${producto.producto} · Stock actual: ${fmtN(producto.stock_actual)} ${producto.unidad}` : undefined} onClose={onClose} width={620}>
+    <Modal title="Entrada de Mercancía (GR)" subtitle={prodSeleccionado ? `Artículo: ${prodSeleccionado.producto} · Stock actual: ${fmtN(prodSeleccionado.stock_actual)} ${prodSeleccionado.unidad}` : undefined} onClose={onClose} width={620}>
       <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         {!producto && (
-          <Field label="ID Artículo *" full>
-            <input className="input" value={form.producto_id} onChange={e => f('producto_id', e.target.value)} required placeholder="P-001" />
+          <Field label="Artículo *" full>
+            <select className="select" value={form.producto_id} onChange={e => {
+              const sel = (articulos || []).find(p => p.id_prod === e.target.value)
+              f('producto_id', e.target.value)
+              if (sel) {
+                f('precio_compra', sel.costo_promedio || sel.costo_unitario || '')
+                f('proveedor', sel.proveedor || '')
+              }
+            }} required>
+              <option value="">Seleccionar artículo...</option>
+              {(articulos || []).map(p => <option key={p.id_prod} value={p.id_prod}>{p.id_prod} — {p.producto}</option>)}
+            </select>
           </Field>
         )}
         <Field label="Orden de Compra" full>
@@ -145,12 +157,12 @@ const ModalGR = ({ producto, onClose, onDone }) => {
         <Field label="Observación" full>
           <input className="input" value={form.observacion} onChange={e => f('observacion', e.target.value)} />
         </Field>
-        {form.cantidad && form.precio_compra && producto && (
+        {form.cantidad && form.precio_compra && prodSeleccionado && (
           <div style={{ gridColumn: '1/-1', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#166534' }}>
             <strong>Vista previa:</strong> Nuevo costo promedio estimado ≈{' '}
             {(() => {
-              const s = producto.stock_actual || 0
-              const cp = producto.costo_promedio || producto.costo_unitario || 0
+              const s = prodSeleccionado.stock_actual || 0
+              const cp = prodSeleccionado.costo_promedio || prodSeleccionado.costo_unitario || 0
               const q = Number(form.cantidad) || 0
               const pp = Number(form.precio_compra) || 0
               if (s + q === 0) return fmt(pp)
@@ -807,7 +819,7 @@ export default function Inventario() {
       )}
 
       {/* ─── Modals ──── */}
-      {modalGR && <ModalGR producto={modalGR === true ? null : modalGR} onClose={() => setModalGR(null)} onDone={afterAction} />}
+      {modalGR && <ModalGR producto={modalGR === true ? null : modalGR} articulos={articulos} onClose={() => setModalGR(null)} onDone={afterAction} />}
       {modalGI && <ModalGI producto={modalGI === true ? null : modalGI} onClose={() => setModalGI(null)} onDone={afterAction} />}
       {modalAJ && <ModalAjuste producto={modalAJ === true ? null : modalAJ} articulos={articulos} onClose={() => setModalAJ(null)} onDone={afterAction} />}
       {modalKardex && <ModalKardex producto={modalKardex} onClose={() => setModalKardex(null)} />}
