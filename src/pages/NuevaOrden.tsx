@@ -452,7 +452,7 @@ export default function NuevaOrden() {
                         <select className="select" value={m.modalidad} onChange={e => updateMO(i, 'modalidad', e.target.value)}
                           style={{ background: isAjuste ? '#fef9c3' : '', fontWeight: 700 }}>
                           <option value="Jornada">⏱ Jornada (por horas)</option>
-                          <option value="Ajuste" disabled={!actividadSel?.tarifa_ajuste}>
+                          <option value="Ajuste">
                             📏 Ajuste {actividadSel?.tarifa_ajuste ? `(RD$ ${actividadSel.tarifa_ajuste.toLocaleString('es-DO')})` : '(sin tarifa)'}
                           </option>
                         </select>
