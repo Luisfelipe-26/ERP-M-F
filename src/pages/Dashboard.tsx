@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
+import axios from 'axios'
 import toast from 'react-hot-toast'
 import {
   MapPin, ClipboardList, DollarSign, AlertTriangle, Droplets, TrendingUp,
@@ -11,10 +12,116 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts'
-import KpiCard from '../components/dashboard/KpiCard'
-import BriefingPanel from '../components/dashboard/BriefingPanel'
-import CampoCard from '../components/dashboard/CampoCard'
-import { fmt, fmtK, CHART_COLORS, getGreeting, getDateStr } from '../components/dashboard/helpers'
+
+/* ─── Helpers ─── */
+const fmt = n => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 0 })}`
+const fmtK = n => { const v = Number(n || 0); return v >= 1000 ? `${(v/1000).toFixed(1)}k` : v.toFixed(0) }
+const CHART_COLORS = ['#2D6A4F', '#219EBC', '#F4A261', '#E76F51', '#6366F1', '#94A3B8']
+const STATUS_COLORS = { green: '#22c55e', yellow: '#eab308', red: '#ef4444' }
+
+const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
+const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Buenos Días'
+  if (h < 18) return 'Buenas Tardes'
+  return 'Buenas Noches'
+}
+
+function getDateStr() {
+  const d = new Date()
+  return `${DIAS[d.getDay()]} ${d.getDate()} ${MESES[d.getMonth()]} ${d.getFullYear()}`
+}
+
+/* ─── KPI Card ─── */
+function KpiCard({ label, value, subtitle, icon: Icon, accentColor, onClick }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        height: 120, borderRadius: 12, background: '#fff', padding: '16px 20px',
+        borderLeft: `4px solid ${accentColor}`, display: 'flex', flexDirection: 'column',
+        justifyContent: 'center', cursor: onClick ? 'pointer' : 'default',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)', transition: 'box-shadow 0.2s',
+      }}
+      onMouseEnter={e => { if (onClick) e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)' }}
+      onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <Icon size={16} color={accentColor} />
+        <span style={{ fontSize: 13, fontWeight: 500, color: '#6B7280' }}>{label}</span>
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: '#1A1A2E', lineHeight: 1 }}>{value ?? '—'}</div>
+      {subtitle && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>{subtitle}</div>}
+    </div>
+  )
+}
+
+/* ─── Briefing Panel ─── */
+function BriefingPanel({ icon: Icon, title, children, bgGradient }) {
+  return (
+    <div style={{
+      flex: 1, borderRadius: 12, padding: '16px 20px', background: bgGradient,
+      minWidth: 200, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <Icon size={18} color="#374151" />
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>{title}</span>
+      </div>
+      <div style={{ fontSize: 13, color: '#4B5563', lineHeight: 1.6 }}>{children}</div>
+    </div>
+  )
+}
+
+/* ─── Campo Card ─── */
+function CampoCard({ campo }) {
+  const dotColor = STATUS_COLORS[campo.status] || '#94a3b8'
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 10, padding: '12px 14px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid #f3f4f6',
+      position: 'relative', overflow: 'hidden',
+    }}>
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+        background: dotColor, borderRadius: '10px 10px 0 0',
+      }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 2 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937' }}>{campo.id_campo}</div>
+          <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+            {campo.area_ha ? `${campo.area_ha} ha` : '—'}{campo.bloque ? ` · B${campo.bloque}` : ''}
+          </div>
+        </div>
+        <div style={{
+          width: 10, height: 10, borderRadius: '50%', background: dotColor,
+          boxShadow: `0 0 6px ${dotColor}80`, flexShrink: 0, marginTop: 3,
+        }} />
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+        {campo.ot_open > 0 && (
+          <span style={{ fontSize: 10, background: '#EDE9FE', color: '#7C3AED', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+            {campo.ot_open} OT
+          </span>
+        )}
+        {campo.issues.includes('pest') && (
+          <span style={{ fontSize: 10, background: '#FEF3C7', color: '#92400E', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+            <Bug size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> Plaga
+          </span>
+        )}
+        {campo.issues.includes('water') && (
+          <span style={{ fontSize: 10, background: '#DBEAFE', color: '#1E40AF', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+            <Droplets size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> Déficit
+          </span>
+        )}
+        {campo.cost_month > 0 && (
+          <span style={{ fontSize: 10, color: '#6B7280' }}>{fmt(campo.cost_month)}</span>
+        )}
+      </div>
+    </div>
+  )
+}
 
 
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -24,6 +131,7 @@ export default function Dashboard() {
   const [campoStatus, setCampoStatus] = useState([])
   const [costosCampo, setCostosCampo] = useState([])
   const [costosAct, setCostosAct] = useState([])
+  const [liveWeather, setLiveWeather] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const navigate = useNavigate()
@@ -44,6 +152,26 @@ export default function Dashboard() {
       setCampoStatus(cs.data)
       setCostosCampo(cc.data.filter(x => x.costo_total > 0).sort((a, b) => b.costo_total - a.costo_total).slice(0, 12))
       setCostosAct(ca.data.filter(x => x.costo_total > 0).sort((a, b) => b.costo_total - a.costo_total).slice(0, 8))
+      // Fetch live weather from Open-Meteo (non-blocking)
+      axios.get('https://api.open-meteo.com/v1/forecast', {
+        params: {
+          latitude: 18.49, longitude: -69.98,
+          current: 'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m',
+          daily: 'precipitation_sum',
+          timezone: 'America/Santo_Domingo',
+          forecast_days: 1,
+        },
+        timeout: 10000,
+      }).then(r => {
+        const c = r.data.current
+        setLiveWeather({
+          temperature_c: c.temperature_2m,
+          humidity_pct: c.relative_humidity_2m,
+          precipitation_mm: c.precipitation,
+          wind_speed_kmh: c.wind_speed_10m,
+          daily_rain_mm: r.data.daily?.precipitation_sum?.[0] ?? 0,
+        })
+      }).catch(() => {})
     } catch {
       setError('Error al cargar datos del dashboard.')
     } finally {
@@ -88,7 +216,7 @@ export default function Dashboard() {
     </div>
   )
 
-  const w = briefing?.weather
+  const w = liveWeather || briefing?.weather
   const fin = briefing?.financial
 
   /* Chart data: OTs by estado */
@@ -157,6 +285,11 @@ export default function Dashboard() {
                 <div>Humedad: {w.humidity_pct != null ? `${w.humidity_pct.toFixed(0)}%` : '—'}</div>
                 <div>Lluvia hoy: {w.daily_rain_mm != null ? `${w.daily_rain_mm.toFixed(1)} mm` : '0 mm'}</div>
                 <div>Viento: {w.wind_speed_kmh != null ? `${w.wind_speed_kmh.toFixed(0)} km/h` : '—'}</div>
+                <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7 }}>
+                  {liveWeather
+                    ? <span style={{ color: '#22c55e' }}>● En vivo</span>
+                    : <span style={{ color: '#eab308' }}>● Datos almacenados</span>}
+                </div>
                 {(briefing?.weather_alerts > 0) && (
                   <div style={{ marginTop: 4, color: '#E63946', fontWeight: 600 }}>
                     ⚠️ {briefing.weather_alerts} alerta(s) activa(s)
