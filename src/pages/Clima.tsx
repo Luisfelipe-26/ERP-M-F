@@ -44,7 +44,8 @@ export default function Clima() {
   })
   const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0])
 
-  const { data: rules = [], refetch: loadRules } = useApi<any[]>('/clima/alert-rules', { immediate: false })
+  const { data: rulesData, refetch: loadRules } = useApi<any[]>('/clima/alert-rules', { immediate: false })
+  const rules = rulesData ?? []
 
   const loadCurrent = useCallback(async () => {
     try {
@@ -204,7 +205,7 @@ export default function Clima() {
           }}
         >
           <Bell size={18} />
-          Reglas de Alerta ({rules.length})
+          Reglas de Alerta ({rules?.length ?? 0})
           {showRules ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
 
@@ -235,7 +236,7 @@ export default function Clima() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rules.map((r: any) => (
+                  {rules && rules.map((r: any) => (
                     <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '8px 12px', fontWeight: 500 }}>{r.name}</td>
                       <td style={{ padding: '8px 12px' }}>{r.variable}</td>
@@ -254,7 +255,7 @@ export default function Clima() {
                       </td>
                     </tr>
                   ))}
-                  {rules.length === 0 && (
+                  {rules && rules.length === 0 && (
                     <tr><td colSpan={7} style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>No hay reglas configuradas</td></tr>
                   )}
                 </tbody>
