@@ -11,7 +11,7 @@ interface UseApiOptions {
  * Retorna { data, loading, error, refetch }.
  */
 export function useApi<T = any>(path: string, { params, immediate = true }: UseApiOptions = {}) {
-  const [data, setData] = useState<T | null>(null)
+  const [data, setData] = useState<T | undefined>(undefined)
   const [loading, setLoading] = useState(immediate)
   const [error, setError] = useState<string | null>(null)
   const paramsRef = useRef(params)
@@ -27,7 +27,6 @@ export function useApi<T = any>(path: string, { params, immediate = true }: UseA
     } catch (err: any) {
       const msg = err.response?.data?.detail || 'Error al cargar datos'
       setError(msg)
-      throw err
     } finally {
       setLoading(false)
     }
