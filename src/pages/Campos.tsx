@@ -91,15 +91,15 @@ export default function Campos() {
                 { label: 'ID Campo *', key: 'id_campo', required: true, disabled: !!editing },
                 { label: 'Bloque', key: 'bloque' },
                 { label: 'Nombre', key: 'nombre' },
-                { label: 'Área (ha)', key: 'area_ha', type: 'number' },
+                { label: 'Área (ha)', key: 'area_ha', type: 'number', step: 'any' },
                 { label: 'N° Plantas', key: 'n_plantas', type: 'number' },
                 { label: 'Año Siembra', key: 'ano_siembra', type: 'number' },
                 { label: 'Variedad', key: 'variedad' },
                 { label: 'Suelo', key: 'suelo' },
-              ].map(({ label, key, required, disabled, type }) => (
+              ].map(({ label, key, required, disabled, type, step }) => (
                 <div key={key}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>{label}</label>
-                  <input className="input" type={type || 'text'} min={type === 'number' ? '0' : undefined} value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} required={required} disabled={disabled} />
+                  <input className="input" type={type || 'text'} min={type === 'number' ? '0' : undefined} step={step} value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} required={required} disabled={disabled} />
                 </div>
               ))}
               <div>
