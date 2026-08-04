@@ -307,7 +307,7 @@ export default function ProductosCrud() {
             <form onSubmit={save} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>ID Producto *</label>
-                <input className="input" value={form.id_prod} onChange={e => setForm({ ...form, id_prod: e.target.value })} required disabled={!!editing} />
+                <input className="input" value={form.id_prod} required disabled />
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Tipo</label>
