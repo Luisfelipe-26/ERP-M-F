@@ -1,8 +1,100 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../api'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, ArrowLeft, ClipboardList, Save } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, ClipboardList, Save, Search, X } from 'lucide-react'
+
+function SearchSelect({ options, value, onChange, placeholder = 'Buscar...', required = false }: {
+  options: { value: string; label: string; sublabel?: string }[];
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const selected = options.find(o => o.value === value)
+  const filtered = options.filter(o =>
+    o.label.toLowerCase().includes(search.toLowerCase()) ||
+    (o.sublabel && o.sublabel.toLowerCase().includes(search.toLowerCase()))
+  )
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      {/* Hidden input for form validation */}
+      {required && <input tabIndex={-1} value={value} required onChange={() => {}} style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }} />}
+      <div
+        onClick={() => { setOpen(!open); setSearch(''); setTimeout(() => inputRef.current?.focus(), 50) }}
+        className="select"
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, minHeight: 38 }}
+      >
+        <Search size={13} style={{ color: '#9ca3af', flexShrink: 0 }} />
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selected ? '#111827' : '#9ca3af' }}>
+          {selected ? selected.label : placeholder}
+        </span>
+        {value && (
+          <X size={14} style={{ color: '#9ca3af', flexShrink: 0 }}
+            onClick={e => { e.stopPropagation(); onChange(''); setSearch('') }} />
+        )}
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+          background: 'white', border: '1px solid #d1d5db', borderRadius: 8,
+          boxShadow: '0 10px 25px rgba(0,0,0,0.15)', marginTop: 2, maxHeight: 260, display: 'flex', flexDirection: 'column'
+        }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb' }}>
+            <input
+              ref={inputRef}
+              className="input"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Escriba para filtrar..."
+              style={{ fontSize: 13, border: '1px solid #e5e7eb', width: '100%' }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && filtered.length === 1) {
+                  onChange(filtered[0].value); setOpen(false); setSearch('')
+                }
+                if (e.key === 'Escape') { setOpen(false); setSearch('') }
+              }}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', maxHeight: 200 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '12px 14px', color: '#9ca3af', fontSize: 13, textAlign: 'center' }}>Sin resultados</div>
+            ) : filtered.map(o => (
+              <div
+                key={o.value}
+                onClick={() => { onChange(o.value); setOpen(false); setSearch('') }}
+                style={{
+                  padding: '8px 14px', cursor: 'pointer', fontSize: 13,
+                  background: o.value === value ? '#f0fdf4' : 'white',
+                  borderLeft: o.value === value ? '3px solid #22c55e' : '3px solid transparent',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+                onMouseLeave={e => (e.currentTarget.style.background = o.value === value ? '#f0fdf4' : 'white')}
+              >
+                <div style={{ fontWeight: o.value === value ? 700 : 500 }}>{o.label}</div>
+                {o.sublabel && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>{o.sublabel}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const UNIDADES_AJUSTE = ['Metros lineales', 'Tanques', 'Tarea', 'Unidades']
 
@@ -385,10 +477,17 @@ export default function NuevaOrden() {
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Actividad *</label>
-              <select className="select" value={form.actividad_id} onChange={e => onActividadChange(e.target.value)} required>
-                <option value="">Seleccionar actividad...</option>
-                {actividades.map(a => <option key={a.id_act} value={a.id_act}>{a.actividad}</option>)}
-              </select>
+              <SearchSelect
+                options={actividades.map(a => ({
+                  value: a.id_act,
+                  label: a.actividad,
+                  sublabel: `${a.id_act}${a.tarifa_jornada ? ` · Jornada: RD$ ${a.tarifa_jornada.toLocaleString('es-DO')}` : ''}${a.tarifa_ajuste ? ` · Ajuste: RD$ ${a.tarifa_ajuste.toLocaleString('es-DO')}` : ''}`
+                }))}
+                value={form.actividad_id}
+                onChange={val => onActividadChange(val)}
+                placeholder="Buscar actividad..."
+                required
+              />
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Supervisor</label>
@@ -442,10 +541,17 @@ export default function NuevaOrden() {
                     <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1.2fr auto', gap: 10, alignItems: 'end' }}>
                       <div>
                         <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>TRABAJADOR</label>
-                        <select className="select" value={m.trabajador_id} onChange={e => updateMO(i, 'trabajador_id', e.target.value)} required>
-                          <option value="">Seleccionar...</option>
-                          {trabajadores.map(t => <option key={t.id_trab} value={t.id_trab}>{t.nombre} ({t.cargo})</option>)}
-                        </select>
+                        <SearchSelect
+                          options={trabajadores.map(t => ({
+                            value: t.id_trab,
+                            label: `${t.nombre}`,
+                            sublabel: `${t.id_trab} · ${t.cargo}`
+                          }))}
+                          value={m.trabajador_id}
+                          onChange={val => updateMO(i, 'trabajador_id', val)}
+                          placeholder="Buscar trabajador..."
+                          required
+                        />
                       </div>
                       <div>
                         <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>MODALIDAD</label>
