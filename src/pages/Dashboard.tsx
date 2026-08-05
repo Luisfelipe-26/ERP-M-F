@@ -132,6 +132,7 @@ export default function Dashboard() {
   const [costosCampo, setCostosCampo] = useState([])
   const [costosAct, setCostosAct] = useState([])
   const [liveWeather, setLiveWeather] = useState(null)
+  const [calendario, setCalendario] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const navigate = useNavigate()
@@ -140,18 +141,20 @@ export default function Dashboard() {
     setLoading(true)
     setError(null)
     try {
-      const [s, b, cs, cc, ca] = await Promise.all([
+      const [s, b, cs, cc, ca, cal] = await Promise.all([
         api.get('/dashboard/stats'),
         api.get('/dashboard/briefing'),
         api.get('/dashboard/campo-status'),
         api.get('/dashboard/costos-por-campo'),
         api.get('/dashboard/costos-por-actividad'),
+        api.get('/dashboard/calendario-agricola').catch(() => ({ data: null })),
       ])
       setStats(s.data)
       setBriefing(b.data)
       setCampoStatus(cs.data)
       setCostosCampo(cc.data.filter(x => x.costo_total > 0).sort((a, b) => b.costo_total - a.costo_total).slice(0, 12))
       setCostosAct(ca.data.filter(x => x.costo_total > 0).sort((a, b) => b.costo_total - a.costo_total).slice(0, 8))
+      setCalendario(cal.data)
       // Fetch live weather from Open-Meteo (non-blocking)
       axios.get('https://api.open-meteo.com/v1/forecast', {
         params: {
@@ -595,6 +598,59 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* ═══ Calendario Agrícola ═══ */}
+      {calendario && calendario.actividades?.length > 0 && (
+        <div className="card" style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <h3 style={{ margin: '0 0 2px', fontSize: 15, fontWeight: 700, color: '#166534' }}>
+                Calendario Agrícola — {calendario.mes_nombre}
+              </h3>
+              <p style={{ margin: 0, fontSize: 11, color: '#9CA3AF' }}>{calendario.fuente}</p>
+            </div>
+            <Sprout size={20} color="#166534" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+            {calendario.actividades.map((act, i) => {
+              const catColors = {
+                fertilizacion: { bg: '#ECFDF5', border: '#6EE7B7', icon: '🧪', color: '#065F46' },
+                sanidad: { bg: '#FFFBEB', border: '#FCD34D', icon: '🐛', color: '#92400E' },
+                cosecha: { bg: '#FEF3C7', border: '#F59E0B', icon: '🥑', color: '#78350F' },
+                poda: { bg: '#F0FDF4', border: '#86EFAC', icon: '✂️', color: '#166534' },
+                maleza: { bg: '#F5F3FF', border: '#C4B5FD', icon: '🌿', color: '#5B21B6' },
+                fenologia: { bg: '#EFF6FF', border: '#93C5FD', icon: '🌸', color: '#1E40AF' },
+                manejo: { bg: '#F8FAFC', border: '#CBD5E1', icon: '🔧', color: '#334155' },
+                establecimiento: { bg: '#FFF7ED', border: '#FDBA74', icon: '🌱', color: '#9A3412' },
+                planificacion: { bg: '#F0F9FF', border: '#7DD3FC', icon: '📋', color: '#0C4A6E' },
+              }
+              const cat = catColors[act.categoria] || catColors.manejo
+              const prioBadge = act.prioridad === 'alta'
+                ? { bg: '#FEE2E2', color: '#991B1B', label: 'Alta' }
+                : act.prioridad === 'media'
+                  ? { bg: '#FEF9C3', color: '#854D0E', label: 'Media' }
+                  : { bg: '#F3F4F6', color: '#6B7280', label: 'Baja' }
+              return (
+                <div key={i} style={{
+                  background: cat.bg, border: `1px solid ${cat.border}`, borderRadius: 10,
+                  padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: cat.color }}>
+                      {cat.icon} {act.actividad}
+                    </span>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6,
+                      background: prioBadge.bg, color: prioBadge.color,
+                    }}>{prioBadge.label}</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 11, color: '#6B7280', lineHeight: 1.4 }}>{act.detalle}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
