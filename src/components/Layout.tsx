@@ -1,7 +1,8 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, Users, Package, Wrench, ClipboardList, LogOut, Leaf,
-  DollarSign, TrendingUp, ShoppingCart, Warehouse, CloudSun, Bug, Droplets, BarChart3
+  DollarSign, TrendingUp, ShoppingCart, Warehouse, CloudSun, Bug, Droplets, BarChart3,
+  UserCheck, Landmark, Truck, BookOpen
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -15,6 +16,11 @@ const nav = [
   { to: '/clima', icon: CloudSun, label: 'Clima' },
   { to: '/sanidad', icon: Bug, label: 'Sanidad (MIP)' },
   { to: '/riego', icon: Droplets, label: 'Riego' },
+  { divider: true, label: 'FINANZAS' },
+  { to: '/contabilidad', icon: BookOpen, label: 'Contabilidad' },
+  { to: '/clientes', icon: UserCheck, label: 'Clientes' },
+  { to: '/proveedores', icon: Truck, label: 'Proveedores' },
+  { to: '/efectivo-banco', icon: Landmark, label: 'Efectivo y Banco' },
   { divider: true, label: 'MAESTROS' },
   { to: '/campos', icon: MapPin, label: 'Campos' },
   { to: '/trabajadores', icon: Users, label: 'Trabajadores' },

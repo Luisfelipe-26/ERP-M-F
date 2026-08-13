@@ -16,8 +16,9 @@ const StockBadge = ({ stock, minimo }) => {
 const empty = {
   id_prod: '', producto: '', tipo: '', unidad: 'L',
   costo_unitario: '', stock_actual: 0, stock_minimo: 0,
-  stock_maximo: '', proveedor: '', concentracion: '',
-  es_inventariable: true
+  stock_maximo: '', proveedor: '', proveedor_id: '',
+  concentracion: '', es_inventariable: true,
+  cuenta_inventario_id: '', cuenta_costo_id: '', cuenta_ingreso_id: '',
 }
 
 export default function ProductosCrud() {
@@ -35,8 +36,9 @@ export default function ProductosCrud() {
   const [nuevoTipo, setNuevoTipo] = useState('')
   const [editingTipo, setEditingTipo] = useState(null)
   const [editTipoNombre, setEditTipoNombre] = useState('')
+  const [cuentasGL, setCuentasGL] = useState([])
 
-  useEffect(() => { load(); loadTipos(); loadProveedores() }, [])
+  useEffect(() => { load(); loadTipos(); loadProveedores(); loadCuentasGL() }, [])
 
   async function loadTipos() {
     try { const { data } = await api.get('/tipos-producto'); setTipos(data) }
@@ -45,6 +47,11 @@ export default function ProductosCrud() {
 
   async function loadProveedores() {
     try { const { data } = await api.get('/proveedores'); setProveedoresLista(data) }
+    catch { /* fallback */ }
+  }
+
+  async function loadCuentasGL() {
+    try { const { data } = await api.get('/contabilidad/cuentas'); setCuentasGL(data.filter(c => c.acepta_movimientos)) }
     catch { /* fallback */ }
   }
 
@@ -96,8 +103,12 @@ export default function ProductosCrud() {
       unidad: p.unidad || 'L', costo_unitario: p.costo_unitario || '',
       stock_actual: p.stock_actual || 0, stock_minimo: p.stock_minimo || 0,
       stock_maximo: p.stock_maximo || '', proveedor: p.proveedor || '',
+      proveedor_id: p.proveedor_id || '',
       concentracion: p.concentracion || '',
-      es_inventariable: p.es_inventariable !== false
+      es_inventariable: p.es_inventariable !== false,
+      cuenta_inventario_id: p.cuenta_inventario_id || '',
+      cuenta_costo_id: p.cuenta_costo_id || '',
+      cuenta_ingreso_id: p.cuenta_ingreso_id || '',
     })
     setEditing(p.id_prod); setModal(true)
   }
@@ -112,6 +123,10 @@ export default function ProductosCrud() {
         stock_actual: Number(form.stock_actual),
         stock_minimo: Number(form.stock_minimo),
         stock_maximo: form.stock_maximo ? Number(form.stock_maximo) : null,
+        proveedor_id: form.proveedor_id ? Number(form.proveedor_id) : null,
+        cuenta_inventario_id: form.cuenta_inventario_id ? Number(form.cuenta_inventario_id) : null,
+        cuenta_costo_id: form.cuenta_costo_id ? Number(form.cuenta_costo_id) : null,
+        cuenta_ingreso_id: form.cuenta_ingreso_id ? Number(form.cuenta_ingreso_id) : null,
       }
       if (editing) await api.put(`/inventario/articulos/${editing}`, payload)
       else await api.post('/inventario/articulos', payload)
@@ -356,9 +371,37 @@ export default function ProductosCrud() {
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Proveedor</label>
-                <select className="select" value={form.proveedor} onChange={e => setForm({ ...form, proveedor: e.target.value })}>
+                <select className="select" value={form.proveedor} onChange={e => {
+                  const prov = proveedoresLista.find(p => p.nombre === e.target.value)
+                  setForm({ ...form, proveedor: e.target.value, proveedor_id: prov ? prov.id : '' })
+                }}>
                   <option value="">Seleccionar...</option>
                   {proveedoresLista.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                </select>
+              </div>
+              {/* Cuentas Contables */}
+              <div style={{ gridColumn: '1/-1', borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#166534', textTransform: 'uppercase', marginBottom: 8 }}>Configuración Contable</div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Cuenta Inventario</label>
+                <select className="select" value={form.cuenta_inventario_id} onChange={e => setForm({ ...form, cuenta_inventario_id: e.target.value })}>
+                  <option value="">— Sin asignar —</option>
+                  {cuentasGL.filter(c => c.tipo === 'activo').map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Cuenta Costo</label>
+                <select className="select" value={form.cuenta_costo_id} onChange={e => setForm({ ...form, cuenta_costo_id: e.target.value })}>
+                  <option value="">— Sin asignar —</option>
+                  {cuentasGL.filter(c => c.tipo === 'costo' || c.tipo === 'gasto').map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Cuenta Ingreso</label>
+                <select className="select" value={form.cuenta_ingreso_id} onChange={e => setForm({ ...form, cuenta_ingreso_id: e.target.value })}>
+                  <option value="">— Sin asignar —</option>
+                  {cuentasGL.filter(c => c.tipo === 'ingreso').map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
                 </select>
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>

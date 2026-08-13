@@ -21,6 +21,10 @@ const Clima = lazy(() => import('./pages/Clima'))
 const Sanidad = lazy(() => import('./pages/Sanidad'))
 const Riego = lazy(() => import('./pages/Riego'))
 const Analytics = lazy(() => import('./pages/Analytics'))
+const Clientes = lazy(() => import('./pages/Clientes'))
+const EfectivoBanco = lazy(() => import('./pages/EfectivoBanco'))
+const Proveedores = lazy(() => import('./pages/Proveedores'))
+const Contabilidad = lazy(() => import('./pages/Contabilidad'))
 
 function PageLoader() {
   return (
@@ -62,6 +66,10 @@ export default function App() {
           <Route path="sanidad" element={<Suspense fallback={<PageLoader />}><Sanidad /></Suspense>} />
           <Route path="riego" element={<Suspense fallback={<PageLoader />}><Riego /></Suspense>} />
           <Route path="analytics" element={<Suspense fallback={<PageLoader />}><Analytics /></Suspense>} />
+          <Route path="clientes" element={<Suspense fallback={<PageLoader />}><Clientes /></Suspense>} />
+          <Route path="efectivo-banco" element={<Suspense fallback={<PageLoader />}><EfectivoBanco /></Suspense>} />
+          <Route path="proveedores" element={<Suspense fallback={<PageLoader />}><Proveedores /></Suspense>} />
+          <Route path="contabilidad" element={<Suspense fallback={<PageLoader />}><Contabilidad /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>
