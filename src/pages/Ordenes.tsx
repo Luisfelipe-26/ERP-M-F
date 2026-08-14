@@ -201,9 +201,7 @@ export default function Ordenes() {
                     <div style={{ display: 'flex', gap: 4 }}>
                       <button className="btn-secondary" onClick={() => navigate(`/ordenes/${o.ot_id}`)} title="Ver detalle"><Eye size={13} /></button>
                       <button className="btn-secondary" onClick={() => navigate(`/ordenes/nueva?duplicar=${o.ot_id}`)} title="Duplicar OT" style={{ color: '#7c3aed' }}><Copy size={13} /></button>
-                      {o.estado !== 'Cerrada' && (
-                        <button className="btn-secondary" onClick={() => navigate(`/ordenes/${o.ot_id}/editar`)} title="Editar OT" style={{ color: '#1e40af' }}><Edit2 size={13} /></button>
-                      )}
+                      <button className="btn-secondary" onClick={() => navigate(`/ordenes/${o.ot_id}/editar`)} title="Editar OT" style={{ color: '#1e40af' }}><Edit2 size={13} /></button>
                       {o.estado !== 'Cerrada' && (
                         <button className="btn-secondary" onClick={() => cambiarEstado(o.ot_id, 'Cerrada')} title="Cerrar OT" style={{ color: '#166534' }}>
                           <CheckCircle size={13} />

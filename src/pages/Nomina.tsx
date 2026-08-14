@@ -1,10 +1,130 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../api'
 import toast from 'react-hot-toast'
-import { Download, Users } from 'lucide-react'
+import { Download, X, Eye, Edit2 } from 'lucide-react'
 
 const fmt = n => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
+const fmtDate = d => d ? new Date(d).toLocaleDateString('es-DO') : '—'
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+const ESTADO_COLORS = {
+  Abierta:    { bg: '#fef9c3', color: '#854d0e' },
+  'En Proceso': { bg: '#dbeafe', color: '#1e40af' },
+  Cerrada:    { bg: '#dcfce7', color: '#166534' },
+  'En Pausa':   { bg: '#f3f4f6', color: '#374151' },
+}
+
+function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
+  const [jornadas, setJornadas] = useState([])
+  const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    api.get(`/dashboard/nomina-detalle/${trabajador.id_trab}`, { params: { mes, ano } })
+      .then(({ data }) => setJornadas(data))
+      .catch(() => toast.error('Error al cargar detalle'))
+      .finally(() => setLoading(false))
+  }, [trabajador.id_trab, mes, ano])
+
+  const totalHoras = jornadas.reduce((s, j) => s + (j.horas_netas || 0), 0)
+  const totalCosto = jornadas.reduce((s, j) => s + (j.costo_mo || 0), 0)
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 850, width: '95%', maxHeight: '90vh', overflow: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>{trabajador.nombre}</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>
+              {trabajador.cargo || 'Sin cargo'} · {MESES[mes - 1]} {ano} · {jornadas.length} jornada{jornadas.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}><X size={18} /></button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+          <div style={{ background: '#f0fdf4', borderRadius: 8, padding: '8px 12px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 }}>Total Ganado</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#166534' }}>{fmt(totalCosto)}</div>
+          </div>
+          <div style={{ background: '#eff6ff', borderRadius: 8, padding: '8px 12px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 }}>Horas Trabajadas</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#1e40af' }}>{totalHoras.toFixed(1)}h</div>
+          </div>
+          <div style={{ background: '#fef3c7', borderRadius: 8, padding: '8px 12px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 }}>Jornadas</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#92400e' }}>{jornadas.length}</div>
+          </div>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th>OT #</th>
+                <th>Fecha</th>
+                <th>Campo</th>
+                <th>Actividad</th>
+                <th>Horario</th>
+                <th style={{ textAlign: 'right' }}>Horas</th>
+                <th>Modalidad</th>
+                <th style={{ textAlign: 'right' }}>Costo/h</th>
+                <th style={{ textAlign: 'right' }}>Total</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={11} style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Cargando...</td></tr>
+              ) : jornadas.length === 0 ? (
+                <tr><td colSpan={11} style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Sin jornadas en este período</td></tr>
+              ) : jornadas.map((j, i) => {
+                const ec = ESTADO_COLORS[j.estado_ot] || ESTADO_COLORS['Abierta']
+                return (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 700, color: '#166534' }}>#{j.ot_id}</td>
+                    <td>{fmtDate(j.fecha)}</td>
+                    <td style={{ fontWeight: 600 }}>{j.campo_id || '—'}</td>
+                    <td style={{ color: '#4b5563' }}>{j.actividad_id || '—'}</td>
+                    <td style={{ color: '#6b7280' }}>{j.hora_inicio || '—'} – {j.hora_fin || '—'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{(j.horas_netas || 0).toFixed(1)}</td>
+                    <td><span style={{ background: '#f3f4f6', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 600 }}>{j.modalidad || 'Jornada'}</span></td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(j.costo_hora)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#166534' }}>{fmt(j.costo_mo)}</td>
+                    <td><span style={{ background: ec.bg, color: ec.color, borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>{j.estado_ot}</span></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn-secondary" style={{ padding: '3px 6px' }} onClick={() => { onClose(); navigate(`/ordenes/${j.ot_id}`) }} title="Ver OT"><Eye size={11} /></button>
+                        <button className="btn-secondary" style={{ padding: '3px 6px', color: '#1e40af' }} onClick={() => { onClose(); navigate(`/ordenes/${j.ot_id}/editar`) }} title="Editar OT"><Edit2 size={11} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            {jornadas.length > 0 && (
+              <tfoot>
+                <tr style={{ background: '#f9fafb', fontWeight: 700 }}>
+                  <td colSpan={5} style={{ padding: '10px 12px', fontSize: 11, color: '#6b7280' }}>TOTAL</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right', color: '#1e40af' }}>{totalHoras.toFixed(1)}h</td>
+                  <td colSpan={2}></td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right', color: '#166534', fontSize: 14 }}>{fmt(totalCosto)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+          <button className="btn-secondary" onClick={onClose}>Cerrar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function Nomina() {
   const now = new Date()
@@ -12,6 +132,7 @@ export default function Nomina() {
   const [ano, setAno] = useState(now.getFullYear())
   const [nomina, setNomina] = useState([])
   const [loading, setLoading] = useState(false)
+  const [modalTrabajador, setModalTrabajador] = useState(null)
 
   useEffect(() => { load() }, [mes, ano])
 
@@ -51,7 +172,6 @@ export default function Nomina() {
         <button className="btn-secondary" onClick={exportCSV}><Download size={15} /> Exportar CSV</button>
       </div>
 
-      {/* Filtros de periodo */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
         <select className="select" style={{ width: 160 }} value={mes} onChange={e => setMes(Number(e.target.value))}>
           {MESES.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
@@ -61,7 +181,6 @@ export default function Nomina() {
         </select>
       </div>
 
-      {/* Resumen */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
         {[
           { label: 'Total Nómina', value: fmt(total), sub: `${MESES[mes-1]} ${ano}`, color: '#166534', bg: '#dcfce7', border: '#86efac' },
@@ -76,7 +195,6 @@ export default function Nomina() {
         ))}
       </div>
 
-      {/* Tabla detalle */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <table>
           <thead>
@@ -98,7 +216,10 @@ export default function Nomina() {
               const pct = total > 0 ? (r.total_ganado / total * 100) : 0
               const activo = r.num_jornadas > 0
               return (
-                <tr key={r.id_trab} style={{ opacity: activo ? 1 : 0.45 }}>
+                <tr key={r.id_trab} style={{ opacity: activo ? 1 : 0.45, cursor: activo ? 'pointer' : 'default' }}
+                  onClick={() => activo && setModalTrabajador(r)}
+                  onMouseEnter={e => { if (activo) e.currentTarget.style.background = '#f0fdf4' }}
+                  onMouseLeave={e => e.currentTarget.style.background = ''}>
                   <td><span style={{ fontWeight: 700, color: '#166534', fontSize: 12 }}>{r.id_trab}</span></td>
                   <td style={{ fontWeight: 500 }}>{r.nombre}</td>
                   <td><span className="badge badge-blue" style={{ fontSize: 11 }}>{r.cargo || '—'}</span></td>
@@ -134,6 +255,14 @@ export default function Nomina() {
           )}
         </table>
       </div>
+
+      {modalTrabajador && (
+        <ModalDetalleTrabajador
+          trabajador={modalTrabajador}
+          mes={mes} ano={ano}
+          onClose={() => setModalTrabajador(null)}
+        />
+      )}
     </div>
   )
 }
