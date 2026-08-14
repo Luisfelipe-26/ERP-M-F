@@ -41,6 +41,7 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
     setEditForm({
       hora_inicio: j.hora_inicio || '',
       hora_fin: j.hora_fin || '',
+      pausa_min: j.pausa_min || 0,
       horas_netas: j.horas_netas || 0,
       costo_hora: j.costo_hora || 0,
       modalidad: j.modalidad || 'Jornada',
@@ -52,14 +53,27 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
     setEditForm({})
   }
 
+  function calcHoras(hi, hf, pausa) {
+    if (!hi || !hf) return null
+    const [h1, m1] = hi.split(':').map(Number)
+    const [h2, m2] = hf.split(':').map(Number)
+    const mins = (h2 * 60 + m2) - (h1 * 60 + m1) - (Number(pausa) || 0)
+    return mins > 0 ? Math.round((mins / 60) * 100) / 100 : 0
+  }
+
   function setField(k, v) {
     setEditForm(prev => {
       const next = { ...prev, [k]: v }
-      if (k === 'horas_netas' || k === 'costo_hora') {
-        const h = k === 'horas_netas' ? Number(v) : Number(prev.horas_netas)
-        const c = k === 'costo_hora' ? Number(v) : Number(prev.costo_hora)
-        next._costo_mo = Math.round(h * c * 100) / 100
+      if (k === 'hora_inicio' || k === 'hora_fin' || k === 'pausa_min') {
+        const hi = k === 'hora_inicio' ? v : prev.hora_inicio
+        const hf = k === 'hora_fin' ? v : prev.hora_fin
+        const pa = k === 'pausa_min' ? v : prev.pausa_min
+        const horas = calcHoras(hi, hf, pa)
+        if (horas !== null) next.horas_netas = horas
       }
+      const h = k === 'horas_netas' ? Number(v) : Number(next.horas_netas)
+      const c = k === 'costo_hora' ? Number(v) : Number(next.costo_hora)
+      next._costo_mo = Math.round(h * c * 100) / 100
       return next
     })
   }
@@ -70,6 +84,7 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
       const payload = {
         hora_inicio: editForm.hora_inicio,
         hora_fin: editForm.hora_fin,
+        pausa_min: Number(editForm.pausa_min) || 0,
         horas_netas: Number(editForm.horas_netas),
         costo_hora: Number(editForm.costo_hora),
         modalidad: editForm.modalidad,
@@ -125,6 +140,7 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
                 <th>Campo</th>
                 <th>Actividad</th>
                 <th>Horario</th>
+                <th style={{ textAlign: 'right' }}>Pausa</th>
                 <th style={{ textAlign: 'right' }}>Horas</th>
                 <th>Modalidad</th>
                 <th style={{ textAlign: 'right' }}>Costo/h</th>
@@ -135,9 +151,9 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Cargando...</td></tr>
+                <tr><td colSpan={12} style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Cargando...</td></tr>
               ) : jornadas.length === 0 ? (
-                <tr><td colSpan={11} style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Sin jornadas en este período</td></tr>
+                <tr><td colSpan={12} style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Sin jornadas en este período</td></tr>
               ) : jornadas.map((j) => {
                 const ec = ESTADO_COLORS[j.estado_ot] || ESTADO_COLORS['Abierta']
                 const isEditing = editingId === j.mo_id
@@ -157,6 +173,7 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
                           <input style={inputStyle} type="time" value={editForm.hora_fin} onChange={e => setField('hora_fin', e.target.value)} />
                         </div>
                       </td>
+                      <td><input style={{ ...inputStyle, width: 45, textAlign: 'right' }} type="number" step="1" min="0" value={editForm.pausa_min} onChange={e => setField('pausa_min', e.target.value)} /></td>
                       <td><input style={{ ...inputStyle, width: 50, textAlign: 'right' }} type="number" step="0.1" min="0" value={editForm.horas_netas} onChange={e => setField('horas_netas', e.target.value)} /></td>
                       <td>
                         <select style={{ ...inputStyle, width: 80 }} value={editForm.modalidad} onChange={e => setField('modalidad', e.target.value)}>
@@ -186,6 +203,7 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
                     <td style={{ fontWeight: 600 }}>{j.campo_id || '—'}</td>
                     <td style={{ color: '#4b5563' }}>{j.actividad_id || '—'}</td>
                     <td style={{ color: '#6b7280' }}>{j.hora_inicio || '—'} – {j.hora_fin || '—'}</td>
+                    <td style={{ textAlign: 'right', color: '#6b7280' }}>{j.pausa_min ? `${j.pausa_min}m` : '—'}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{(j.horas_netas || 0).toFixed(1)}</td>
                     <td><span style={{ background: '#f3f4f6', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 600 }}>{j.modalidad || 'Jornada'}</span></td>
                     <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(j.costo_hora)}</td>
@@ -204,7 +222,7 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
             {jornadas.length > 0 && (
               <tfoot>
                 <tr style={{ background: '#f9fafb', fontWeight: 700 }}>
-                  <td colSpan={5} style={{ padding: '10px 12px', fontSize: 11, color: '#6b7280' }}>TOTAL</td>
+                  <td colSpan={6} style={{ padding: '10px 12px', fontSize: 11, color: '#6b7280' }}>TOTAL</td>
                   <td style={{ padding: '10px 12px', textAlign: 'right', color: '#1e40af' }}>{totalHoras.toFixed(1)}h</td>
                   <td colSpan={2}></td>
                   <td style={{ padding: '10px 12px', textAlign: 'right', color: '#166534', fontSize: 14 }}>{fmt(totalCosto)}</td>
