@@ -276,6 +276,8 @@ function TabAsientos() {
   const [data, setData] = useState({ total: 0, items: [] })
   const [loading, setLoading] = useState(true)
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [page, setPage] = useState(0)
+  const pageSize = 25
   const [modalNew, setModalNew] = useState(false)
   const [modalVer, setModalVer] = useState(null)
   const [cuentas, setCuentas] = useState([])
@@ -285,12 +287,13 @@ function TabAsientos() {
     try {
       const params = new URLSearchParams()
       if (filtroEstado) params.set('estado', filtroEstado)
-      params.set('limit', '100')
+      params.set('limit', String(pageSize))
+      params.set('skip', String(page * pageSize))
       const { data: d } = await api.get(`/contabilidad/asientos?${params}`)
       setData(d)
     } catch { toast.error('Error al cargar asientos') }
     finally { setLoading(false) }
-  }, [filtroEstado])
+  }, [filtroEstado, page])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -312,7 +315,7 @@ function TabAsientos() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
-        <select className="select" style={{ width: 160 }} value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
+        <select className="select" style={{ width: 160 }} value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPage(0) }}>
           <option value="">Todos los estados</option>
           <option value="borrador">Borrador</option>
           <option value="contabilizado">Contabilizado</option>
@@ -369,9 +372,21 @@ function TabAsientos() {
           </tbody>
         </table>
       </div>
-      <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>{data.total} asiento{data.total !== 1 ? 's' : ''}</p>
+      {data.total > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+          <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>
+            {page * pageSize + 1}–{Math.min((page + 1) * pageSize, data.total)} de {data.total} asiento{data.total !== 1 ? 's' : ''}
+          </p>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: 11 }} disabled={page === 0}
+              onClick={() => setPage(p => p - 1)}>← Anterior</button>
+            <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: 11 }} disabled={(page + 1) * pageSize >= data.total}
+              onClick={() => setPage(p => p + 1)}>Siguiente →</button>
+          </div>
+        </div>
+      )}
 
-      {modalNew && <ModalNuevoAsiento cuentas={cuentas} onClose={() => setModalNew(false)} onDone={() => { setModalNew(false); load() }} />}
+      {modalNew && <ModalNuevoAsiento cuentas={cuentas} onClose={() => setModalNew(false)} onDone={() => { setModalNew(false); setPage(0); load() }} />}
       {modalVer && <ModalVerAsiento asiento={modalVer} onClose={() => setModalVer(null)} />}
     </div>
   )
@@ -926,7 +941,7 @@ function TabConfig() {
         <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700 }}>Reglas de Contabilización</h3>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ fontSize: 12 }}>
-            <thead><tr><th>Evento</th><th>Concepto</th><th>Debe</th><th>Haber</th></tr></thead>
+            <thead><tr><th>Evento</th><th>Concepto</th><th>Cuenta Debe</th><th>Cuenta Haber</th></tr></thead>
             <tbody>
               {reglas.length === 0 ? (
                 <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Sin reglas</td></tr>
@@ -934,8 +949,8 @@ function TabConfig() {
                 <tr key={r.id}>
                   <td><Badge color="blue">{r.evento}</Badge></td>
                   <td style={{ fontSize: 12 }}>{r.concepto}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.cuenta_debe_id}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.cuenta_haber_id}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.cuenta_debe_codigo ? `${r.cuenta_debe_codigo} — ${r.cuenta_debe_nombre}` : r.cuenta_debe_id}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.cuenta_haber_codigo ? `${r.cuenta_haber_codigo} — ${r.cuenta_haber_nombre}` : r.cuenta_haber_id}</td>
                 </tr>
               ))}
             </tbody>
