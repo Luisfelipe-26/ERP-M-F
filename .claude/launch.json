@@ -6,7 +6,7 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173,
-      "cwd": "C:\\Users\\Finanzas\\OneDrive\\Escritorio\\ERP-Finca\\frontend"
+      "cwd": "C:\\Users\\Finanzas\\OneDrive\\Documents\\GitHub\\ERP-M-F"
     }
   ]
 }
