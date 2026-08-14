@@ -107,7 +107,7 @@ export default function Actividades() {
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Unidad Rendimiento</label>
                 <select className="select" value={form.unidad_rendimiento} onChange={e => setForm({ ...form, unidad_rendimiento: e.target.value })}>
-                  <option value="ha">Hectáreas (ha)</option><option value="arboles">Árboles</option><option value="m3">m³</option><option value="turno">Turno</option>
+                  <option value="ha">Hectáreas (ha)</option><option value="arboles">Árboles</option><option value="unidad">Unidad</option><option value="m3">m³</option><option value="turno">Turno</option>
                 </select>
               </div>
               <div>
