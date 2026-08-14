@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
 import toast from 'react-hot-toast'
-import { Download, X, Eye, Edit2 } from 'lucide-react'
+import { Download, X, Eye, Edit2, Save, XCircle } from 'lucide-react'
 
 const fmt = n => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-DO') : '—'
@@ -18,21 +18,79 @@ const ESTADO_COLORS = {
 function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
   const [jornadas, setJornadas] = useState([])
   const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState(null)
+  const [editForm, setEditForm] = useState({})
+  const [saving, setSaving] = useState(false)
   const navigate = useNavigate()
 
-  useEffect(() => {
+  function loadDetalle() {
+    setLoading(true)
     api.get(`/dashboard/nomina-detalle/${trabajador.id_trab}`, { params: { mes, ano } })
       .then(({ data }) => setJornadas(data))
       .catch(() => toast.error('Error al cargar detalle'))
       .finally(() => setLoading(false))
-  }, [trabajador.id_trab, mes, ano])
+  }
+
+  useEffect(() => { loadDetalle() }, [trabajador.id_trab, mes, ano])
 
   const totalHoras = jornadas.reduce((s, j) => s + (j.horas_netas || 0), 0)
   const totalCosto = jornadas.reduce((s, j) => s + (j.costo_mo || 0), 0)
 
+  function startEdit(j) {
+    setEditingId(j.mo_id)
+    setEditForm({
+      hora_inicio: j.hora_inicio || '',
+      hora_fin: j.hora_fin || '',
+      horas_netas: j.horas_netas || 0,
+      costo_hora: j.costo_hora || 0,
+      modalidad: j.modalidad || 'Jornada',
+    })
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditForm({})
+  }
+
+  function setField(k, v) {
+    setEditForm(prev => {
+      const next = { ...prev, [k]: v }
+      if (k === 'horas_netas' || k === 'costo_hora') {
+        const h = k === 'horas_netas' ? Number(v) : Number(prev.horas_netas)
+        const c = k === 'costo_hora' ? Number(v) : Number(prev.costo_hora)
+        next._costo_mo = Math.round(h * c * 100) / 100
+      }
+      return next
+    })
+  }
+
+  async function saveEdit(j) {
+    setSaving(true)
+    try {
+      const payload = {
+        hora_inicio: editForm.hora_inicio,
+        hora_fin: editForm.hora_fin,
+        horas_netas: Number(editForm.horas_netas),
+        costo_hora: Number(editForm.costo_hora),
+        modalidad: editForm.modalidad,
+      }
+      await api.patch(`/ordenes/${j.ot_id}/mano-obra/${j.mo_id}`, payload)
+      toast.success('Jornada actualizada')
+      setEditingId(null)
+      setEditForm({})
+      loadDetalle()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputStyle = { width: 60, padding: '3px 5px', fontSize: 11, borderRadius: 4, border: '1px solid #d1d5db', textAlign: 'center' }
+
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 850, width: '95%', maxHeight: '90vh', overflow: 'auto' }}>
+      <div className="modal" style={{ maxWidth: 900, width: '95%', maxHeight: '90vh', overflow: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>{trabajador.nombre}</h2>
@@ -80,10 +138,49 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
                 <tr><td colSpan={11} style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Cargando...</td></tr>
               ) : jornadas.length === 0 ? (
                 <tr><td colSpan={11} style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Sin jornadas en este período</td></tr>
-              ) : jornadas.map((j, i) => {
+              ) : jornadas.map((j) => {
                 const ec = ESTADO_COLORS[j.estado_ot] || ESTADO_COLORS['Abierta']
+                const isEditing = editingId === j.mo_id
+
+                if (isEditing) {
+                  const costoMo = editForm._costo_mo ?? Math.round(Number(editForm.horas_netas) * Number(editForm.costo_hora) * 100) / 100
+                  return (
+                    <tr key={j.mo_id} style={{ background: '#eff6ff' }}>
+                      <td style={{ fontWeight: 700, color: '#166534' }}>#{j.ot_id}</td>
+                      <td>{fmtDate(j.fecha)}</td>
+                      <td style={{ fontWeight: 600 }}>{j.campo_id || '—'}</td>
+                      <td style={{ color: '#4b5563' }}>{j.actividad_id || '—'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                          <input style={inputStyle} type="time" value={editForm.hora_inicio} onChange={e => setField('hora_inicio', e.target.value)} />
+                          <span style={{ color: '#9ca3af' }}>–</span>
+                          <input style={inputStyle} type="time" value={editForm.hora_fin} onChange={e => setField('hora_fin', e.target.value)} />
+                        </div>
+                      </td>
+                      <td><input style={{ ...inputStyle, width: 50, textAlign: 'right' }} type="number" step="0.1" min="0" value={editForm.horas_netas} onChange={e => setField('horas_netas', e.target.value)} /></td>
+                      <td>
+                        <select style={{ ...inputStyle, width: 80 }} value={editForm.modalidad} onChange={e => setField('modalidad', e.target.value)}>
+                          <option value="Jornada">Jornada</option>
+                          <option value="Ajuste">Ajuste</option>
+                          <option value="Destajo">Destajo</option>
+                          <option value="Hora Extra">Hora Extra</option>
+                        </select>
+                      </td>
+                      <td><input style={{ ...inputStyle, width: 65, textAlign: 'right' }} type="number" step="0.01" min="0" value={editForm.costo_hora} onChange={e => setField('costo_hora', e.target.value)} /></td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e40af' }}>{fmt(costoMo)}</td>
+                      <td><span style={{ background: ec.bg, color: ec.color, borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>{j.estado_ot}</span></td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="btn-primary" style={{ padding: '3px 6px', fontSize: 10 }} onClick={() => saveEdit(j)} disabled={saving} title="Guardar"><Save size={11} /></button>
+                          <button className="btn-secondary" style={{ padding: '3px 6px' }} onClick={cancelEdit} title="Cancelar"><XCircle size={11} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                }
+
                 return (
-                  <tr key={i}>
+                  <tr key={j.mo_id}>
                     <td style={{ fontWeight: 700, color: '#166534' }}>#{j.ot_id}</td>
                     <td>{fmtDate(j.fecha)}</td>
                     <td style={{ fontWeight: 600 }}>{j.campo_id || '—'}</td>
@@ -97,7 +194,7 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn-secondary" style={{ padding: '3px 6px' }} onClick={() => { onClose(); navigate(`/ordenes/${j.ot_id}`) }} title="Ver OT"><Eye size={11} /></button>
-                        <button className="btn-secondary" style={{ padding: '3px 6px', color: '#1e40af' }} onClick={() => { onClose(); navigate(`/ordenes/${j.ot_id}/editar`) }} title="Editar OT"><Edit2 size={11} /></button>
+                        <button className="btn-secondary" style={{ padding: '3px 6px', color: '#1e40af' }} onClick={() => startEdit(j)} title="Editar jornada"><Edit2 size={11} /></button>
                       </div>
                     </td>
                   </tr>
