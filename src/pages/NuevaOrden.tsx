@@ -176,7 +176,7 @@ export default function NuevaOrden() {
             horas_netas: m.horas_netas || 8,
             hora_inicio_mo: m.hora_inicio || o.hora_inicio || '',
             hora_fin_mo: m.hora_fin || '',
-            pausa_minutos: m.pausa_minutos || 0,
+            pausa_minutos: m.pausa_min || 0,
             costo_hora: act ? (act.tarifa_jornada || 530) / 8 : (m.costo_hora || 62.50),
             cantidad_ajuste: m.modalidad === 'Ajuste' ? m.horas_netas : '',
             unidad_ajuste: m.observacion ? m.observacion.split(' ')[1] || 'Tarea' : 'Tarea',
@@ -217,7 +217,7 @@ export default function NuevaOrden() {
             horas_netas: m.horas_netas || 8,
             hora_inicio_mo: '',
             hora_fin_mo: '',
-            pausa_minutos: m.pausa_minutos || 0,
+            pausa_minutos: m.pausa_min || 0,
             costo_hora: act ? (act.tarifa_jornada || 530) / 8 : (m.costo_hora || 62.50),
             cantidad_ajuste: m.modalidad === 'Ajuste' ? m.horas_netas : '',
             unidad_ajuste: m.observacion ? m.observacion.split(' ')[1] || 'Tarea' : 'Tarea',
@@ -398,6 +398,7 @@ export default function NuevaOrden() {
           horas_netas: m.modalidad === 'Jornada' ? Number(m.horas_netas) : Number(m.cantidad_ajuste) || 0,
           hora_inicio: m.hora_inicio_mo || null,
           hora_fin: m.hora_fin_mo || null,
+          pausa_min: Number(m.pausa_minutos) || 0,
           costo_hora: Number(m.costo_hora),
           costo_mo: m.modalidad === 'Ajuste'
             ? (Number(m.cantidad_ajuste) || 0) * (Number(m.costo_mo) || 0)
