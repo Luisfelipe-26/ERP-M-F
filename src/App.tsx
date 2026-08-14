@@ -16,7 +16,7 @@ const OrdenDetalle = lazy(() => import('./pages/OrdenDetalle'))
 const NuevaOrden = lazy(() => import('./pages/NuevaOrden'))
 const Nomina = lazy(() => import('./pages/Nomina'))
 const CostosCampo = lazy(() => import('./pages/CostosCampo'))
-const Compras = lazy(() => import('./pages/Compras'))
+
 const Clima = lazy(() => import('./pages/Clima'))
 const Sanidad = lazy(() => import('./pages/Sanidad'))
 const Riego = lazy(() => import('./pages/Riego'))
@@ -61,7 +61,7 @@ export default function App() {
           <Route path="ordenes/:id" element={<Suspense fallback={<PageLoader />}><OrdenDetalle /></Suspense>} />
           <Route path="nomina" element={<Suspense fallback={<PageLoader />}><Nomina /></Suspense>} />
           <Route path="costos" element={<Suspense fallback={<PageLoader />}><CostosCampo /></Suspense>} />
-          <Route path="compras" element={<Suspense fallback={<PageLoader />}><Compras /></Suspense>} />
+
           <Route path="clima" element={<Suspense fallback={<PageLoader />}><Clima /></Suspense>} />
           <Route path="sanidad" element={<Suspense fallback={<PageLoader />}><Sanidad /></Suspense>} />
           <Route path="riego" element={<Suspense fallback={<PageLoader />}><Riego /></Suspense>} />

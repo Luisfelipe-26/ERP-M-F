@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, Users, Package, Wrench, ClipboardList, LogOut, Leaf,
-  DollarSign, TrendingUp, ShoppingCart, Warehouse, CloudSun, Bug, Droplets, BarChart3,
+  DollarSign, TrendingUp, Warehouse, CloudSun, Bug, Droplets, BarChart3,
   UserCheck, Landmark, Truck, BookOpen
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -26,7 +26,6 @@ const nav = [
   { to: '/trabajadores', icon: Users, label: 'Trabajadores' },
   { to: '/productos', icon: Package, label: 'Productos' },
   { to: '/inventario', icon: Warehouse, label: 'Inventario' },
-  { to: '/compras', icon: ShoppingCart, label: 'Órdenes de Compra' },
   { to: '/actividades', icon: Wrench, label: 'Actividades' },
 ]
 

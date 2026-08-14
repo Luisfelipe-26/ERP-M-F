@@ -574,16 +574,10 @@ export default function Compras() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: '#111827' }}>
-            <ShoppingCart size={22} style={{ verticalAlign: 'text-bottom', marginRight: 8 }} />
-            Órdenes de Compra
-          </h1>
-          <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>
-            {ocs.length} órdenes · {pendientes} pendientes · {parciales} parciales
-          </p>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>
+          {ocs.length} órdenes · {pendientes} pendientes · {parciales} parciales
+        </p>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
           <button className="btn-primary" onClick={() => setModalNueva(true)}>

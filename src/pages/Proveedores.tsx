@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import api from '../api'
 import toast from 'react-hot-toast'
-import { Plus, Search, RefreshCw, Truck, X, Edit2, Trash2, Eye } from 'lucide-react'
+import { Plus, Search, RefreshCw, Truck, X, Edit2, Trash2, Eye, ShoppingCart } from 'lucide-react'
+import Compras from './Compras'
 
 const Modal = ({ title, subtitle = '', onClose, children, width = 600 }) => (
   <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -158,7 +159,7 @@ function ModalDetalle({ proveedor, onClose }) {
   )
 }
 
-export default function ProveedoresPage() {
+function TabProveedores() {
   const [proveedores, setProveedores] = useState([])
   const [loading, setLoading] = useState(true)
   const [buscar, setBuscar] = useState('')
@@ -190,22 +191,11 @@ export default function ProveedoresPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: '#111827' }}>
-            <Truck size={22} style={{ verticalAlign: 'text-bottom', marginRight: 8 }} />
-            Proveedores
-          </h1>
-          <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>
-            {proveedores.length} proveedor{proveedores.length !== 1 ? 'es' : ''} activo{proveedores.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
-          <button className="btn-primary" onClick={() => setModalNew(true)}>
-            <Plus size={14} /> Nuevo Proveedor
-          </button>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 14 }}>
+        <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
+        <button className="btn-primary" onClick={() => setModalNew(true)}>
+          <Plus size={14} /> Nuevo Proveedor
+        </button>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
@@ -260,6 +250,47 @@ export default function ProveedoresPage() {
       {modalNew && <ModalProveedor proveedor={null} onClose={() => setModalNew(false)} onDone={afterAction} />}
       {modalEdit && <ModalProveedor proveedor={modalEdit} onClose={() => setModalEdit(null)} onDone={afterAction} />}
       {modalDetalle && <ModalDetalle proveedor={modalDetalle} onClose={() => setModalDetalle(null)} />}
+    </div>
+  )
+}
+
+const TABS = [
+  { key: 'proveedores', label: 'Proveedores', icon: Truck },
+  { key: 'compras', label: 'Órdenes de Compra', icon: ShoppingCart },
+]
+
+export default function ProveedoresPage() {
+  const [tab, setTab] = useState('proveedores')
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: '#111827' }}>
+          <Truck size={22} style={{ verticalAlign: 'text-bottom', marginRight: 8 }} />
+          Proveedores
+        </h1>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>Gestión de proveedores y órdenes de compra</p>
+      </div>
+
+      <div style={{ display: 'flex', gap: 4, borderBottom: '2px solid #e5e7eb', marginBottom: 20 }}>
+        {TABS.map(t => (
+          <button key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px',
+              background: 'none', border: 'none', cursor: 'pointer',
+              borderBottom: tab === t.key ? '2px solid #166534' : '2px solid transparent',
+              marginBottom: -2, fontWeight: tab === t.key ? 700 : 400,
+              color: tab === t.key ? '#166534' : '#6b7280', fontSize: 13,
+            }}>
+            <t.icon size={15} />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'proveedores' && <TabProveedores />}
+      {tab === 'compras' && <Compras />}
     </div>
   )
 }
