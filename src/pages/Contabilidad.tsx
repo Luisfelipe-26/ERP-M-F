@@ -774,33 +774,41 @@ function ReporteBalanceComprobacion({ data }) {
   )
 }
 
+function TreeNode({ node, indent = 0, valKey = 'saldo' }: any) {
+  const pad = 12 + indent * 16
+  return (
+    <div>
+      {(node.es_grupo || (node.hijos && node.hijos.length > 0)) && (
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', padding: `6px 0 2px ${pad}px`, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          {node.partida}
+        </div>
+      )}
+      {!node.es_grupo && node.cuentas.map((it: any, i: number) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: `3px 0 3px ${pad + 8}px`, borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
+          <span><span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 8 }}>{it.codigo}</span>{it.nombre}</span>
+          <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{fmt(it[valKey])}</span>
+        </div>
+      ))}
+      {node.hijos && node.hijos.map((h: any, hi: number) => (
+        <TreeNode key={hi} node={h} indent={indent + 1} valKey={valKey} />
+      ))}
+      {(node.hijos?.length > 0 || (node.cuentas.length > 0 && node.es_grupo)) && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: `3px ${pad}px`, fontSize: 12, fontWeight: 600, color: '#6b7280' }}>
+          <span>Subtotal {node.partida}</span>
+          <span style={{ fontFamily: 'monospace' }}>{fmt(node.subtotal)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ReporteBalanceGeneral({ data }) {
   if (!data) return null
 
-  const GroupedSection = ({ title, groups, total, color }: any) => (
+  const Section = ({ title, nodes, total, color }: any) => (
     <div style={{ marginBottom: 20 }}>
       <h3 style={{ fontSize: 14, fontWeight: 700, color, marginBottom: 8, borderBottom: `2px solid ${color}`, paddingBottom: 4 }}>{title}</h3>
-      {groups.map((g: any, gi: number) => (
-        <div key={gi} style={{ marginBottom: 8 }}>
-          {g.partida !== 'Sin Clasificar' && g.partida !== title && (
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', padding: '6px 0 2px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              {g.partida}
-            </div>
-          )}
-          {g.cuentas.map((it: any, i: number) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 4px 12px', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
-              <span><span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 8 }}>{it.codigo}</span>{it.nombre}</span>
-              <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{fmt(it.saldo)}</span>
-            </div>
-          ))}
-          {groups.length > 1 && g.cuentas.length > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 12px', fontSize: 12, fontWeight: 600, color: '#6b7280' }}>
-              <span>Subtotal {g.partida}</span>
-              <span style={{ fontFamily: 'monospace' }}>{fmt(g.subtotal)}</span>
-            </div>
-          )}
-        </div>
-      ))}
+      {nodes.map((n: any, i: number) => <TreeNode key={i} node={n} />)}
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontWeight: 700, fontSize: 13, borderTop: '2px solid #e5e7eb', marginTop: 4 }}>
         <span>Total {title}</span>
         <span style={{ fontFamily: 'monospace' }}>{fmt(total)}</span>
@@ -812,12 +820,13 @@ function ReporteBalanceGeneral({ data }) {
     <div className="card">
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Balance General</h3>
-        <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Período: {data.periodo}</p>
+        <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Periodo: {data.periodo}</p>
         {data.cuadra ? <Badge color="green">Cuadra</Badge> : <Badge color="red">No cuadra</Badge>}
+        {data.no_asignadas_count > 0 && <Badge color="yellow">{data.no_asignadas_count} cuenta{data.no_asignadas_count > 1 ? 's' : ''} sin asignar</Badge>}
       </div>
-      <GroupedSection title="Activos" groups={data.activos} total={data.total_activos} color="#166534" />
-      <GroupedSection title="Pasivos" groups={data.pasivos} total={data.total_pasivos} color="#991b1b" />
-      <GroupedSection title="Patrimonio" groups={data.patrimonio} total={data.total_patrimonio} color="#1e40af" />
+      <Section title="Activos" nodes={data.activos} total={data.total_activos} color="#166534" />
+      <Section title="Pasivos" nodes={data.pasivos} total={data.total_pasivos} color="#991b1b" />
+      <Section title="Patrimonio" nodes={data.patrimonio} total={data.total_patrimonio} color="#1e40af" />
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', fontWeight: 700, fontSize: 14, borderTop: '3px double #374151', marginTop: 8 }}>
         <span>Pasivos + Patrimonio</span>
         <span style={{ fontFamily: 'monospace' }}>{fmt(data.total_pasivos + data.total_patrimonio)}</span>
@@ -829,24 +838,9 @@ function ReporteBalanceGeneral({ data }) {
 function ReporteEstadoResultados({ data }) {
   if (!data) return null
 
-  const GroupedItems = ({ groups }: any) => groups.map((g: any, gi: number) => (
-    <div key={gi}>
-      {g.partida !== 'Sin Clasificar' && (
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', padding: '5px 12px 2px', textTransform: 'uppercase' }}>{g.partida}</div>
-      )}
-      {g.cuentas.map((it: any, i: number) => (
-        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 12px 4px 24px', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}>
-          <span><span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 8 }}>{it.codigo}</span>{it.nombre}</span>
-          <span style={{ fontFamily: 'monospace' }}>{fmt(it.monto)}</span>
-        </div>
-      ))}
-      {groups.length > 1 && g.cuentas.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 24px', fontSize: 12, fontWeight: 600, color: '#6b7280' }}>
-          <span>Subtotal {g.partida}</span><span style={{ fontFamily: 'monospace' }}>{fmt(g.subtotal)}</span>
-        </div>
-      )}
-    </div>
-  ))
+  const SectionNodes = ({ nodes }: any) => (
+    <>{nodes.map((n: any, i: number) => <TreeNode key={i} node={n} valKey="monto" />)}</>
+  )
 
   const TotalLine = ({ label, value, bold = false, border = false }: any) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', fontWeight: bold ? 700 : 500, fontSize: 13, borderTop: border ? '2px solid #e5e7eb' : undefined, background: bold ? '#f9fafb' : undefined }}>
@@ -859,17 +853,18 @@ function ReporteEstadoResultados({ data }) {
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ textAlign: 'center', padding: '16px', borderBottom: '1px solid #e5e7eb' }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Estado de Resultados</h3>
-        <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Período: {data.periodo}{data.campo_id ? ` — Campo: ${data.campo_id}` : ''}</p>
+        <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Periodo: {data.periodo}{data.campo_id ? ` — Campo: ${data.campo_id}` : ''}</p>
+        {data.no_asignadas_count > 0 && <Badge color="yellow">{data.no_asignadas_count} sin asignar</Badge>}
       </div>
       <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: 12, color: '#166534', textTransform: 'uppercase', background: '#f0fdf4' }}>Ingresos</div>
-      <GroupedItems groups={data.ingresos} />
+      <SectionNodes nodes={data.ingresos} />
       <TotalLine label="Total Ingresos" value={data.total_ingresos} border />
       <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: 12, color: '#854d0e', textTransform: 'uppercase', background: '#fefce8', marginTop: 8 }}>Costos</div>
-      <GroupedItems groups={data.costos} />
+      <SectionNodes nodes={data.costos} />
       <TotalLine label="Total Costos" value={data.total_costos} border />
       <TotalLine label="Utilidad Bruta" value={data.utilidad_bruta} bold border />
       <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: 12, color: '#991b1b', textTransform: 'uppercase', background: '#fef2f2', marginTop: 8 }}>Gastos</div>
-      <GroupedItems groups={data.gastos} />
+      <SectionNodes nodes={data.gastos} />
       <TotalLine label="Total Gastos" value={data.total_gastos} border />
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', fontWeight: 700, fontSize: 15, borderTop: '3px double #374151', background: '#f0fdf4' }}>
         <span>Utilidad Neta</span>
@@ -1706,33 +1701,42 @@ function TabConfig() {
         <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>{reglas.length} regla{reglas.length !== 1 ? 's' : ''} activa{reglas.length !== 1 ? 's' : ''}</p>
       </div>
 
-      {/* ─── Partidas de Estados Financieros ─── */}
+      {/* ─── Partidas de Estados Financieros (tree) ─── */}
       <div className="card" style={{ gridColumn: 'span 2', marginTop: 4 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Partidas de Estados Financieros</h3>
-          <button className="btn-primary" style={{ fontSize: 11 }} onClick={() => { setEditingPartida({ nombre: '', estado: 'balance_general', clasificacion: 'activo_corriente', orden: 0 }); setShowPartidaModal(true) }}><Plus size={12} /> Nueva Partida</button>
+          <button className="btn-primary" style={{ fontSize: 11 }} onClick={() => { setEditingPartida({ nombre: '', estado: 'balance_general', clasificacion: 'activo_corriente', orden: 0, padre_id: null, invertir_signo: false, es_grupo: false }); setShowPartidaModal(true) }}><Plus size={12} /> Nueva Partida</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           {['balance_general', 'estado_resultados'].map(est => {
             const items = partidas.filter(p => p.estado === est)
+            const roots = items.filter(p => !p.padre_id)
+            const renderTree = (parentId: number | null, depth: number): any =>
+              items.filter(p => (p.padre_id || null) === parentId)
+                .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+                .map((p: any) => (
+                  <div key={p.id}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: `4px 0 4px ${depth * 20}px`, borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
+                      <div>
+                        <span style={{ fontWeight: p.es_grupo ? 700 : 500 }}>{p.es_grupo ? '📁 ' : '📄 '}{p.nombre}</span>
+                        <Badge color="blue" style={{ marginLeft: 6 }}>{p.clasificacion.replace(/_/g, ' ')}</Badge>
+                        {p.invertir_signo && <Badge color="yellow" style={{ marginLeft: 4 }}>±</Badge>}
+                        <span style={{ marginLeft: 6, fontSize: 10, color: '#9ca3af' }}>#{p.orden}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                        <button className="btn-icon" onClick={() => { setEditingPartida({ ...p }); setShowPartidaModal(true) }}><Edit2 size={12} /></button>
+                        <button className="btn-icon" onClick={async () => { if (!confirm(`¿Eliminar "${p.nombre}"?`)) return; try { await api.delete(`/contabilidad/partidas/${p.id}`); toast.success('Eliminada'); load() } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') } }}><Trash2 size={12} /></button>
+                      </div>
+                    </div>
+                    {renderTree(p.id, depth + 1)}
+                  </div>
+                ))
             return (
               <div key={est}>
                 <h4 style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', borderBottom: '2px solid #e5e7eb', paddingBottom: 4 }}>
                   {est === 'balance_general' ? 'Balance General' : 'Estado de Resultados'}
                 </h4>
-                {items.length === 0 ? <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin partidas</p> : items.map((p: any) => (
-                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
-                    <div>
-                      <span style={{ fontWeight: 600 }}>{p.nombre}</span>
-                      <span style={{ marginLeft: 8 }}><Badge color="blue">{p.clasificacion.replace(/_/g, ' ')}</Badge></span>
-                      <span style={{ marginLeft: 6, fontSize: 10, color: '#9ca3af' }}>orden: {p.orden}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn-icon" onClick={() => { setEditingPartida(p); setShowPartidaModal(true) }}><Edit2 size={12} /></button>
-                      <button className="btn-icon" onClick={async () => { if (!confirm(`¿Eliminar partida "${p.nombre}"?`)) return; try { await api.delete(`/contabilidad/partidas/${p.id}`); toast.success('Eliminada'); load() } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') } }}><Trash2 size={12} /></button>
-                    </div>
-                  </div>
-                ))}
+                {items.length === 0 ? <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin partidas</p> : renderTree(null, 0)}
               </div>
             )
           })}
@@ -1740,10 +1744,10 @@ function TabConfig() {
       </div>
 
       {showPartidaModal && editingPartida && (
-        <Modal title={editingPartida.id ? 'Editar Partida' : 'Nueva Partida'} onClose={() => setShowPartidaModal(false)} width={450}>
+        <Modal title={editingPartida.id ? 'Editar Partida' : 'Nueva Partida'} onClose={() => setShowPartidaModal(false)} width={500}>
           <form onSubmit={async (e: any) => {
             e.preventDefault()
-            const payload = { nombre: editingPartida.nombre, estado: editingPartida.estado, clasificacion: editingPartida.clasificacion, orden: Number(editingPartida.orden) }
+            const payload = { nombre: editingPartida.nombre, estado: editingPartida.estado, clasificacion: editingPartida.clasificacion, orden: Number(editingPartida.orden), padre_id: editingPartida.padre_id || null, invertir_signo: !!editingPartida.invertir_signo, es_grupo: !!editingPartida.es_grupo }
             try {
               if (editingPartida.id) await api.put(`/contabilidad/partidas/${editingPartida.id}`, payload)
               else await api.post('/contabilidad/partidas', payload)
@@ -1754,11 +1758,11 @@ function TabConfig() {
             <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
               <div><Label>Nombre</Label><input className="input" required value={editingPartida.nombre} onChange={(e: any) => setEditingPartida({ ...editingPartida, nombre: e.target.value })} placeholder="Ej: Efectivo y Equivalentes" /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><Label>Estado Financiero</Label><select className="select" value={editingPartida.estado} onChange={(e: any) => setEditingPartida({ ...editingPartida, estado: e.target.value, clasificacion: e.target.value === 'balance_general' ? 'activo_corriente' : 'ingresos' })}>
+                <div><Label>Estado Financiero</Label><select className="select" value={editingPartida.estado} onChange={(e: any) => setEditingPartida({ ...editingPartida, estado: e.target.value, clasificacion: e.target.value === 'balance_general' ? 'activo_corriente' : 'ingresos', padre_id: null })}>
                   <option value="balance_general">Balance General</option>
                   <option value="estado_resultados">Estado de Resultados</option>
                 </select></div>
-                <div><Label>Clasificación</Label><select className="select" value={editingPartida.clasificacion} onChange={(e: any) => setEditingPartida({ ...editingPartida, clasificacion: e.target.value })}>
+                <div><Label>Clasificacion</Label><select className="select" value={editingPartida.clasificacion} onChange={(e: any) => setEditingPartida({ ...editingPartida, clasificacion: e.target.value })}>
                   {editingPartida.estado === 'balance_general' ? (
                     <>{['activo_corriente', 'activo_no_corriente', 'pasivo_corriente', 'pasivo_no_corriente', 'patrimonio'].map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}</>
                   ) : (
@@ -1766,7 +1770,25 @@ function TabConfig() {
                   )}
                 </select></div>
               </div>
-              <div><Label>Orden (menor = primero)</Label><input className="input" type="number" value={editingPartida.orden} onChange={(e: any) => setEditingPartida({ ...editingPartida, orden: e.target.value })} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><Label>Nodo padre</Label><select className="select" value={editingPartida.padre_id || ''} onChange={(e: any) => setEditingPartida({ ...editingPartida, padre_id: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">(Raiz - sin padre)</option>
+                  {partidas.filter(p => p.estado === editingPartida.estado && p.id !== editingPartida.id).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select></div>
+                <div><Label>Orden</Label><input className="input" type="number" value={editingPartida.orden} onChange={(e: any) => setEditingPartida({ ...editingPartida, orden: e.target.value })} /></div>
+              </div>
+              <div style={{ display: 'flex', gap: 20 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!editingPartida.es_grupo} onChange={(e: any) => setEditingPartida({ ...editingPartida, es_grupo: e.target.checked })} />
+                  Es grupo (solo agrupa, no tiene cuentas)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!editingPartida.invertir_signo} onChange={(e: any) => setEditingPartida({ ...editingPartida, invertir_signo: e.target.checked })} />
+                  Invertir signo (pasivos, ingresos, patrimonio)
+                </label>
+              </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn-secondary" onClick={() => setShowPartidaModal(false)}>Cancelar</button>
