@@ -865,67 +865,230 @@ function TabAntiguedad() {
   const [tipo, setTipo] = useState<'cxp' | 'cxc'>('cxp')
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [bucketFilter, setBucketFilter] = useState('')
+  const [vista, setVista] = useState<'detalle' | 'agrupado'>('detalle')
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [detailRow, setDetailRow] = useState<any>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const { data: d } = await api.get(`/contabilidad/antiguedad-${tipo}`)
+      const params: any = { agrupar: vista === 'agrupado' }
+      if (search) params.search = search
+      if (bucketFilter) params.bucket_filter = bucketFilter
+      const { data: d } = await api.get(`/contabilidad/antiguedad-${tipo}`, { params })
       setData(d)
     } catch { toast.error('Error al cargar antigüedad') }
     finally { setLoading(false) }
-  }, [tipo])
+  }, [tipo, search, bucketFilter, vista])
 
   useEffect(() => { load() }, [load])
 
   const BUCKETS = ['corriente', '31-60', '61-90', '91-120', '120+']
+  const BUCKET_LABELS: Record<string, string> = { corriente: '0-30', '31-60': '31-60', '61-90': '61-90', '91-120': '91-120', '120+': '120+' }
   const BUCKET_COLORS: Record<string, string> = { corriente: '#166534', '31-60': '#ca8a04', '61-90': '#ea580c', '91-120': '#dc2626', '120+': '#7f1d1d' }
+  const BUCKET_BG: Record<string, string> = { corriente: '#dcfce7', '31-60': '#fef9c3', '61-90': '#ffedd5', '91-120': '#fee2e2', '120+': '#fecaca' }
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
+  function toggleGroup(name: string) { setExpanded(prev => ({ ...prev, [name]: !prev[name] })) }
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
-        <button className={tipo === 'cxp' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTipo('cxp')}>Cuentas por Pagar</button>
-        <button className={tipo === 'cxc' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTipo('cxc')}>Cuentas por Cobrar</button>
-        <button className="btn-secondary" onClick={load} style={{ marginLeft: 'auto' }}><RefreshCw size={14} /></button>
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className={tipo === 'cxp' ? 'btn-primary' : 'btn-secondary'} onClick={() => { setTipo('cxp'); setSearch(''); setBucketFilter(''); setExpanded({}) }}>Cuentas por Pagar</button>
+        <button className={tipo === 'cxc' ? 'btn-primary' : 'btn-secondary'} onClick={() => { setTipo('cxc'); setSearch(''); setBucketFilter(''); setExpanded({}) }}>Cuentas por Cobrar</button>
+        <div style={{ position: 'relative', marginLeft: 8 }}>
+          <Search size={14} style={{ position: 'absolute', left: 8, top: 9, color: '#9ca3af' }} />
+          <input className="input" placeholder={tipo === 'cxp' ? 'Buscar proveedor...' : 'Buscar cliente...'} value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 28, width: 200 }} />
+        </div>
+        <select className="select" style={{ width: 140 }} value={bucketFilter} onChange={e => setBucketFilter(e.target.value)}>
+          <option value="">Todos los rangos</option>
+          {BUCKETS.map(b => <option key={b} value={b}>{BUCKET_LABELS[b]} días</option>)}
+        </select>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+          <button className={vista === 'detalle' ? 'btn-primary' : 'btn-secondary'} onClick={() => setVista('detalle')} style={{ fontSize: 11, padding: '4px 10px' }}>Detalle</button>
+          <button className={vista === 'agrupado' ? 'btn-primary' : 'btn-secondary'} onClick={() => setVista('agrupado')} style={{ fontSize: 11, padding: '4px 10px' }}>Agrupado</button>
+          <button className="btn-secondary" onClick={load} style={{ padding: '4px 8px' }}><RefreshCw size={14} /></button>
+        </div>
       </div>
 
-      {data && (
+      {loading && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>}
+
+      {!loading && data && (
         <>
+          {/* KPI Cards */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-            {BUCKETS.map(b => (
-              <div key={b} className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 120, textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', fontWeight: 600 }}>{b === 'corriente' ? '0-30 días' : `${b} días`}</div>
-                <div style={{ fontWeight: 700, fontSize: 16, color: BUCKET_COLORS[b] }}>RD$ {fmt(data.resumen[b])}</div>
-              </div>
-            ))}
-            <div className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 120, textAlign: 'center', background: '#f3f4f6' }}>
-              <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', fontWeight: 600 }}>Total</div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>RD$ {fmt(data.total)}</div>
+            <div className="card" style={{ padding: '10px 16px', margin: 0, minWidth: 130 }}>
+              <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>SALDO TOTAL</div>
+              <div style={{ fontWeight: 700, fontSize: 18 }}>RD$ {fmt(data.total)}</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>{data.num_documentos} documento{data.num_documentos !== 1 ? 's' : ''}</div>
+            </div>
+            <div className="card" style={{ padding: '10px 16px', margin: 0, minWidth: 130, borderLeft: '3px solid #dc2626' }}>
+              <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>VENCIDO (&gt;30d)</div>
+              <div style={{ fontWeight: 700, fontSize: 18, color: '#dc2626' }}>RD$ {fmt(data.total_vencido)}</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>{data.total > 0 ? Math.round((data.total_vencido / data.total) * 100) : 0}% del total</div>
+            </div>
+            <div className="card" style={{ padding: '10px 16px', margin: 0, minWidth: 110 }}>
+              <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>PROM. DÍAS</div>
+              <div style={{ fontWeight: 700, fontSize: 18 }}>{data.promedio_dias}</div>
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ fontSize: 12 }}>
-              <thead><tr><th>Número</th><th>{tipo === 'cxp' ? 'Proveedor' : 'Cliente'}</th><th>Fecha</th><th>Vencimiento</th><th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'right' }}>Saldo</th><th style={{ textAlign: 'right' }}>Días</th><th>Antigüedad</th></tr></thead>
-              <tbody>
-                {data.detalle.length === 0 ? (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Sin saldos pendientes</td></tr>
-                ) : data.detalle.sort((a: any, b: any) => b.dias - a.dias).map((r: any) => (
-                  <tr key={r.id}>
-                    <td style={{ fontFamily: 'monospace' }}>{r.numero}</td>
-                    <td>{tipo === 'cxp' ? r.proveedor : r.cliente}</td>
-                    <td>{r.fecha_factura || r.fecha}</td>
-                    <td>{r.fecha_vencimiento || '—'}</td>
-                    <td style={{ textAlign: 'right' }}>RD$ {fmt(r.total)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>RD$ {fmt(r.saldo)}</td>
-                    <td style={{ textAlign: 'right' }}>{r.dias}</td>
-                    <td><span style={{ color: BUCKET_COLORS[r.bucket], fontWeight: 700, fontSize: 11 }}>{r.bucket === 'corriente' ? '0-30' : r.bucket}</span></td>
-                  </tr>
+          {/* Aging Distribution Bar */}
+          {data.total > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', height: 28, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+                {BUCKETS.map(b => {
+                  const pct = data.total > 0 ? (data.resumen[b] / data.total) * 100 : 0
+                  if (pct === 0) return null
+                  return (
+                    <div key={b} onClick={() => setBucketFilter(bucketFilter === b ? '' : b)} style={{
+                      width: `${pct}%`, background: BUCKET_BG[b], display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10, fontWeight: 700, color: BUCKET_COLORS[b], cursor: 'pointer', minWidth: pct > 5 ? 'auto' : 0,
+                      borderRight: '1px solid rgba(255,255,255,0.5)', transition: 'opacity 0.15s',
+                      opacity: bucketFilter && bucketFilter !== b ? 0.4 : 1,
+                    }} title={`${BUCKET_LABELS[b]} días: RD$ ${fmt(data.resumen[b])} (${Math.round(pct)}%) — ${data.resumen_count[b]} doc.`}>
+                      {pct > 8 ? `${BUCKET_LABELS[b]}d` : ''}
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
+                {BUCKETS.map(b => (
+                  <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer', opacity: bucketFilter && bucketFilter !== b ? 0.4 : 1 }} onClick={() => setBucketFilter(bucketFilter === b ? '' : b)}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, background: BUCKET_BG[b], border: `1px solid ${BUCKET_COLORS[b]}`, display: 'inline-block' }}></span>
+                    <span style={{ color: BUCKET_COLORS[b], fontWeight: 600 }}>{BUCKET_LABELS[b]}d:</span>
+                    <span style={{ color: '#374151' }}>RD$ {fmt(data.resumen[b])}</span>
+                    <span style={{ color: '#9ca3af' }}>({data.resumen_count[b]})</span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            </div>
+          )}
+
+          {/* Detail View */}
+          {vista === 'detalle' && (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ fontSize: 12 }}>
+                <thead><tr>
+                  <th>Número</th><th>{tipo === 'cxp' ? 'Proveedor' : 'Cliente'}</th><th>Fecha</th><th>Vencimiento</th>
+                  <th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'right' }}>Saldo</th>
+                  <th style={{ textAlign: 'right' }}>Días</th><th>Rango</th><th>Estado</th><th></th>
+                </tr></thead>
+                <tbody>
+                  {data.detalle.length === 0 ? (
+                    <tr><td colSpan={10} style={{ textAlign: 'center', color: '#9ca3af', padding: 30 }}>Sin saldos pendientes</td></tr>
+                  ) : data.detalle.map((r: any) => (
+                    <tr key={r.id} style={{ borderLeft: `3px solid ${BUCKET_COLORS[r.bucket]}` }}>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{r.numero}</td>
+                      <td>{tipo === 'cxp' ? r.proveedor : r.cliente}</td>
+                      <td style={{ fontSize: 11 }}>{r.fecha_factura || r.fecha}</td>
+                      <td style={{ fontSize: 11 }}>{r.fecha_vencimiento || '—'}</td>
+                      <td style={{ textAlign: 'right' }}>RD$ {fmt(r.total)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>RD$ {fmt(r.saldo)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600, color: BUCKET_COLORS[r.bucket] }}>{r.dias}</td>
+                      <td><span style={{ background: BUCKET_BG[r.bucket], color: BUCKET_COLORS[r.bucket], fontWeight: 700, fontSize: 11, padding: '2px 6px', borderRadius: 4 }}>{BUCKET_LABELS[r.bucket]}d</span></td>
+                      <td><Badge color={r.estado === 'parcial' ? 'yellow' : 'gray'}>{r.estado}</Badge></td>
+                      <td><button className="btn-icon" title="Ver pagos/cobros" onClick={() => setDetailRow(r)}><Eye size={14} /></button></td>
+                    </tr>
+                  ))}
+                  {data.detalle.length > 0 && (
+                    <tr style={{ fontWeight: 700, background: '#f9fafb', borderTop: '2px solid #e5e7eb' }}>
+                      <td colSpan={4}>TOTALES ({data.detalle.length} documentos)</td>
+                      <td style={{ textAlign: 'right' }}>RD$ {fmt(data.detalle.reduce((s: number, r: any) => s + r.total, 0))}</td>
+                      <td style={{ textAlign: 'right' }}>RD$ {fmt(data.total)}</td>
+                      <td colSpan={4}></td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Grouped View */}
+          {vista === 'agrupado' && data.agrupado && (
+            <div>
+              {data.agrupado.length === 0 ? (
+                <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af' }}>Sin saldos pendientes</div>
+              ) : data.agrupado.map((g: any) => (
+                <div key={g.nombre} className="card" style={{ margin: '0 0 8px', padding: 0, overflow: 'hidden' }}>
+                  <div onClick={() => toggleGroup(g.nombre)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', cursor: 'pointer', background: expanded[g.nombre] ? '#f9fafb' : 'white' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {expanded[g.nombre] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{g.nombre}</span>
+                      <span style={{ fontSize: 11, color: '#6b7280', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px' }}>{g.documentos} doc.</span>
+                      <span style={{ background: BUCKET_BG[g.bucket_peor], color: BUCKET_COLORS[g.bucket_peor], fontWeight: 700, fontSize: 11, padding: '2px 6px', borderRadius: 4 }}>máx {g.dias_max}d</span>
+                    </div>
+                    <span style={{ fontWeight: 700, fontSize: 15 }}>RD$ {fmt(g.saldo_total)}</span>
+                  </div>
+                  {expanded[g.nombre] && (
+                    <div style={{ borderTop: '1px solid #e5e7eb', overflowX: 'auto' }}>
+                      <table style={{ fontSize: 12 }}>
+                        <thead><tr><th>Número</th><th>Fecha</th><th>Vencimiento</th><th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'right' }}>Saldo</th><th style={{ textAlign: 'right' }}>Días</th><th>Rango</th><th></th></tr></thead>
+                        <tbody>
+                          {g.items.map((r: any) => (
+                            <tr key={r.id} style={{ borderLeft: `3px solid ${BUCKET_COLORS[r.bucket]}` }}>
+                              <td style={{ fontFamily: 'monospace' }}>{r.numero}</td>
+                              <td style={{ fontSize: 11 }}>{r.fecha_factura || r.fecha}</td>
+                              <td style={{ fontSize: 11 }}>{r.fecha_vencimiento || '—'}</td>
+                              <td style={{ textAlign: 'right' }}>RD$ {fmt(r.total)}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 700 }}>RD$ {fmt(r.saldo)}</td>
+                              <td style={{ textAlign: 'right', color: BUCKET_COLORS[r.bucket], fontWeight: 600 }}>{r.dias}</td>
+                              <td><span style={{ background: BUCKET_BG[r.bucket], color: BUCKET_COLORS[r.bucket], fontWeight: 700, fontSize: 11, padding: '2px 6px', borderRadius: 4 }}>{BUCKET_LABELS[r.bucket]}d</span></td>
+                              <td><button className="btn-icon" onClick={() => setDetailRow(r)}><Eye size={14} /></button></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Detail Modal - Payment/Collection history */}
+          {detailRow && (
+            <Modal title={`Documento ${detailRow.numero}`} subtitle={tipo === 'cxp' ? detailRow.proveedor : detailRow.cliente} onClose={() => setDetailRow(null)} width={550}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16, fontSize: 13 }}>
+                <div>Fecha: <strong>{detailRow.fecha_factura || detailRow.fecha}</strong></div>
+                <div>Vencimiento: <strong>{detailRow.fecha_vencimiento || '—'}</strong></div>
+                <div>Total: <strong>RD$ {fmt(detailRow.total)}</strong></div>
+                <div>Saldo: <strong style={{ color: '#dc2626' }}>RD$ {fmt(detailRow.saldo)}</strong></div>
+                <div>Días: <strong style={{ color: BUCKET_COLORS[detailRow.bucket] }}>{detailRow.dias}</strong></div>
+                <div>Estado: <Badge color={detailRow.estado === 'parcial' ? 'yellow' : detailRow.estado === 'pendiente' ? 'red' : 'gray'}>{detailRow.estado}</Badge></div>
+              </div>
+              {detailRow.total > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Progreso de {tipo === 'cxp' ? 'pago' : 'cobro'}</div>
+                  <div style={{ height: 12, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(100, ((detailRow.total - detailRow.saldo) / detailRow.total) * 100)}%`, background: '#166534', borderRadius: 6, transition: 'width 0.3s' }}></div>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                    RD$ {fmt(detailRow.total - detailRow.saldo)} de RD$ {fmt(detailRow.total)} ({Math.round(((detailRow.total - detailRow.saldo) / detailRow.total) * 100)}%)
+                  </div>
+                </div>
+              )}
+              <h4 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 8px' }}>{tipo === 'cxp' ? 'Pagos realizados' : 'Cobros realizados'}</h4>
+              <table style={{ fontSize: 12 }}>
+                <thead><tr><th>Número</th><th>Fecha</th><th style={{ textAlign: 'right' }}>Monto</th><th>Método</th><th>Referencia</th></tr></thead>
+                <tbody>
+                  {(tipo === 'cxp' ? detailRow.pagos : detailRow.cobros)?.length === 0 ? (
+                    <tr><td colSpan={5} style={{ textAlign: 'center', color: '#9ca3af', padding: 16 }}>Sin {tipo === 'cxp' ? 'pagos' : 'cobros'} registrados</td></tr>
+                  ) : (tipo === 'cxp' ? detailRow.pagos : detailRow.cobros)?.map((p: any, i: number) => (
+                    <tr key={i}>
+                      <td style={{ fontFamily: 'monospace' }}>{p.numero}</td>
+                      <td>{p.fecha}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>RD$ {fmt(p.monto)}</td>
+                      <td><Badge color="blue">{p.metodo}</Badge></td>
+                      <td style={{ fontSize: 11, color: '#6b7280' }}>{p.referencia || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Modal>
+          )}
         </>
       )}
     </div>
