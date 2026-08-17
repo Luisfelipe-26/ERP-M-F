@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, Users, Package, Wrench, ClipboardList, LogOut, Leaf,
   DollarSign, TrendingUp, Warehouse, CloudSun, Bug, Droplets, BarChart3,
-  UserCheck, Landmark, Truck, BookOpen
+  UserCheck, Landmark, Truck, BookOpen, Building2, PiggyBank
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -18,6 +18,8 @@ const nav = [
   { to: '/riego', icon: Droplets, label: 'Riego' },
   { divider: true, label: 'FINANZAS' },
   { to: '/contabilidad', icon: BookOpen, label: 'Contabilidad' },
+  { to: '/activos-fijos', icon: Building2, label: 'Activos Fijos' },
+  { to: '/presupuesto', icon: PiggyBank, label: 'Presupuesto' },
   { to: '/clientes', icon: UserCheck, label: 'Clientes' },
   { to: '/proveedores', icon: Truck, label: 'Proveedores' },
   { to: '/efectivo-banco', icon: Landmark, label: 'Efectivo y Banco' },

@@ -25,6 +25,8 @@ const Clientes = lazy(() => import('./pages/Clientes'))
 const EfectivoBanco = lazy(() => import('./pages/EfectivoBanco'))
 const Proveedores = lazy(() => import('./pages/Proveedores'))
 const Contabilidad = lazy(() => import('./pages/Contabilidad'))
+const ActivosFijos = lazy(() => import('./pages/ActivosFijos'))
+const Presupuesto = lazy(() => import('./pages/Presupuesto'))
 
 function PageLoader() {
   return (
@@ -70,6 +72,8 @@ export default function App() {
           <Route path="efectivo-banco" element={<Suspense fallback={<PageLoader />}><EfectivoBanco /></Suspense>} />
           <Route path="proveedores" element={<Suspense fallback={<PageLoader />}><Proveedores /></Suspense>} />
           <Route path="contabilidad" element={<Suspense fallback={<PageLoader />}><Contabilidad /></Suspense>} />
+          <Route path="activos-fijos" element={<Suspense fallback={<PageLoader />}><ActivosFijos /></Suspense>} />
+          <Route path="presupuesto" element={<Suspense fallback={<PageLoader />}><Presupuesto /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>
