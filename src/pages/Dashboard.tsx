@@ -132,6 +132,8 @@ export default function Dashboard() {
   const [costosCampo, setCostosCampo] = useState([])
   const [costosAct, setCostosAct] = useState([])
   const [liveWeather, setLiveWeather] = useState(null)
+  const [finDash, setFinDash] = useState<any>(null)
+  const [produccion, setProduccion] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const navigate = useNavigate()
@@ -152,6 +154,8 @@ export default function Dashboard() {
       setCampoStatus(cs.data)
       setCostosCampo(cc.data.filter(x => x.costo_total > 0).sort((a, b) => b.costo_total - a.costo_total).slice(0, 12))
       setCostosAct(ca.data.filter(x => x.costo_total > 0).sort((a, b) => b.costo_total - a.costo_total).slice(0, 8))
+      api.get('/contabilidad/dashboard-financiero').then(r => setFinDash(r.data)).catch(() => {})
+      api.get('/dashboard/produccion').then(r => setProduccion(r.data)).catch(() => {})
       // Fetch live weather from Open-Meteo (non-blocking)
       axios.get('https://api.open-meteo.com/v1/forecast', {
         params: {
@@ -250,6 +254,16 @@ export default function Dashboard() {
             <p style={{ margin: '4px 0 0', fontSize: 14, opacity: 0.8 }}>{getDateStr()} · Finca CORVUS</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => window.print()}
+              style={{
+                background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8,
+                padding: '8px 14px', color: '#fff', fontSize: 12, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <Download size={13} /> PDF
+            </button>
             <button
               onClick={exportNomina}
               style={{
@@ -443,7 +457,83 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ═══ 4. BOTTOM ROW: Campo Grid + Activity Feed ═══ */}
+      {/* ═══ 4. FINANCIAL DASHBOARD ═══ */}
+      {finDash && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16, marginBottom: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#1A1A2E' }}>KPIs Financieros</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { label: 'Ingresos del Mes', value: finDash.ingresos_mes, color: '#166534' },
+                { label: 'Gastos del Mes', value: finDash.gastos_mes, color: '#dc2626' },
+                { label: 'Margen', value: finDash.margen, color: finDash.margen >= 0 ? '#166534' : '#dc2626' },
+                { label: 'CxC Pendiente', value: finDash.cxc_pendiente, color: '#1e40af' },
+                { label: 'CxP Pendiente', value: finDash.cxp_pendiente, color: '#ea580c' },
+                { label: 'Efectivo Bancos', value: finDash.efectivo_bancos, color: '#7c3aed' },
+              ].map((kpi, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#f9fafb', borderRadius: 8 }}>
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>{kpi.label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: kpi.color, fontVariantNumeric: 'tabular-nums' }}>{fmt(kpi.value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#1A1A2E' }}>Tendencia Ingresos vs Gastos</h3>
+            {finDash.tendencia_mensual?.length > 0 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={finDash.tendencia_mensual} margin={{ left: 0, right: 8 }}>
+                  <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#6B7280' }} />
+                  <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => fmtK(v)} width={50} />
+                  <Tooltip formatter={(v: any) => [fmt(v)]} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Area type="monotone" dataKey="ingresos" stroke="#166534" fill="#dcfce7" strokeWidth={2} name="Ingresos" />
+                  <Area type="monotone" dataKey="gastos" stroke="#dc2626" fill="#fee2e2" strokeWidth={2} name="Gastos" />
+                  <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF' }}>Sin datos de tendencia</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 5. PRODUCCIÓN ═══ */}
+      {produccion && produccion.campos?.length > 0 && (
+        <div style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#1A1A2E' }}>Producción por Campo</h3>
+            <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+              <span>Total kg: <strong>{produccion.total_kg?.toLocaleString() ?? 0}</strong></span>
+              <span>Ingreso: <strong>{fmt(produccion.total_ingreso)}</strong></span>
+            </div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ fontSize: 12, width: '100%' }}>
+              <thead><tr>
+                <th>Campo</th><th style={{ textAlign: 'right' }}>Ha</th><th style={{ textAlign: 'right' }}>Kg Cosechados</th>
+                <th style={{ textAlign: 'right' }}>Kg/Ha</th><th style={{ textAlign: 'right' }}>Costo/Kg</th>
+                <th style={{ textAlign: 'right' }}>Ingreso</th><th style={{ textAlign: 'right' }}>Margen</th>
+              </tr></thead>
+              <tbody>
+                {produccion.campos.map((c: any, i: number) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 600 }}>{c.campo}</td>
+                    <td style={{ textAlign: 'right' }}>{c.area_ha?.toFixed(1) ?? '—'}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{c.kg_cosechados?.toLocaleString() ?? 0}</td>
+                    <td style={{ textAlign: 'right' }}>{c.kg_por_ha?.toFixed(0) ?? '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(c.costo_por_kg)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(c.ingreso)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: c.margen >= 0 ? '#166534' : '#dc2626' }}>{fmt(c.margen)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 6. BOTTOM ROW: Campo Grid + Activity Feed ═══ */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {/* Left: Campo Status Grid */}
         <div style={{
@@ -596,7 +686,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @media print {
+          aside, button, .sidebar-link { display: none !important; }
+          main { margin-left: 0 !important; padding: 8px !important; }
+          div[style*="minHeight: 100vh"] { min-height: auto !important; }
+        }
+      `}</style>
     </div>
   )
 }

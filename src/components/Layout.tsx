@@ -1,10 +1,12 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   LayoutDashboard, MapPin, Users, Package, Wrench, ClipboardList, LogOut, Leaf,
   DollarSign, TrendingUp, Warehouse, CloudSun, Bug, Droplets, BarChart3,
-  UserCheck, Landmark, Truck, BookOpen, Building2, PiggyBank
+  UserCheck, Landmark, Truck, BookOpen, Building2, PiggyBank, Bell, X
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import api from '../api'
 
 const nav = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -93,9 +95,78 @@ export default function Layout() {
       </aside>
 
       {/* Main */}
-      <main style={{ marginLeft: 240, flex: 1, padding: '32px', minHeight: '100vh' }}>
-        <Outlet />
-      </main>
+      <div style={{ marginLeft: 240, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <NotificationBar />
+        <main style={{ flex: 1, padding: '32px' }}>
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  )
+}
+
+function NotificationBar() {
+  const [notifs, setNotifs] = useState<any[]>([])
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get('/contabilidad/notificaciones')
+      setNotifs(data)
+    } catch {}
+  }, [])
+
+  useEffect(() => { load(); const iv = setInterval(load, 120000); return () => clearInterval(iv) }, [load])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const count = notifs.length
+  const typeColors: Record<string, string> = { cxp_vencida: '#dc2626', cxc_vencida: '#ea580c', inventario_bajo: '#d97706', periodo_abierto: '#2563eb' }
+  const typeLabels: Record<string, string> = { cxp_vencida: 'CxP Vencida', cxc_vencida: 'CxC Vencida', inventario_bajo: 'Stock Bajo', periodo_abierto: 'Período' }
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'flex', justifyContent: 'flex-end', padding: '10px 32px 0' }}>
+      <button onClick={() => setOpen(!open)} style={{
+        position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 6,
+      }}>
+        <Bell size={20} color={count > 0 ? '#dc2626' : '#9ca3af'} />
+        {count > 0 && (
+          <span style={{
+            position: 'absolute', top: 0, right: 0, background: '#dc2626', color: '#fff',
+            borderRadius: '50%', width: 16, height: 16, fontSize: 10, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>{count > 9 ? '9+' : count}</span>
+        )}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 42, right: 32, width: 360, maxHeight: 420, overflowY: 'auto',
+          background: '#fff', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+          border: '1px solid #e5e7eb', zIndex: 100,
+        }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>Notificaciones ({count})</span>
+            <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={16} /></button>
+          </div>
+          {count === 0 ? (
+            <div style={{ padding: '30px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Sin alertas pendientes</div>
+          ) : notifs.map((n: any, i: number) => (
+            <div key={i} style={{ padding: '10px 16px', borderBottom: '1px solid #f9fafb', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: typeColors[n.tipo] || '#6b7280', marginTop: 5, flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: typeColors[n.tipo] || '#374151' }}>{typeLabels[n.tipo] || n.tipo}</div>
+                <div style={{ fontSize: 12, color: '#374151' }}>{n.mensaje}</div>
+                {n.monto && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>RD$ {Number(n.monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

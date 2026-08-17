@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import {
   BookOpen, Plus, Search, RefreshCw, X, ChevronDown, ChevronRight,
   Check, Lock, Unlock, FileText, Calendar, Settings, BarChart3,
-  Edit2, Trash2, Eye, Filter, Download, Clock
+  Edit2, Trash2, Eye, Filter, Download, Clock, Repeat, Landmark, FileSpreadsheet
 } from 'lucide-react'
 
 /* ═══════════════════ Shared ═══════════════════ */
@@ -48,6 +48,10 @@ const TABS = [
   { key: 'periodos', label: 'Períodos', icon: Calendar },
   { key: 'reportes', label: 'Reportes', icon: BarChart3 },
   { key: 'antiguedad', label: 'Antigüedad', icon: Clock },
+  { key: 'flujo', label: 'Flujo Efectivo', icon: BarChart3 },
+  { key: 'recurrentes', label: 'Recurrentes', icon: Repeat },
+  { key: 'dgii', label: 'DGII', icon: FileSpreadsheet },
+  { key: 'conciliacion', label: 'Conciliación', icon: Landmark },
   { key: 'config', label: 'Configuración', icon: Settings },
 ]
 
@@ -704,6 +708,7 @@ function TabReportes() {
         <button className="btn-primary" onClick={generar} disabled={loading || (reporte === 'libro-mayor' && !cuentaLM)}>
           {loading ? 'Generando...' : 'Generar'}
         </button>
+        {data && <button className="btn-secondary" onClick={() => window.print()} style={{ fontSize: 12 }}><Download size={13} /> Imprimir / PDF</button>}
       </div>
 
       {data && reporte === 'balance-comprobacion' && <ReporteBalanceComprobacion data={data} />}
@@ -1096,6 +1101,447 @@ function TabAntiguedad() {
 }
 
 
+/* ═══════════════════ TAB: Flujo de Efectivo ═══════════════════ */
+
+function TabFlujoEfectivo() {
+  const [anio, setAnio] = useState(new Date().getFullYear())
+  const [mes, setMes] = useState(new Date().getMonth() + 1)
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function generar() {
+    setLoading(true)
+    try {
+      const { data: d } = await api.get(`/contabilidad/flujo-efectivo?anio=${anio}&mes=${mes}`)
+      setData(d)
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+    finally { setLoading(false) }
+  }
+
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+  const Section = ({ title, color, items, total }: any) => (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color, marginBottom: 8, borderBottom: `2px solid ${color}`, paddingBottom: 4 }}>{title}</h3>
+      {items.length === 0 ? <p style={{ color: '#9ca3af', fontSize: 12 }}>Sin movimientos</p> : items.map((it: any, i: number) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
+          <span><span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 8 }}>{it.codigo}</span>{it.nombre}</span>
+          <span style={{ fontFamily: 'monospace', fontWeight: 500, color: it.monto < 0 ? '#dc2626' : '#166534' }}>{fmt(it.monto)}</span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontWeight: 700, fontSize: 13, borderTop: '2px solid #e5e7eb', marginTop: 4 }}>
+        <span>Total</span>
+        <span style={{ fontFamily: 'monospace', color: total < 0 ? '#dc2626' : '#166534' }}>{fmt(total)}</span>
+      </div>
+    </div>
+  )
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+        <input className="input" type="number" style={{ width: 80 }} value={anio} onChange={e => setAnio(Number(e.target.value))} />
+        <select className="select" style={{ width: 130 }} value={mes} onChange={e => setMes(Number(e.target.value))}>
+          {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <button className="btn-primary" onClick={generar} disabled={loading}>{loading ? 'Generando...' : 'Generar'}</button>
+      </div>
+      {data && (
+        <div className="card">
+          <div style={{ textAlign: 'center', marginBottom: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Estado de Flujo de Efectivo</h3>
+            <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Período: {data.periodo}</p>
+          </div>
+          <Section title="Actividades de Operación" color="#166534" items={data.operaciones.items} total={data.operaciones.total} />
+          <Section title="Actividades de Inversión" color="#1e40af" items={data.inversion.items} total={data.inversion.total} />
+          <Section title="Actividades de Financiamiento" color="#7c3aed" items={data.financiamiento.items} total={data.financiamiento.total} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontWeight: 700, fontSize: 15, borderTop: '3px double #374151', marginTop: 8 }}>
+            <span>Variación Neta del Efectivo</span>
+            <span style={{ fontFamily: 'monospace', color: data.variacion_neta < 0 ? '#dc2626' : '#166534' }}>{fmt(data.variacion_neta)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 14, color: '#374151' }}>
+            <span>Saldo Efectivo Actual (Bancos)</span>
+            <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{fmt(data.saldo_efectivo_actual)}</span>
+          </div>
+          <div style={{ marginTop: 12, textAlign: 'right' }}>
+            <button className="btn-secondary" onClick={() => window.print()} style={{ fontSize: 11 }}><Download size={12} /> Imprimir / PDF</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+/* ═══════════════════ TAB: Asientos Recurrentes ═══════════════════ */
+
+function TabRecurrentes() {
+  const [items, setItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [cuentas, setCuentas] = useState<any[]>([])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [r, c] = await Promise.all([api.get('/contabilidad/asientos-recurrentes'), api.get('/contabilidad/cuentas')])
+      setItems(r.data)
+      setCuentas(c.data.filter((x: any) => x.acepta_movimientos))
+    } catch { toast.error('Error') }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const blank = { nombre: '', descripcion_asiento: '', frecuencia: 'mensual', dia_ejecucion: 1, lineas: [{ cuenta_id: '', descripcion: '', debe: 0, haber: 0 }, { cuenta_id: '', descripcion: '', debe: 0, haber: 0 }] }
+
+  function addLinea() { setEditing({ ...editing, lineas: [...editing.lineas, { cuenta_id: '', descripcion: '', debe: 0, haber: 0 }] }) }
+  function removeLinea(i: number) { setEditing({ ...editing, lineas: editing.lineas.filter((_: any, j: number) => j !== i) }) }
+  function updateLinea(i: number, field: string, val: any) {
+    const lineas = [...editing.lineas]
+    lineas[i] = { ...lineas[i], [field]: val }
+    setEditing({ ...editing, lineas })
+  }
+
+  async function save(e: any) {
+    e.preventDefault()
+    const payload = { ...editing, lineas: editing.lineas.map((l: any) => ({ cuenta_id: Number(l.cuenta_id), descripcion: l.descripcion, debe: Number(l.debe) || 0, haber: Number(l.haber) || 0 })) }
+    try {
+      if (editing.id) await api.put(`/contabilidad/asientos-recurrentes/${editing.id}`, payload)
+      else await api.post('/contabilidad/asientos-recurrentes', payload)
+      toast.success(editing.id ? 'Actualizado' : 'Creado')
+      setShowModal(false); load()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function ejecutar(id: number, nombre: string) {
+    if (!confirm(`¿Ejecutar "${nombre}"? Se creará un asiento borrador.`)) return
+    try {
+      const { data } = await api.post(`/contabilidad/asientos-recurrentes/${id}/ejecutar`)
+      toast.success(`Asiento ${data.asiento_numero} creado`)
+      load()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function del(id: number) {
+    if (!confirm('¿Eliminar asiento recurrente?')) return
+    try { await api.delete(`/contabilidad/asientos-recurrentes/${id}`); toast.success('Eliminado'); load() }
+    catch { toast.error('Error') }
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+        <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Plantillas de asientos que se pueden ejecutar periódicamente</p>
+        <button className="btn-primary" onClick={() => { setEditing({ ...blank }); setShowModal(true) }}><Plus size={14} /> Nuevo</button>
+      </div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {items.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af' }}>Sin asientos recurrentes</div> : items.map((ar: any) => (
+          <div key={ar.id} className="card" style={{ margin: 0, padding: '12px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{ar.nombre}</div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>{ar.descripcion_asiento || '—'} · <Badge color="blue">{ar.frecuencia}</Badge> · Día {ar.dia_ejecucion} · RD$ {fmt(ar.total)}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Ejecutado {ar.veces_ejecutado}x {ar.ultima_ejecucion ? `· Última: ${ar.ultima_ejecucion}` : ''}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => ejecutar(ar.id, ar.nombre)}>Ejecutar</button>
+                <button className="btn-icon" onClick={() => { setEditing(ar); setShowModal(true) }}><Edit2 size={14} /></button>
+                <button className="btn-icon" onClick={() => del(ar.id)}><Trash2 size={14} /></button>
+              </div>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11 }}>
+              {ar.lineas.map((l: any, i: number) => (
+                <div key={i} style={{ display: 'flex', gap: 12, padding: '2px 0', borderBottom: '1px solid #f3f4f6' }}>
+                  <span style={{ fontFamily: 'monospace', color: '#6b7280' }}>{l.cuenta_codigo}</span>
+                  <span style={{ flex: 1 }}>{l.cuenta_nombre}</span>
+                  <span style={{ fontFamily: 'monospace', color: '#166534' }}>{l.debe > 0 ? fmt(l.debe) : ''}</span>
+                  <span style={{ fontFamily: 'monospace', color: '#dc2626' }}>{l.haber > 0 ? fmt(l.haber) : ''}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {showModal && editing && (
+        <Modal title={editing.id ? 'Editar Recurrente' : 'Nuevo Asiento Recurrente'} onClose={() => setShowModal(false)} width={700}>
+          <form onSubmit={save}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div><Label>Nombre</Label><input className="input" required value={editing.nombre} onChange={e => setEditing({ ...editing, nombre: e.target.value })} /></div>
+              <div><Label>Frecuencia</Label><select className="select" value={editing.frecuencia} onChange={e => setEditing({ ...editing, frecuencia: e.target.value })}><option value="mensual">Mensual</option><option value="quincenal">Quincenal</option><option value="semanal">Semanal</option></select></div>
+              <div><Label>Día</Label><input className="input" type="number" min="1" max="31" value={editing.dia_ejecucion} onChange={e => setEditing({ ...editing, dia_ejecucion: Number(e.target.value) })} /></div>
+            </div>
+            <div style={{ marginBottom: 12 }}><Label>Descripción Asiento</Label><input className="input" value={editing.descripcion_asiento || ''} onChange={e => setEditing({ ...editing, descripcion_asiento: e.target.value })} /></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Label>Líneas</Label>
+              <button type="button" className="btn-secondary" style={{ fontSize: 11 }} onClick={addLinea}><Plus size={12} /> Agregar</button>
+            </div>
+            {editing.lineas.map((l: any, i: number) => (
+              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+                <select className="select" style={{ flex: 2 }} required value={l.cuenta_id} onChange={e => updateLinea(i, 'cuenta_id', e.target.value)}><option value="">Cuenta...</option>{cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}</select>
+                <input className="input" style={{ flex: 1 }} type="number" step="0.01" placeholder="Debe" value={l.debe || ''} onChange={e => updateLinea(i, 'debe', e.target.value)} />
+                <input className="input" style={{ flex: 1 }} type="number" step="0.01" placeholder="Haber" value={l.haber || ''} onChange={e => updateLinea(i, 'haber', e.target.value)} />
+                <button type="button" className="btn-icon" onClick={() => removeLinea(i)}><Trash2 size={13} /></button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary">{editing.id ? 'Guardar' : 'Crear'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+
+/* ═══════════════════ TAB: DGII 606/607 ═══════════════════ */
+
+function TabDGII() {
+  const [formato, setFormato] = useState<'606' | '607'>('606')
+  const [anio, setAnio] = useState(new Date().getFullYear())
+  const [mes, setMes] = useState(new Date().getMonth() + 1)
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+  async function generar() {
+    setLoading(true)
+    try {
+      const { data: d } = await api.get(`/contabilidad/dgii-${formato}?anio=${anio}&mes=${mes}`)
+      setData(d)
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+    finally { setLoading(false) }
+  }
+
+  function exportarTXT() {
+    if (!data) return
+    let txt = ''
+    if (formato === '606') {
+      txt = `606|${data.rnc_empresa}|${data.periodo}|${data.cantidad_registros}\n`
+      data.registros.forEach((r: any) => { txt += `${r.rnc_cedula}|${r.tipo_id}|${r.tipo_bienes_servicios}|${r.ncf}|${r.ncf_modificado}|${r.fecha_comprobante}|${r.fecha_pago}|${r.monto_facturado}|${r.itbis_facturado}|${r.itbis_retenido}|${r.isr_retenido}\n` })
+    } else {
+      txt = `607|${data.rnc_empresa}|${data.periodo}|${data.cantidad_registros}\n`
+      data.registros.forEach((r: any) => { txt += `${r.rnc_cedula}|${r.tipo_id}|${r.ncf}|${r.ncf_modificado}|${r.tipo_ingreso}|${r.fecha_comprobante}|${r.fecha_retencion}|${r.monto_facturado}|${r.itbis_facturado}\n` })
+    }
+    const blob = new Blob([txt], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `${formato}_${data.periodo}.txt`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className={formato === '606' ? 'btn-primary' : 'btn-secondary'} onClick={() => { setFormato('606'); setData(null) }}>606 — Compras</button>
+        <button className={formato === '607' ? 'btn-primary' : 'btn-secondary'} onClick={() => { setFormato('607'); setData(null) }}>607 — Ventas</button>
+        <input className="input" type="number" style={{ width: 80 }} value={anio} onChange={e => setAnio(Number(e.target.value))} />
+        <select className="select" style={{ width: 130 }} value={mes} onChange={e => setMes(Number(e.target.value))}>
+          {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <button className="btn-primary" onClick={generar} disabled={loading}>{loading ? 'Generando...' : 'Generar'}</button>
+        {data && <button className="btn-secondary" onClick={exportarTXT}><Download size={14} /> Exportar TXT</button>}
+      </div>
+
+      {data && (
+        <>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+            <div className="card" style={{ padding: '8px 14px', margin: 0 }}><span style={{ fontSize: 11, color: '#6b7280' }}>RNC Empresa</span><div style={{ fontWeight: 700, fontFamily: 'monospace' }}>{data.rnc_empresa || '—'}</div></div>
+            <div className="card" style={{ padding: '8px 14px', margin: 0 }}><span style={{ fontSize: 11, color: '#6b7280' }}>Período</span><div style={{ fontWeight: 700 }}>{data.periodo}</div></div>
+            <div className="card" style={{ padding: '8px 14px', margin: 0 }}><span style={{ fontSize: 11, color: '#6b7280' }}>Registros</span><div style={{ fontWeight: 700 }}>{data.cantidad_registros}</div></div>
+            <div className="card" style={{ padding: '8px 14px', margin: 0 }}><span style={{ fontSize: 11, color: '#6b7280' }}>Monto Total</span><div style={{ fontWeight: 700 }}>RD$ {fmt(data.total_monto)}</div></div>
+            <div className="card" style={{ padding: '8px 14px', margin: 0 }}><span style={{ fontSize: 11, color: '#6b7280' }}>ITBIS Total</span><div style={{ fontWeight: 700 }}>RD$ {fmt(data.total_itbis)}</div></div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ fontSize: 11 }}>
+              <thead><tr>
+                <th>RNC/Cédula</th><th>NCF</th><th>{formato === '606' ? 'Proveedor' : 'Cliente'}</th>
+                <th>Fecha</th><th style={{ textAlign: 'right' }}>Monto</th><th style={{ textAlign: 'right' }}>ITBIS</th>
+                {formato === '606' && <th style={{ textAlign: 'right' }}>Ret. ISR</th>}
+                <th style={{ textAlign: 'right' }}>Total</th>
+              </tr></thead>
+              <tbody>
+                {data.registros.length === 0 ? (
+                  <tr><td colSpan={formato === '606' ? 7 : 6} style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Sin registros</td></tr>
+                ) : data.registros.map((r: any, i: number) => (
+                  <tr key={i}>
+                    <td style={{ fontFamily: 'monospace' }}>{r.rnc_cedula || '—'}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 10 }}>{r.ncf || '—'}</td>
+                    <td>{formato === '606' ? r.proveedor : r.cliente}</td>
+                    <td>{r.fecha_comprobante}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(r.monto_facturado)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(r.itbis_facturado)}</td>
+                    {formato === '606' && <td style={{ textAlign: 'right' }}>{fmt(r.isr_retenido)}</td>}
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(r.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+
+/* ═══════════════════ TAB: Conciliación Bancaria ═══════════════════ */
+
+function TabConciliacion() {
+  const [items, setItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [bancos, setBancos] = useState<any[]>([])
+  const [periodos, setPeriodos] = useState<any[]>([])
+  const [showModal, setShowModal] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [detail, setDetail] = useState<any>(null)
+
+  const TIPOS_PARTIDA = ['cheque_transito', 'deposito_transito', 'nd_banco', 'nc_banco', 'error']
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [c, b, p] = await Promise.all([
+        api.get('/contabilidad/conciliaciones'),
+        api.get('/efectivo-banco/cuentas'),
+        api.get('/contabilidad/periodos'),
+      ])
+      setItems(c.data)
+      setBancos(b.data)
+      setPeriodos(p.data)
+    } catch { toast.error('Error') }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  function openNew() {
+    setEditing({ cuenta_bancaria_id: '', periodo_id: '', saldo_extracto: 0, saldo_libro: 0, partidas: [{ tipo: 'cheque_transito', descripcion: '', monto: 0, referencia: '' }] })
+    setShowModal(true)
+  }
+
+  function addPartida() { setEditing({ ...editing, partidas: [...editing.partidas, { tipo: 'cheque_transito', descripcion: '', monto: 0, referencia: '' }] }) }
+  function removePartida(i: number) { setEditing({ ...editing, partidas: editing.partidas.filter((_: any, j: number) => j !== i) }) }
+  function updatePartida(i: number, field: string, val: any) {
+    const partidas = [...editing.partidas]
+    partidas[i] = { ...partidas[i], [field]: val }
+    setEditing({ ...editing, partidas })
+  }
+
+  async function save(e: any) {
+    e.preventDefault()
+    const payload = { ...editing, cuenta_bancaria_id: Number(editing.cuenta_bancaria_id), periodo_id: Number(editing.periodo_id), saldo_extracto: Number(editing.saldo_extracto), saldo_libro: Number(editing.saldo_libro), partidas: editing.partidas.map((p: any) => ({ ...p, monto: Number(p.monto) })) }
+    try {
+      if (editing.id) await api.put(`/contabilidad/conciliaciones/${editing.id}`, payload)
+      else await api.post('/contabilidad/conciliaciones', payload)
+      toast.success(editing.id ? 'Actualizada' : 'Creada')
+      setShowModal(false); load()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function viewDetail(id: number) {
+    try { const { data } = await api.get(`/contabilidad/conciliaciones/${id}`); setDetail(data) }
+    catch { toast.error('Error') }
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+        <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Conciliación de saldos bancarios con libros contables</p>
+        <button className="btn-primary" onClick={openNew}><Plus size={14} /> Nueva Conciliación</button>
+      </div>
+      <table style={{ fontSize: 12 }}>
+        <thead><tr><th>Banco</th><th>Período</th><th style={{ textAlign: 'right' }}>Saldo Extracto</th><th style={{ textAlign: 'right' }}>Saldo Libro</th><th style={{ textAlign: 'right' }}>Diferencia</th><th>Estado</th><th>Partidas</th><th></th></tr></thead>
+        <tbody>
+          {items.length === 0 ? (
+            <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9ca3af', padding: 30 }}>Sin conciliaciones</td></tr>
+          ) : items.map((c: any) => (
+            <tr key={c.id}>
+              <td>{c.banco}</td>
+              <td>{c.periodo}</td>
+              <td style={{ textAlign: 'right' }}>RD$ {fmt(c.saldo_extracto)}</td>
+              <td style={{ textAlign: 'right' }}>RD$ {fmt(c.saldo_libro)}</td>
+              <td style={{ textAlign: 'right', fontWeight: 700, color: Math.abs(c.diferencia) > 0.01 ? '#dc2626' : '#166534' }}>RD$ {fmt(c.diferencia)}</td>
+              <td><Badge color={c.estado === 'conciliada' ? 'green' : 'yellow'}>{c.estado}</Badge></td>
+              <td style={{ textAlign: 'center' }}>{c.partidas}</td>
+              <td><button className="btn-icon" onClick={() => viewDetail(c.id)}><Eye size={14} /></button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {showModal && editing && (
+        <Modal title={editing.id ? 'Editar Conciliación' : 'Nueva Conciliación'} onClose={() => setShowModal(false)} width={700}>
+          <form onSubmit={save}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div><Label>Cuenta Bancaria</Label><select className="select" required value={editing.cuenta_bancaria_id} onChange={e => setEditing({ ...editing, cuenta_bancaria_id: e.target.value })}><option value="">Seleccionar...</option>{bancos.map((b: any) => <option key={b.id} value={b.id}>{b.banco} — {b.numero_cuenta}</option>)}</select></div>
+              <div><Label>Período</Label><select className="select" required value={editing.periodo_id} onChange={e => setEditing({ ...editing, periodo_id: e.target.value })}><option value="">Seleccionar...</option>{periodos.map((p: any) => <option key={p.id} value={p.id}>{p.mes}/{p.anio}</option>)}</select></div>
+              <div><Label>Saldo según Extracto (RD$)</Label><input className="input" type="number" step="0.01" required value={editing.saldo_extracto} onChange={e => setEditing({ ...editing, saldo_extracto: e.target.value })} /></div>
+              <div><Label>Saldo según Libros (RD$)</Label><input className="input" type="number" step="0.01" required value={editing.saldo_libro} onChange={e => setEditing({ ...editing, saldo_libro: e.target.value })} /></div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Label>Partidas en Conciliación</Label>
+              <button type="button" className="btn-secondary" style={{ fontSize: 11 }} onClick={addPartida}><Plus size={12} /> Agregar</button>
+            </div>
+            {editing.partidas.map((p: any, i: number) => (
+              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                <select className="select" style={{ width: 150 }} value={p.tipo} onChange={e => updatePartida(i, 'tipo', e.target.value)}>{TIPOS_PARTIDA.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}</select>
+                <input className="input" style={{ flex: 1 }} placeholder="Descripción" value={p.descripcion} onChange={e => updatePartida(i, 'descripcion', e.target.value)} />
+                <input className="input" style={{ width: 120 }} type="number" step="0.01" placeholder="Monto" value={p.monto} onChange={e => updatePartida(i, 'monto', e.target.value)} />
+                <input className="input" style={{ width: 100 }} placeholder="Ref." value={p.referencia || ''} onChange={e => updatePartida(i, 'referencia', e.target.value)} />
+                <button type="button" className="btn-icon" onClick={() => removePartida(i)}><Trash2 size={13} /></button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary">{editing.id ? 'Guardar' : 'Crear'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {detail && (
+        <Modal title={`Conciliación: ${detail.banco}`} subtitle={`Período ${detail.periodo}`} onClose={() => setDetail(null)} width={650}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16, fontSize: 13 }}>
+            <div>Saldo Extracto: <strong>RD$ {fmt(detail.saldo_extracto)}</strong></div>
+            <div>Saldo Libros: <strong>RD$ {fmt(detail.saldo_libro)}</strong></div>
+            <div>Diferencia: <strong style={{ color: Math.abs(detail.diferencia) > 0.01 ? '#dc2626' : '#166534' }}>RD$ {fmt(detail.diferencia)}</strong></div>
+            <div>Saldo Conciliado: <strong>RD$ {fmt(detail.saldo_conciliado)}</strong></div>
+          </div>
+          <h4 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 8px' }}>Partidas ({detail.partidas.length})</h4>
+          <table style={{ fontSize: 12 }}>
+            <thead><tr><th>Tipo</th><th>Descripción</th><th style={{ textAlign: 'right' }}>Monto</th><th>Referencia</th></tr></thead>
+            <tbody>
+              {detail.partidas.length === 0 ? (
+                <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9ca3af', padding: 16 }}>Sin partidas</td></tr>
+              ) : detail.partidas.map((p: any) => (
+                <tr key={p.id}>
+                  <td><Badge color="blue">{p.tipo.replace(/_/g, ' ')}</Badge></td>
+                  <td>{p.descripcion || '—'}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>RD$ {fmt(p.monto)}</td>
+                  <td style={{ fontSize: 11, color: '#6b7280' }}>{p.referencia || '—'}</td>
+                </tr>
+              ))}
+              <tr style={{ fontWeight: 700, background: '#f9fafb' }}>
+                <td colSpan={2}>Total Partidas</td>
+                <td style={{ textAlign: 'right' }}>RD$ {fmt(detail.total_partidas)}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+
 function TabConfig() {
   const [empresa, setEmpresa] = useState(null)
   const [reglas, setReglas] = useState([])
@@ -1268,6 +1714,10 @@ export default function Contabilidad() {
       {tab === 'periodos' && <TabPeriodos />}
       {tab === 'reportes' && <TabReportes />}
       {tab === 'antiguedad' && <TabAntiguedad />}
+      {tab === 'flujo' && <TabFlujoEfectivo />}
+      {tab === 'recurrentes' && <TabRecurrentes />}
+      {tab === 'dgii' && <TabDGII />}
+      {tab === 'conciliacion' && <TabConciliacion />}
       {tab === 'config' && <TabConfig />}
     </div>
   )
