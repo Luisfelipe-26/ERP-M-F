@@ -59,15 +59,20 @@ const TABS = [
 
 function TabCuentas() {
   const [cuentas, setCuentas] = useState([])
+  const [partidas, setPartidas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [buscar, setBuscar] = useState('')
   const [expandidas, setExpandidas] = useState(new Set())
   const [modal, setModal] = useState(null) // null | 'new' | cuenta
-  const [form, setForm] = useState({ codigo: '', nombre: '', tipo: 'activo', naturaleza: 'deudora', grupo: '', nivel: 1, cuenta_padre_id: '', acepta_movimientos: true })
+  const [form, setForm] = useState({ codigo: '', nombre: '', tipo: 'activo', naturaleza: 'deudora', grupo: '', nivel: 1, cuenta_padre_id: '', partida_id: '', acepta_movimientos: true })
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { const { data } = await api.get('/contabilidad/cuentas?activo=true'); setCuentas(data) }
+    try {
+      const { data } = await api.get('/contabilidad/cuentas?activo=true')
+      setCuentas(data)
+      api.get('/contabilidad/partidas').then(r => setPartidas(r.data)).catch(() => {})
+    }
     catch { toast.error('Error al cargar cuentas') }
     finally { setLoading(false) }
   }, [])
@@ -102,19 +107,19 @@ function TabCuentas() {
   }
 
   function openNew() {
-    setForm({ codigo: '', nombre: '', tipo: 'activo', naturaleza: 'deudora', grupo: '', nivel: 1, cuenta_padre_id: '', acepta_movimientos: true })
+    setForm({ codigo: '', nombre: '', tipo: 'activo', naturaleza: 'deudora', grupo: '', nivel: 1, cuenta_padre_id: '', partida_id: '', acepta_movimientos: true })
     setModal('new')
   }
 
   function openEdit(c) {
-    setForm({ codigo: c.codigo, nombre: c.nombre, tipo: c.tipo, naturaleza: c.naturaleza, grupo: c.grupo || '', nivel: c.nivel, cuenta_padre_id: c.cuenta_padre_id || '', acepta_movimientos: c.acepta_movimientos })
+    setForm({ codigo: c.codigo, nombre: c.nombre, tipo: c.tipo, naturaleza: c.naturaleza, grupo: c.grupo || '', nivel: c.nivel, cuenta_padre_id: c.cuenta_padre_id || '', partida_id: c.partida_id || '', acepta_movimientos: c.acepta_movimientos })
     setModal(c)
   }
 
   async function save(e) {
     e.preventDefault()
     if (!form.codigo || !form.nombre) return toast.error('Código y nombre son obligatorios')
-    const payload = { ...form, cuenta_padre_id: form.cuenta_padre_id ? Number(form.cuenta_padre_id) : null }
+    const payload = { ...form, cuenta_padre_id: form.cuenta_padre_id ? Number(form.cuenta_padre_id) : null, partida_id: form.partida_id ? Number(form.partida_id) : null }
     try {
       if (modal === 'new') {
         await api.post('/contabilidad/cuentas', payload)
@@ -158,7 +163,7 @@ function TabCuentas() {
               {hasChildren && (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
             </span>
             <span style={{ fontWeight: !n.acepta_movimientos ? 700 : 500, fontSize: 13, fontFamily: 'monospace', color: '#374151', minWidth: 80 }}>{n.codigo}</span>
-            <span style={{ flex: 1, fontSize: 13, fontWeight: !n.acepta_movimientos ? 600 : 400 }}>{n.nombre}</span>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: !n.acepta_movimientos ? 600 : 400 }}>{n.nombre}{n.partida_nombre ? <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 6 }}>[{n.partida_nombre}]</span> : ''}</span>
             <Badge color={n.tipo === 'activo' ? 'blue' : n.tipo === 'pasivo' ? 'red' : n.tipo === 'ingreso' ? 'green' : n.tipo === 'costo' ? 'yellow' : 'gray'}>{n.tipo}</Badge>
             <span style={{ fontSize: 11, color: '#9ca3af', width: 55, textAlign: 'center' }}>{n.naturaleza === 'deudora' ? 'Deudora' : 'Acreed.'}</span>
             <div style={{ display: 'flex', gap: 2 }} onClick={e => e.stopPropagation()}>
@@ -258,6 +263,16 @@ function TabCuentas() {
               <div>
                 <Label>Grupo</Label>
                 <input className="input" value={form.grupo} onChange={e => setForm({ ...form, grupo: e.target.value })} placeholder="Ej: Circulante" />
+              </div>
+              <div>
+                <Label>Partida Estado Financiero</Label>
+                <select className="select" value={form.partida_id} onChange={e => setForm({ ...form, partida_id: e.target.value })}>
+                  <option value="">— Sin partida —</option>
+                  {(() => {
+                    const tipoEstado = ['activo', 'pasivo', 'patrimonio'].includes(form.tipo) ? 'balance_general' : 'estado_resultados'
+                    return partidas.filter(p => p.estado === tipoEstado).map(p => <option key={p.id} value={p.id}>{p.nombre} ({p.clasificacion.replace(/_/g, ' ')})</option>)
+                  })()}
+                </select>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" id="acepta_mov" checked={form.acepta_movimientos} onChange={e => setForm({ ...form, acepta_movimientos: e.target.checked })} />
@@ -761,13 +776,29 @@ function ReporteBalanceComprobacion({ data }) {
 
 function ReporteBalanceGeneral({ data }) {
   if (!data) return null
-  const Section = ({ title, items, total, color }) => (
+
+  const GroupedSection = ({ title, groups, total, color }: any) => (
     <div style={{ marginBottom: 20 }}>
       <h3 style={{ fontSize: 14, fontWeight: 700, color, marginBottom: 8, borderBottom: `2px solid ${color}`, paddingBottom: 4 }}>{title}</h3>
-      {items.map((it, i) => (
-        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
-          <span><span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 8 }}>{it.codigo}</span>{it.nombre}</span>
-          <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{fmt(it.saldo)}</span>
+      {groups.map((g: any, gi: number) => (
+        <div key={gi} style={{ marginBottom: 8 }}>
+          {g.partida !== 'Sin Clasificar' && g.partida !== title && (
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', padding: '6px 0 2px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {g.partida}
+            </div>
+          )}
+          {g.cuentas.map((it: any, i: number) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 4px 12px', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
+              <span><span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 8 }}>{it.codigo}</span>{it.nombre}</span>
+              <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{fmt(it.saldo)}</span>
+            </div>
+          ))}
+          {groups.length > 1 && g.cuentas.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 12px', fontSize: 12, fontWeight: 600, color: '#6b7280' }}>
+              <span>Subtotal {g.partida}</span>
+              <span style={{ fontFamily: 'monospace' }}>{fmt(g.subtotal)}</span>
+            </div>
+          )}
         </div>
       ))}
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontWeight: 700, fontSize: 13, borderTop: '2px solid #e5e7eb', marginTop: 4 }}>
@@ -776,6 +807,7 @@ function ReporteBalanceGeneral({ data }) {
       </div>
     </div>
   )
+
   return (
     <div className="card">
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
@@ -783,9 +815,9 @@ function ReporteBalanceGeneral({ data }) {
         <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Período: {data.periodo}</p>
         {data.cuadra ? <Badge color="green">Cuadra</Badge> : <Badge color="red">No cuadra</Badge>}
       </div>
-      <Section title="Activos" items={data.activos} total={data.total_activos} color="#166534" />
-      <Section title="Pasivos" items={data.pasivos} total={data.total_pasivos} color="#991b1b" />
-      <Section title="Patrimonio" items={data.patrimonio} total={data.total_patrimonio} color="#1e40af" />
+      <GroupedSection title="Activos" groups={data.activos} total={data.total_activos} color="#166534" />
+      <GroupedSection title="Pasivos" groups={data.pasivos} total={data.total_pasivos} color="#991b1b" />
+      <GroupedSection title="Patrimonio" groups={data.patrimonio} total={data.total_patrimonio} color="#1e40af" />
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', fontWeight: 700, fontSize: 14, borderTop: '3px double #374151', marginTop: 8 }}>
         <span>Pasivos + Patrimonio</span>
         <span style={{ fontFamily: 'monospace' }}>{fmt(data.total_pasivos + data.total_patrimonio)}</span>
@@ -796,18 +828,33 @@ function ReporteBalanceGeneral({ data }) {
 
 function ReporteEstadoResultados({ data }) {
   if (!data) return null
-  const LineItems = ({ items }) => items.map((it, i) => (
-    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 12px', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}>
-      <span><span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 8 }}>{it.codigo}</span>{it.nombre}</span>
-      <span style={{ fontFamily: 'monospace' }}>{fmt(it.monto)}</span>
+
+  const GroupedItems = ({ groups }: any) => groups.map((g: any, gi: number) => (
+    <div key={gi}>
+      {g.partida !== 'Sin Clasificar' && (
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', padding: '5px 12px 2px', textTransform: 'uppercase' }}>{g.partida}</div>
+      )}
+      {g.cuentas.map((it: any, i: number) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 12px 4px 24px', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}>
+          <span><span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 8 }}>{it.codigo}</span>{it.nombre}</span>
+          <span style={{ fontFamily: 'monospace' }}>{fmt(it.monto)}</span>
+        </div>
+      ))}
+      {groups.length > 1 && g.cuentas.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 24px', fontSize: 12, fontWeight: 600, color: '#6b7280' }}>
+          <span>Subtotal {g.partida}</span><span style={{ fontFamily: 'monospace' }}>{fmt(g.subtotal)}</span>
+        </div>
+      )}
     </div>
   ))
-  const TotalLine = ({ label, value, bold = false, border = false }) => (
+
+  const TotalLine = ({ label, value, bold = false, border = false }: any) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', fontWeight: bold ? 700 : 500, fontSize: 13, borderTop: border ? '2px solid #e5e7eb' : undefined, background: bold ? '#f9fafb' : undefined }}>
       <span>{label}</span>
       <span style={{ fontFamily: 'monospace', color: value < 0 ? '#991b1b' : '#166534' }}>{fmt(value)}</span>
     </div>
   )
+
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ textAlign: 'center', padding: '16px', borderBottom: '1px solid #e5e7eb' }}>
@@ -815,14 +862,14 @@ function ReporteEstadoResultados({ data }) {
         <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Período: {data.periodo}{data.campo_id ? ` — Campo: ${data.campo_id}` : ''}</p>
       </div>
       <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: 12, color: '#166534', textTransform: 'uppercase', background: '#f0fdf4' }}>Ingresos</div>
-      <LineItems items={data.ingresos} />
+      <GroupedItems groups={data.ingresos} />
       <TotalLine label="Total Ingresos" value={data.total_ingresos} border />
       <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: 12, color: '#854d0e', textTransform: 'uppercase', background: '#fefce8', marginTop: 8 }}>Costos</div>
-      <LineItems items={data.costos} />
+      <GroupedItems groups={data.costos} />
       <TotalLine label="Total Costos" value={data.total_costos} border />
       <TotalLine label="Utilidad Bruta" value={data.utilidad_bruta} bold border />
       <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: 12, color: '#991b1b', textTransform: 'uppercase', background: '#fef2f2', marginTop: 8 }}>Gastos</div>
-      <LineItems items={data.gastos} />
+      <GroupedItems groups={data.gastos} />
       <TotalLine label="Total Gastos" value={data.total_gastos} border />
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', fontWeight: 700, fontSize: 15, borderTop: '3px double #374151', background: '#f0fdf4' }}>
         <span>Utilidad Neta</span>
@@ -1545,12 +1592,15 @@ function TabConciliacion() {
 function TabConfig() {
   const [empresa, setEmpresa] = useState(null)
   const [reglas, setReglas] = useState([])
+  const [partidas, setPartidas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [editEmpresa, setEditEmpresa] = useState(false)
   const [formEmpresa, setFormEmpresa] = useState({})
   const [cuentas, setCuentas] = useState<any[]>([])
   const [showReglaModal, setShowReglaModal] = useState(false)
   const [editingRegla, setEditingRegla] = useState<any>(null)
+  const [showPartidaModal, setShowPartidaModal] = useState(false)
+  const [editingPartida, setEditingPartida] = useState<any>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1564,6 +1614,7 @@ function TabConfig() {
       setReglas(r.data)
       setCuentas(c.data.filter((x: any) => x.acepta_movimientos))
       if (e.data) setFormEmpresa(e.data)
+      api.get('/contabilidad/partidas').then(r => setPartidas(r.data)).catch(() => {})
     } catch { toast.error('Error al cargar configuración') }
     finally { setLoading(false) }
   }, [])
@@ -1654,6 +1705,76 @@ function TabConfig() {
         </div>
         <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>{reglas.length} regla{reglas.length !== 1 ? 's' : ''} activa{reglas.length !== 1 ? 's' : ''}</p>
       </div>
+
+      {/* ─── Partidas de Estados Financieros ─── */}
+      <div className="card" style={{ gridColumn: 'span 2', marginTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Partidas de Estados Financieros</h3>
+          <button className="btn-primary" style={{ fontSize: 11 }} onClick={() => { setEditingPartida({ nombre: '', estado: 'balance_general', clasificacion: 'activo_corriente', orden: 0 }); setShowPartidaModal(true) }}><Plus size={12} /> Nueva Partida</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {['balance_general', 'estado_resultados'].map(est => {
+            const items = partidas.filter(p => p.estado === est)
+            return (
+              <div key={est}>
+                <h4 style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', borderBottom: '2px solid #e5e7eb', paddingBottom: 4 }}>
+                  {est === 'balance_general' ? 'Balance General' : 'Estado de Resultados'}
+                </h4>
+                {items.length === 0 ? <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin partidas</p> : items.map((p: any) => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
+                    <div>
+                      <span style={{ fontWeight: 600 }}>{p.nombre}</span>
+                      <span style={{ marginLeft: 8 }}><Badge color="blue">{p.clasificacion.replace(/_/g, ' ')}</Badge></span>
+                      <span style={{ marginLeft: 6, fontSize: 10, color: '#9ca3af' }}>orden: {p.orden}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn-icon" onClick={() => { setEditingPartida(p); setShowPartidaModal(true) }}><Edit2 size={12} /></button>
+                      <button className="btn-icon" onClick={async () => { if (!confirm(`¿Eliminar partida "${p.nombre}"?`)) return; try { await api.delete(`/contabilidad/partidas/${p.id}`); toast.success('Eliminada'); load() } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') } }}><Trash2 size={12} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {showPartidaModal && editingPartida && (
+        <Modal title={editingPartida.id ? 'Editar Partida' : 'Nueva Partida'} onClose={() => setShowPartidaModal(false)} width={450}>
+          <form onSubmit={async (e: any) => {
+            e.preventDefault()
+            const payload = { nombre: editingPartida.nombre, estado: editingPartida.estado, clasificacion: editingPartida.clasificacion, orden: Number(editingPartida.orden) }
+            try {
+              if (editingPartida.id) await api.put(`/contabilidad/partidas/${editingPartida.id}`, payload)
+              else await api.post('/contabilidad/partidas', payload)
+              toast.success(editingPartida.id ? 'Actualizada' : 'Creada')
+              setShowPartidaModal(false); load()
+            } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+          }}>
+            <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
+              <div><Label>Nombre</Label><input className="input" required value={editingPartida.nombre} onChange={(e: any) => setEditingPartida({ ...editingPartida, nombre: e.target.value })} placeholder="Ej: Efectivo y Equivalentes" /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><Label>Estado Financiero</Label><select className="select" value={editingPartida.estado} onChange={(e: any) => setEditingPartida({ ...editingPartida, estado: e.target.value, clasificacion: e.target.value === 'balance_general' ? 'activo_corriente' : 'ingresos' })}>
+                  <option value="balance_general">Balance General</option>
+                  <option value="estado_resultados">Estado de Resultados</option>
+                </select></div>
+                <div><Label>Clasificación</Label><select className="select" value={editingPartida.clasificacion} onChange={(e: any) => setEditingPartida({ ...editingPartida, clasificacion: e.target.value })}>
+                  {editingPartida.estado === 'balance_general' ? (
+                    <>{['activo_corriente', 'activo_no_corriente', 'pasivo_corriente', 'pasivo_no_corriente', 'patrimonio'].map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}</>
+                  ) : (
+                    <>{['ingresos', 'costos', 'gastos'].map(c => <option key={c} value={c}>{c}</option>)}</>
+                  )}
+                </select></div>
+              </div>
+              <div><Label>Orden (menor = primero)</Label><input className="input" type="number" value={editingPartida.orden} onChange={(e: any) => setEditingPartida({ ...editingPartida, orden: e.target.value })} /></div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowPartidaModal(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary">{editingPartida.id ? 'Guardar' : 'Crear'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {showReglaModal && editingRegla && (
         <Modal title={editingRegla.id ? 'Editar Regla' : 'Nueva Regla'} onClose={() => setShowReglaModal(false)} width={500}>
