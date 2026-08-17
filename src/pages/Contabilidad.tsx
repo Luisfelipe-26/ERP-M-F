@@ -52,6 +52,7 @@ const TABS = [
   { key: 'recurrentes', label: 'Recurrentes', icon: Repeat },
   { key: 'dgii', label: 'DGII', icon: FileSpreadsheet },
   { key: 'conciliacion', label: 'Conciliación', icon: Landmark },
+  { key: 'fsv', label: 'Estados Financieros', icon: Settings },
   { key: 'config', label: 'Configuración', icon: Settings },
 ]
 
@@ -1584,6 +1585,312 @@ function TabConciliacion() {
 }
 
 
+/* ═══════════════════ TAB: FSV — Editor de Estados Financieros ═══════════════════ */
+
+function TabFSV() {
+  const [estado, setEstado] = useState<'balance_general' | 'estado_resultados'>('balance_general')
+  const [arbol, setArbol] = useState<any[]>([])
+  const [noAsignadas, setNoAsignadas] = useState<any[]>([])
+  const [allPartidas, setAllPartidas] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<any>(null)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [showModal, setShowModal] = useState(false)
+  const [editForm, setEditForm] = useState<any>(null)
+  const [filterNA, setFilterNA] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [treeRes, flatRes] = await Promise.all([
+        api.get(`/contabilidad/partidas/arbol?estado=${estado}`),
+        api.get(`/contabilidad/partidas?estado=${estado}`)
+      ])
+      setArbol(treeRes.data.arbol)
+      setNoAsignadas(treeRes.data.no_asignadas)
+      setAllPartidas(flatRes.data)
+      const ids = new Set<number>()
+      const collectIds = (nodes: any[]) => nodes.forEach(n => { ids.add(n.id); if (n.hijos) collectIds(n.hijos) })
+      collectIds(treeRes.data.arbol)
+      setExpanded(ids)
+    } catch { toast.error('Error al cargar estructura') }
+    finally { setLoading(false) }
+  }, [estado])
+
+  useEffect(() => { load(); setSelected(null) }, [load])
+
+  const toggleExpand = (id: number) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const openNew = (padreId: number | null = null) => {
+    const clasDefault = estado === 'balance_general' ? 'activo_corriente' : 'ingresos'
+    setEditForm({ nombre: '', estado, clasificacion: clasDefault, padre_id: padreId, orden: 0, invertir_signo: false, es_grupo: false })
+    setShowModal(true)
+  }
+
+  const openEdit = (node: any) => {
+    const flat = allPartidas.find(p => p.id === node.id)
+    if (flat) { setEditForm({ ...flat }); setShowModal(true) }
+  }
+
+  const deleteNode = async (node: any) => {
+    if (!confirm(`¿Eliminar "${node.nombre}"?`)) return
+    try { await api.delete(`/contabilidad/partidas/${node.id}`); toast.success('Eliminada'); if (selected?.id === node.id) setSelected(null); load() }
+    catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  const assignCuenta = async (cuentaId: number, partidaId: number) => {
+    try { await api.patch(`/contabilidad/cuentas/${cuentaId}/partida`, { partida_id: partidaId }); toast.success('Cuenta asignada'); load() }
+    catch { toast.error('Error al asignar') }
+  }
+
+  const unassignCuenta = async (cuentaId: number) => {
+    try { await api.patch(`/contabilidad/cuentas/${cuentaId}/partida`, { partida_id: null }); toast.success('Cuenta desasignada'); load() }
+    catch { toast.error('Error al desasignar') }
+  }
+
+  const clasificaciones = estado === 'balance_general'
+    ? ['activo_corriente', 'activo_no_corriente', 'pasivo_corriente', 'pasivo_no_corriente', 'patrimonio']
+    : ['ingresos', 'costos', 'gastos']
+
+  const renderNode = (node: any, depth: number = 0): any => {
+    const isExpanded = expanded.has(node.id)
+    const isSelected = selected?.id === node.id
+    const hasChildren = node.hijos && node.hijos.length > 0
+    const cuentaCount = (node.cuentas?.length || 0)
+    const childCount = (node.hijos?.length || 0)
+
+    return (
+      <div key={node.id}>
+        <div
+          onClick={() => setSelected(node)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: `5px 8px 5px ${12 + depth * 20}px`,
+            cursor: 'pointer', fontSize: 13,
+            background: isSelected ? '#dbeafe' : 'transparent',
+            borderLeft: isSelected ? '3px solid #2563eb' : '3px solid transparent',
+            borderBottom: '1px solid #f3f4f6',
+            transition: 'background 0.1s',
+          }}
+          onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = '#f9fafb' }}
+          onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <span onClick={e => { e.stopPropagation(); toggleExpand(node.id) }} style={{ cursor: 'pointer', width: 16, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+            {(hasChildren || node.es_grupo) ? (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : <span style={{ width: 14 }} />}
+          </span>
+          <span style={{ fontWeight: node.es_grupo ? 700 : 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {node.nombre}
+          </span>
+          <span style={{ fontSize: 10, color: '#9ca3af', flexShrink: 0 }}>
+            {cuentaCount > 0 && <Badge color="blue">{cuentaCount}</Badge>}
+            {childCount > 0 && <span style={{ marginLeft: 4 }}><Badge color="gray">{childCount} sub</Badge></span>}
+          </span>
+        </div>
+        {isExpanded && hasChildren && node.hijos.map((h: any) => renderNode(h, depth + 1))}
+      </div>
+    )
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
+
+  const filteredNA = noAsignadas.filter(c =>
+    !filterNA || c.codigo.includes(filterNA) || c.nombre.toLowerCase().includes(filterNA.toLowerCase())
+  )
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Versión de Estado Financiero (FSV)</h3>
+          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 8, padding: 2 }}>
+            {(['balance_general', 'estado_resultados'] as const).map(e => (
+              <button key={e} onClick={() => setEstado(e)} style={{
+                padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                background: estado === e ? '#fff' : 'transparent', color: estado === e ? '#111827' : '#6b7280',
+                boxShadow: estado === e ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.15s',
+              }}>
+                {e === 'balance_general' ? 'Balance General' : 'Estado de Resultados'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => load()}><RefreshCw size={12} /> Recargar</button>
+          <button className="btn-primary" style={{ fontSize: 11 }} onClick={() => openNew(null)}><Plus size={12} /> Nodo Raíz</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, minHeight: 500 }}>
+        {/* LEFT: Tree */}
+        <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '10px 12px', borderBottom: '2px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>
+              Estructura del {estado === 'balance_general' ? 'Balance General' : 'Estado de Resultados'}
+            </span>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>{allPartidas.length} nodos</span>
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            {arbol.length === 0 ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+                Sin estructura definida. Crea nodos raíz para empezar.
+              </div>
+            ) : arbol.map(n => renderNode(n))}
+          </div>
+          {noAsignadas.length > 0 && (
+            <div style={{ padding: '8px 12px', borderTop: '2px solid #fef9c3', background: '#fffbeb', fontSize: 12, color: '#92400e' }}>
+              ⚠ {noAsignadas.length} cuenta{noAsignadas.length > 1 ? 's' : ''} sin asignar a partida
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Detail panel */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Node detail */}
+          {selected ? (
+            <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{selected.nombre}</h4>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <Badge color="blue">{selected.clasificacion?.replace(/_/g, ' ')}</Badge>
+                    {selected.es_grupo && <Badge color="gray">Grupo</Badge>}
+                    {selected.invertir_signo && <Badge color="yellow">± Signo</Badge>}
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>Orden: {selected.orden}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => openNew(selected.id)}><Plus size={11} /> Hijo</button>
+                  <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => openEdit(selected)}><Edit2 size={11} /> Editar</button>
+                  <button className="btn-secondary" style={{ fontSize: 11, color: '#991b1b' }} onClick={() => deleteNode(selected)}><Trash2 size={11} /></button>
+                </div>
+              </div>
+
+              {/* Cuentas asignadas */}
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase' }}>
+                Cuentas asignadas ({selected.cuentas?.length || 0})
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', minHeight: 0, border: '1px solid #e5e7eb', borderRadius: 8 }}>
+                {(!selected.cuentas || selected.cuentas.length === 0) ? (
+                  <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
+                    {selected.es_grupo ? 'Nodo grupo — las cuentas se asignan a nodos hijos' : 'Sin cuentas asignadas. Arrastra desde "Sin asignar" o usa el botón.'}
+                  </div>
+                ) : selected.cuentas.map((c: any) => (
+                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 10px', borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
+                    <span>
+                      <span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 6 }}>{c.codigo}</span>
+                      {c.nombre}
+                      <Badge color="gray" style={{ marginLeft: 6 }}>{c.tipo}</Badge>
+                    </span>
+                    <button className="btn-icon" title="Desasignar" onClick={() => unassignCuenta(c.id)} style={{ color: '#991b1b' }}><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="card" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 13 }}>
+              Selecciona un nodo del árbol para ver sus propiedades y cuentas asignadas
+            </div>
+          )}
+
+          {/* Unassigned accounts */}
+          <div className="card" style={{ maxHeight: 280, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#92400e' }}>
+                Cuentas sin asignar ({noAsignadas.length})
+              </h4>
+              {noAsignadas.length > 5 && (
+                <input className="input" placeholder="Filtrar..." value={filterNA} onChange={e => setFilterNA(e.target.value)}
+                  style={{ width: 160, fontSize: 11, padding: '4px 8px' }} />
+              )}
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+              {filteredNA.length === 0 ? (
+                <div style={{ padding: 16, textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
+                  {noAsignadas.length === 0 ? 'Todas las cuentas están asignadas' : 'Sin resultados'}
+                </div>
+              ) : filteredNA.map((c: any) => (
+                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
+                  <span>
+                    <span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 6 }}>{c.codigo}</span>
+                    {c.nombre}
+                    <Badge color="gray" style={{ marginLeft: 6 }}>{c.tipo}</Badge>
+                  </span>
+                  {selected && !selected.es_grupo && (
+                    <button className="btn-secondary" style={{ fontSize: 10, padding: '2px 8px' }}
+                      onClick={() => assignCuenta(c.id, selected.id)}>
+                      <Plus size={10} /> Asignar
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal crear/editar nodo */}
+      {showModal && editForm && (
+        <Modal title={editForm.id ? 'Editar Nodo' : 'Nuevo Nodo'} onClose={() => setShowModal(false)} width={500}>
+          <form onSubmit={async (e: any) => {
+            e.preventDefault()
+            const payload = {
+              nombre: editForm.nombre, estado: editForm.estado, clasificacion: editForm.clasificacion,
+              orden: Number(editForm.orden), padre_id: editForm.padre_id || null,
+              invertir_signo: !!editForm.invertir_signo, es_grupo: !!editForm.es_grupo
+            }
+            try {
+              if (editForm.id) await api.put(`/contabilidad/partidas/${editForm.id}`, payload)
+              else await api.post('/contabilidad/partidas', payload)
+              toast.success(editForm.id ? 'Nodo actualizado' : 'Nodo creado')
+              setShowModal(false); load()
+            } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+          }}>
+            <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
+              <div><Label>Nombre</Label><input className="input" required value={editForm.nombre} onChange={e => setEditForm({ ...editForm, nombre: e.target.value })} placeholder="Ej: Activos Corrientes, Efectivo y Equivalentes..." /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><Label>Clasificación</Label><select className="select" value={editForm.clasificacion} onChange={e => setEditForm({ ...editForm, clasificacion: e.target.value })}>
+                  {clasificaciones.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+                </select></div>
+                <div><Label>Nodo padre</Label><select className="select" value={editForm.padre_id || ''} onChange={e => setEditForm({ ...editForm, padre_id: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">(Raíz)</option>
+                  {allPartidas.filter(p => p.id !== editForm.id).map(p => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select></div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><Label>Orden (posición)</Label><input className="input" type="number" value={editForm.orden} onChange={e => setEditForm({ ...editForm, orden: e.target.value })} /></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 22 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!editForm.es_grupo} onChange={e => setEditForm({ ...editForm, es_grupo: e.target.checked })} />
+                    Es grupo (agrupa nodos hijos)
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!editForm.invertir_signo} onChange={e => setEditForm({ ...editForm, invertir_signo: e.target.checked })} />
+                    Invertir signo
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary">{editForm.id ? 'Guardar' : 'Crear'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+
 function TabConfig() {
   const [empresa, setEmpresa] = useState(null)
   const [reglas, setReglas] = useState([])
@@ -1861,6 +2168,7 @@ export default function Contabilidad() {
       {tab === 'recurrentes' && <TabRecurrentes />}
       {tab === 'dgii' && <TabDGII />}
       {tab === 'conciliacion' && <TabConciliacion />}
+      {tab === 'fsv' && <TabFSV />}
       {tab === 'config' && <TabConfig />}
     </div>
   )
