@@ -1654,6 +1654,16 @@ function TabFSV() {
     catch { toast.error('Error al desasignar') }
   }
 
+  const seedEstructura = async () => {
+    const yaExiste = allPartidas.length > 0
+    if (yaExiste && !confirm('Ya existe una estructura. ¿Reemplazarla por la estándar? Se perderán los nodos actuales y se reasignarán las cuentas.')) return
+    try {
+      const r = await api.post(`/contabilidad/partidas/seed-estructura?estado=${estado}&reemplazar=${yaExiste}`)
+      toast.success(`Estructura creada: ${r.data.nodos_creados} nodos, ${r.data.cuentas_asignadas} cuentas asignadas`)
+      load()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al generar estructura') }
+  }
+
   const clasificaciones = estado === 'balance_general'
     ? ['activo_corriente', 'activo_no_corriente', 'pasivo_corriente', 'pasivo_no_corriente', 'patrimonio']
     : ['ingresos', 'costos', 'gastos']
@@ -1723,6 +1733,7 @@ function TabFSV() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => load()}><RefreshCw size={12} /> Recargar</button>
+          <button className="btn-secondary" style={{ fontSize: 11 }} onClick={seedEstructura}><FileText size={12} /> Estructura estándar</button>
           <button className="btn-primary" style={{ fontSize: 11 }} onClick={() => openNew(null)}><Plus size={12} /> Nodo Raíz</button>
         </div>
       </div>
@@ -1739,7 +1750,13 @@ function TabFSV() {
           <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             {arbol.length === 0 ? (
               <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
-                Sin estructura definida. Crea nodos raíz para empezar.
+                <p style={{ marginBottom: 16 }}>Sin estructura definida.</p>
+                <button className="btn-primary" style={{ fontSize: 12 }} onClick={seedEstructura}>
+                  <FileText size={13} /> Generar estructura estándar
+                </button>
+                <p style={{ marginTop: 12, fontSize: 11 }}>
+                  Crea la estructura completa del {estado === 'balance_general' ? 'Balance General' : 'Estado de Resultados'} y asigna las cuentas del catálogo automáticamente.
+                </p>
               </div>
             ) : arbol.map(n => renderNode(n))}
           </div>
