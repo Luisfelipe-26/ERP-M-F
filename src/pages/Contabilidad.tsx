@@ -150,6 +150,15 @@ function TabCuentas() {
     catch (err) { toast.error(err.response?.data?.detail || 'Error') }
   }
 
+  async function cargarCatalogo() {
+    if (!confirm('¿Cargar el catálogo de cuentas estándar? Solo agrega las cuentas que falten (no duplica ni borra).')) return
+    try {
+      const r = await api.post('/contabilidad/cuentas/seed-catalogo')
+      toast.success(`Catálogo cargado: ${r.data.creadas} cuentas nuevas (total ${r.data.total})`)
+      load()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al cargar catálogo') }
+  }
+
   const filtered = buscar
     ? cuentas.filter(c => c.codigo.includes(buscar) || c.nombre.toLowerCase().includes(buscar.toLowerCase()))
     : null
@@ -198,6 +207,7 @@ function TabCuentas() {
         <button className="btn-secondary" onClick={expandAll} title="Expandir todo"><ChevronDown size={14} /></button>
         <button className="btn-secondary" onClick={() => setExpandidas(new Set())} title="Colapsar todo"><ChevronRight size={14} /></button>
         <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
+        {cuentas.length > 0 && <button className="btn-secondary" onClick={cargarCatalogo} title="Cargar catálogo estándar (idempotente)"><Download size={14} /> Catálogo</button>}
         <button className="btn-primary" onClick={openNew}><Plus size={14} /> Nueva Cuenta</button>
       </div>
 
@@ -212,6 +222,12 @@ function TabCuentas() {
         </div>
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
+        ) : cuentas.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+            <p style={{ marginBottom: 16 }}>No hay cuentas contables cargadas.</p>
+            <button className="btn-primary" onClick={cargarCatalogo}><Download size={13} /> Cargar catálogo estándar</button>
+            <p style={{ marginTop: 12, fontSize: 11 }}>Crea el plan de cuentas estándar para finca de aguacates (93 cuentas).</p>
+          </div>
         ) : filtered ? (
           filtered.map(c => (
             <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid #f3f4f6' }}>
