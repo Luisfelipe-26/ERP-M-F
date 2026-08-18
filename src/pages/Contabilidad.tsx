@@ -42,6 +42,16 @@ const Badge = ({ color, children }) => {
 
 const fmt = (n) => Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Formato contable: negativos entre paréntesis. Devuelve {texto, negativo}.
+const fmtCont = (n) => {
+  const v = Number(n || 0)
+  return { texto: v < 0 ? `(${fmt(Math.abs(v))})` : fmt(v), negativo: v < 0 }
+}
+const Monto = ({ v, bold = false }: any) => {
+  const f = fmtCont(v)
+  return <span style={{ fontFamily: 'monospace', fontWeight: bold ? 700 : 500, color: f.negativo ? '#991b1b' : undefined }}>{f.texto}</span>
+}
+
 const TABS = [
   { key: 'cuentas', label: 'Plan de Cuentas', icon: BookOpen },
   { key: 'asientos', label: 'Asientos', icon: FileText },
@@ -787,7 +797,7 @@ function TreeNode({ node, indent = 0, valKey = 'saldo' }: any) {
       {!node.es_grupo && node.cuentas.map((it: any, i: number) => (
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: `3px 0 3px ${pad + 8}px`, borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
           <span><span style={{ fontFamily: 'monospace', color: '#6b7280', marginRight: 8 }}>{it.codigo}</span>{it.nombre}</span>
-          <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{fmt(it[valKey])}</span>
+          <Monto v={it[valKey]} />
         </div>
       ))}
       {node.hijos && node.hijos.map((h: any, hi: number) => (
@@ -796,7 +806,7 @@ function TreeNode({ node, indent = 0, valKey = 'saldo' }: any) {
       {(node.hijos?.length > 0 || (node.cuentas.length > 0 && node.es_grupo)) && (
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: `3px ${pad}px`, fontSize: 12, fontWeight: 600, color: '#6b7280' }}>
           <span>Subtotal {node.partida}</span>
-          <span style={{ fontFamily: 'monospace' }}>{fmt(node.subtotal)}</span>
+          <Monto v={node.subtotal} />
         </div>
       )}
     </div>
