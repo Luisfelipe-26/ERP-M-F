@@ -8,7 +8,7 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import api from '../api'
 
-const nav = [
+const nav: any[] = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/ordenes', icon: ClipboardList, label: 'Órdenes de Trabajo' },
   { to: '/costos', icon: TrendingUp, label: 'Costos por Campo' },
