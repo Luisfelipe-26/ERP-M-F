@@ -323,6 +323,9 @@ function TabAsientos() {
   const [data, setData] = useState({ total: 0, items: [] })
   const [loading, setLoading] = useState(true)
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [filtroDesde, setFiltroDesde] = useState('')
+  const [filtroHasta, setFiltroHasta] = useState('')
+  const [filtroOrigen, setFiltroOrigen] = useState('')
   const [page, setPage] = useState(0)
   const pageSize = 25
   const [modalNew, setModalNew] = useState(false)
@@ -334,13 +337,16 @@ function TabAsientos() {
     try {
       const params = new URLSearchParams()
       if (filtroEstado) params.set('estado', filtroEstado)
+      if (filtroOrigen) params.set('origen', filtroOrigen)
+      if (filtroDesde) params.set('desde', filtroDesde)
+      if (filtroHasta) params.set('hasta', filtroHasta)
       params.set('limit', String(pageSize))
       params.set('skip', String(page * pageSize))
       const { data: d } = await api.get(`/contabilidad/asientos?${params}`)
       setData(d)
     } catch { toast.error('Error al cargar asientos') }
     finally { setLoading(false) }
-  }, [filtroEstado, page])
+  }, [filtroEstado, filtroOrigen, filtroDesde, filtroHasta, page])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -361,13 +367,27 @@ function TabAsientos() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
-        <select className="select" style={{ width: 160 }} value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPage(0) }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select className="select" style={{ width: 150 }} value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPage(0) }}>
           <option value="">Todos los estados</option>
           <option value="borrador">Borrador</option>
           <option value="contabilizado">Contabilizado</option>
           <option value="anulado">Anulado</option>
         </select>
+        <select className="select" style={{ width: 130 }} value={filtroOrigen} onChange={e => { setFiltroOrigen(e.target.value); setPage(0) }}>
+          <option value="">Todo origen</option>
+          <option value="MAN">Manual</option>
+          <option value="CXP">CxP</option>
+          <option value="PAG">Pago</option>
+          <option value="VTA">Venta</option>
+          <option value="COB">Cobro</option>
+          <option value="CIE">Cierre</option>
+        </select>
+        <input className="input" type="date" style={{ width: 140 }} value={filtroDesde} onChange={e => { setFiltroDesde(e.target.value); setPage(0) }} title="Desde" />
+        <input className="input" type="date" style={{ width: 140 }} value={filtroHasta} onChange={e => { setFiltroHasta(e.target.value); setPage(0) }} title="Hasta" />
+        {(filtroEstado || filtroOrigen || filtroDesde || filtroHasta) && (
+          <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => { setFiltroEstado(''); setFiltroOrigen(''); setFiltroDesde(''); setFiltroHasta(''); setPage(0) }}><X size={12} /> Limpiar</button>
+        )}
         <div style={{ flex: 1 }} />
         <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
         <button className="btn-primary" onClick={() => setModalNew(true)}><Plus size={14} /> Nuevo Asiento</button>
@@ -380,6 +400,7 @@ function TabAsientos() {
               <th>Número</th>
               <th>Fecha</th>
               <th>Descripción</th>
+              <th>Origen</th>
               <th style={{ textAlign: 'right' }}>Debe</th>
               <th style={{ textAlign: 'right' }}>Haber</th>
               <th>Estado</th>
@@ -388,16 +409,17 @@ function TabAsientos() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
             ) : data.items.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin asientos</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin asientos</td></tr>
             ) : data.items.map(a => (
               <tr key={a.id} style={{ cursor: 'pointer' }} onClick={() => setModalVer(a)}
                 onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
                 onMouseLeave={e => e.currentTarget.style.background = ''}>
                 <td style={{ fontWeight: 700, fontFamily: 'monospace', color: '#166534' }}>{a.numero}</td>
                 <td style={{ fontSize: 12 }}>{a.fecha}</td>
-                <td style={{ fontSize: 12, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.descripcion || '—'}</td>
+                <td style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.descripcion || '—'}</td>
+                <td><Badge color={a.tipo === 'automatico' ? 'blue' : 'gray'}>{a.origen || a.tipo}</Badge></td>
                 <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(a.total_debe)}</td>
                 <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(a.total_haber)}</td>
                 <td>
@@ -701,10 +723,15 @@ function TabReportes() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [cuentaLM, setCuentaLM] = useState('')
+  const [lmDesde, setLmDesde] = useState('')
+  const [lmHasta, setLmHasta] = useState('')
+  const [campoId, setCampoId] = useState('')
   const [cuentas, setCuentas] = useState([])
+  const [campos, setCampos] = useState<any[]>([])
 
   useEffect(() => {
     api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => {})
+    api.get('/campos').then(r => setCampos(r.data)).catch(() => {})
   }, [])
 
   async function generar() {
@@ -714,8 +741,15 @@ function TabReportes() {
       let url = ''
       if (reporte === 'balance-comprobacion') url = `/contabilidad/balance-comprobacion?anio=${anio}&mes=${mes}`
       else if (reporte === 'balance-general') url = `/contabilidad/balance-general?anio=${anio}&mes=${mes}`
-      else if (reporte === 'estado-resultados') url = `/contabilidad/estado-resultados?anio=${anio}&mes=${mes}`
-      else if (reporte === 'libro-mayor') url = `/contabilidad/libro-mayor?cuenta_id=${cuentaLM}&limit=200`
+      else if (reporte === 'estado-resultados') {
+        url = `/contabilidad/estado-resultados?anio=${anio}&mes=${mes}`
+        if (campoId) url += `&campo_id=${campoId}`
+      }
+      else if (reporte === 'libro-mayor') {
+        url = `/contabilidad/libro-mayor?cuenta_id=${cuentaLM}&limit=500`
+        if (lmDesde) url += `&desde=${lmDesde}`
+        if (lmHasta) url += `&hasta=${lmHasta}`
+      }
       const { data: d } = await api.get(url)
       setData(d)
     } catch (err) { toast.error(err.response?.data?.detail || 'Error al generar reporte') }
@@ -741,11 +775,21 @@ function TabReportes() {
             </select>
           </>
         )}
-        {reporte === 'libro-mayor' && (
-          <select className="select" style={{ width: 280 }} value={cuentaLM} onChange={e => setCuentaLM(e.target.value)}>
-            <option value="">Seleccionar cuenta...</option>
-            {cuentas.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+        {reporte === 'estado-resultados' && campos.length > 0 && (
+          <select className="select" style={{ width: 180 }} value={campoId} onChange={e => setCampoId(e.target.value)}>
+            <option value="">Todos los campos</option>
+            {campos.map((c: any) => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}
           </select>
+        )}
+        {reporte === 'libro-mayor' && (
+          <>
+            <select className="select" style={{ width: 280 }} value={cuentaLM} onChange={e => setCuentaLM(e.target.value)}>
+              <option value="">Seleccionar cuenta...</option>
+              {cuentas.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+            </select>
+            <input className="input" type="date" style={{ width: 140 }} value={lmDesde} onChange={e => setLmDesde(e.target.value)} title="Desde" />
+            <input className="input" type="date" style={{ width: 140 }} value={lmHasta} onChange={e => setLmHasta(e.target.value)} title="Hasta" />
+          </>
         )}
         <button className="btn-primary" onClick={generar} disabled={loading || (reporte === 'libro-mayor' && !cuentaLM)}>
           {loading ? 'Generando...' : 'Generar'}
@@ -1937,15 +1981,12 @@ function TabFSV() {
 function TabConfig() {
   const [empresa, setEmpresa] = useState(null)
   const [reglas, setReglas] = useState([])
-  const [partidas, setPartidas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [editEmpresa, setEditEmpresa] = useState(false)
   const [formEmpresa, setFormEmpresa] = useState({})
   const [cuentas, setCuentas] = useState<any[]>([])
   const [showReglaModal, setShowReglaModal] = useState(false)
   const [editingRegla, setEditingRegla] = useState<any>(null)
-  const [showPartidaModal, setShowPartidaModal] = useState(false)
-  const [editingPartida, setEditingPartida] = useState<any>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1959,7 +2000,6 @@ function TabConfig() {
       setReglas(r.data)
       setCuentas(c.data.filter((x: any) => x.acepta_movimientos))
       if (e.data) setFormEmpresa(e.data)
-      api.get('/contabilidad/partidas').then(r => setPartidas(r.data)).catch(() => {})
     } catch { toast.error('Error al cargar configuración') }
     finally { setLoading(false) }
   }, [])
@@ -2051,102 +2091,6 @@ function TabConfig() {
         <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>{reglas.length} regla{reglas.length !== 1 ? 's' : ''} activa{reglas.length !== 1 ? 's' : ''}</p>
       </div>
 
-      {/* ─── Partidas de Estados Financieros (tree) ─── */}
-      <div className="card" style={{ gridColumn: 'span 2', marginTop: 4 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Partidas de Estados Financieros</h3>
-          <button className="btn-primary" style={{ fontSize: 11 }} onClick={() => { setEditingPartida({ nombre: '', estado: 'balance_general', clasificacion: 'activo_corriente', orden: 0, padre_id: null, invertir_signo: false, es_grupo: false }); setShowPartidaModal(true) }}><Plus size={12} /> Nueva Partida</button>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {['balance_general', 'estado_resultados'].map(est => {
-            const items = partidas.filter(p => p.estado === est)
-            const roots = items.filter(p => !p.padre_id)
-            const renderTree = (parentId: number | null, depth: number): any =>
-              items.filter(p => (p.padre_id || null) === parentId)
-                .sort((a, b) => (a.orden || 0) - (b.orden || 0))
-                .map((p: any) => (
-                  <div key={p.id}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: `4px 0 4px ${depth * 20}px`, borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
-                      <div>
-                        <span style={{ fontWeight: p.es_grupo ? 700 : 500 }}>{p.es_grupo ? '📁 ' : '📄 '}{p.nombre}</span>
-                        <Badge color="blue" style={{ marginLeft: 6 }}>{p.clasificacion.replace(/_/g, ' ')}</Badge>
-                        {p.invertir_signo && <Badge color="yellow" style={{ marginLeft: 4 }}>±</Badge>}
-                        <span style={{ marginLeft: 6, fontSize: 10, color: '#9ca3af' }}>#{p.orden}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                        <button className="btn-icon" onClick={() => { setEditingPartida({ ...p }); setShowPartidaModal(true) }}><Edit2 size={12} /></button>
-                        <button className="btn-icon" onClick={async () => { if (!confirm(`¿Eliminar "${p.nombre}"?`)) return; try { await api.delete(`/contabilidad/partidas/${p.id}`); toast.success('Eliminada'); load() } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') } }}><Trash2 size={12} /></button>
-                      </div>
-                    </div>
-                    {renderTree(p.id, depth + 1)}
-                  </div>
-                ))
-            return (
-              <div key={est}>
-                <h4 style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', borderBottom: '2px solid #e5e7eb', paddingBottom: 4 }}>
-                  {est === 'balance_general' ? 'Balance General' : 'Estado de Resultados'}
-                </h4>
-                {items.length === 0 ? <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin partidas</p> : renderTree(null, 0)}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {showPartidaModal && editingPartida && (
-        <Modal title={editingPartida.id ? 'Editar Partida' : 'Nueva Partida'} onClose={() => setShowPartidaModal(false)} width={500}>
-          <form onSubmit={async (e: any) => {
-            e.preventDefault()
-            const payload = { nombre: editingPartida.nombre, estado: editingPartida.estado, clasificacion: editingPartida.clasificacion, orden: Number(editingPartida.orden), padre_id: editingPartida.padre_id || null, invertir_signo: !!editingPartida.invertir_signo, es_grupo: !!editingPartida.es_grupo }
-            try {
-              if (editingPartida.id) await api.put(`/contabilidad/partidas/${editingPartida.id}`, payload)
-              else await api.post('/contabilidad/partidas', payload)
-              toast.success(editingPartida.id ? 'Actualizada' : 'Creada')
-              setShowPartidaModal(false); load()
-            } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
-          }}>
-            <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
-              <div><Label>Nombre</Label><input className="input" required value={editingPartida.nombre} onChange={(e: any) => setEditingPartida({ ...editingPartida, nombre: e.target.value })} placeholder="Ej: Efectivo y Equivalentes" /></div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><Label>Estado Financiero</Label><select className="select" value={editingPartida.estado} onChange={(e: any) => setEditingPartida({ ...editingPartida, estado: e.target.value, clasificacion: e.target.value === 'balance_general' ? 'activo_corriente' : 'ingresos', padre_id: null })}>
-                  <option value="balance_general">Balance General</option>
-                  <option value="estado_resultados">Estado de Resultados</option>
-                </select></div>
-                <div><Label>Clasificacion</Label><select className="select" value={editingPartida.clasificacion} onChange={(e: any) => setEditingPartida({ ...editingPartida, clasificacion: e.target.value })}>
-                  {editingPartida.estado === 'balance_general' ? (
-                    <>{['activo_corriente', 'activo_no_corriente', 'pasivo_corriente', 'pasivo_no_corriente', 'patrimonio'].map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}</>
-                  ) : (
-                    <>{['ingresos', 'costos', 'gastos'].map(c => <option key={c} value={c}>{c}</option>)}</>
-                  )}
-                </select></div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><Label>Nodo padre</Label><select className="select" value={editingPartida.padre_id || ''} onChange={(e: any) => setEditingPartida({ ...editingPartida, padre_id: e.target.value ? Number(e.target.value) : null })}>
-                  <option value="">(Raiz - sin padre)</option>
-                  {partidas.filter(p => p.estado === editingPartida.estado && p.id !== editingPartida.id).map((p: any) => (
-                    <option key={p.id} value={p.id}>{p.nombre}</option>
-                  ))}
-                </select></div>
-                <div><Label>Orden</Label><input className="input" type="number" value={editingPartida.orden} onChange={(e: any) => setEditingPartida({ ...editingPartida, orden: e.target.value })} /></div>
-              </div>
-              <div style={{ display: 'flex', gap: 20 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={!!editingPartida.es_grupo} onChange={(e: any) => setEditingPartida({ ...editingPartida, es_grupo: e.target.checked })} />
-                  Es grupo (solo agrupa, no tiene cuentas)
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={!!editingPartida.invertir_signo} onChange={(e: any) => setEditingPartida({ ...editingPartida, invertir_signo: e.target.checked })} />
-                  Invertir signo (pasivos, ingresos, patrimonio)
-                </label>
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowPartidaModal(false)}>Cancelar</button>
-              <button type="submit" className="btn-primary">{editingPartida.id ? 'Guardar' : 'Crear'}</button>
-            </div>
-          </form>
-        </Modal>
-      )}
 
       {showReglaModal && editingRegla && (
         <Modal title={editingRegla.id ? 'Editar Regla' : 'Nueva Regla'} onClose={() => setShowReglaModal(false)} width={500}>
@@ -2184,22 +2128,24 @@ export default function Contabilidad() {
         <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>Plan de cuentas, asientos contables, períodos y reportes financieros</p>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, borderBottom: '2px solid #e5e7eb', marginBottom: 20 }}>
-        {TABS.map(t => (
-          <button key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px',
-              background: 'none', border: 'none', cursor: 'pointer',
-              borderBottom: tab === t.key ? '2px solid #166534' : '2px solid transparent',
-              marginBottom: -2, fontWeight: tab === t.key ? 700 : 400,
-              color: tab === t.key ? '#166534' : '#6b7280', fontSize: 13,
-              transition: 'all 0.15s',
-            }}>
-            <t.icon size={15} />
-            {t.label}
-          </button>
-        ))}
+      <div style={{ overflowX: 'auto', borderBottom: '2px solid #e5e7eb', marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 2, minWidth: 'max-content' }}>
+          {TABS.map(t => (
+            <button key={t.key}
+              onClick={() => setTab(t.key)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '10px 14px',
+                background: 'none', border: 'none', cursor: 'pointer',
+                borderBottom: tab === t.key ? '2px solid #166534' : '2px solid transparent',
+                marginBottom: -2, fontWeight: tab === t.key ? 700 : 400,
+                color: tab === t.key ? '#166534' : '#6b7280', fontSize: 13,
+                transition: 'all 0.15s', whiteSpace: 'nowrap',
+              }}>
+              <t.icon size={14} />
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'cuentas' && <TabCuentas />}
