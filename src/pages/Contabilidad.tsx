@@ -67,6 +67,7 @@ const TABS = [
   { key: 'activos', label: 'Activos Fijos', icon: Package },
   { key: 'fsv', label: 'Estados Financieros', icon: Settings },
   { key: 'dimensiones', label: 'Dimensiones', icon: Filter },
+  { key: 'trazabilidad', label: 'Trazabilidad', icon: Eye },
   { key: 'config', label: 'Configuración', icon: Settings },
 ]
 
@@ -2655,6 +2656,161 @@ function TabDimensiones() {
   )
 }
 
+/* ═══════════════════ TRAZABILIDAD ═══════════════════ */
+
+const ORIGEN_OPTIONS = [
+  { value: '', label: 'Todos' },
+  { value: 'OT', label: 'Orden de Trabajo' },
+  { value: 'OC', label: 'Orden de Compra' },
+  { value: 'GR', label: 'Entrada Mercancía' },
+  { value: 'GI', label: 'Salida Mercancía' },
+  { value: 'AJ', label: 'Ajuste Inventario' },
+  { value: 'NOM', label: 'Nómina' },
+  { value: 'CXP', label: 'Cuenta por Pagar' },
+  { value: 'PAG', label: 'Pago' },
+  { value: 'VTA', label: 'Venta/CxC' },
+  { value: 'COB', label: 'Cobro' },
+  { value: 'DEP', label: 'Depreciación' },
+]
+
+function TabTrazabilidad() {
+  const [items, setItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [filtroOrigen, setFiltroOrigen] = useState('')
+  const [filtroRef, setFiltroRef] = useState('')
+  const [expanded, setExpanded] = useState<number | null>(null)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params: any = {}
+      if (filtroOrigen) params.origen = filtroOrigen
+      if (filtroRef) params.referencia = filtroRef
+      const res = await api.get('/contabilidad/trazabilidad', { params })
+      setItems(res.data.items || [])
+    } catch { toast.error('Error cargando trazabilidad') }
+    finally { setLoading(false) }
+  }, [filtroOrigen, filtroRef])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const origenColor = (o: string) => {
+    const map: Record<string, string> = {
+      OT: 'blue', OC: 'yellow', GR: 'green', GI: 'red', AJ: 'yellow',
+      NOM: 'blue', CXP: 'red', PAG: 'red', VTA: 'green', COB: 'green', DEP: 'gray',
+    }
+    return map[o] || 'gray'
+  }
+
+  return (
+    <div>
+      <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
+        Rastreo completo de documentos ↔ asientos contables. Vea qué generó cada asiento y navegue al documento fuente.
+      </p>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select className="input" style={{ width: 180, fontSize: 12 }} value={filtroOrigen} onChange={e => setFiltroOrigen(e.target.value)}>
+          {ORIGEN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 300 }}>
+          <Search size={14} style={{ position: 'absolute', left: 8, top: 9, color: '#9ca3af' }} />
+          <input className="input" placeholder="Buscar referencia..." style={{ paddingLeft: 28, fontSize: 12 }}
+            value={filtroRef} onChange={e => setFiltroRef(e.target.value)} />
+        </div>
+        <button className="btn-secondary" onClick={cargar} style={{ fontSize: 11, padding: '6px 12px' }}>
+          <RefreshCw size={12} /> Actualizar
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
+      ) : items.length === 0 ? (
+        <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>No se encontraron asientos automáticos</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {items.map(item => (
+            <div key={item.asiento_id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div
+                onClick={() => setExpanded(expanded === item.asiento_id ? null : item.asiento_id)}
+                style={{ padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, background: expanded === item.asiento_id ? '#f9fafb' : 'white' }}
+              >
+                {expanded === item.asiento_id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                <Badge color={origenColor(item.origen)}>{item.origen}</Badge>
+                <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#2563eb' }}>{item.asiento_numero}</span>
+                <span style={{ fontSize: 12, color: '#374151', flex: 1 }}>{item.descripcion}</span>
+                <span style={{ fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap' }}>{item.fecha}</span>
+                <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600 }}>RD$ {fmt(item.total_debe)}</span>
+              </div>
+
+              {expanded === item.asiento_id && (
+                <div style={{ borderTop: '1px solid #e5e7eb', padding: '12px 16px', background: '#fafbfc' }}>
+                  <div style={{ display: 'flex', gap: 20, marginBottom: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <span style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase', fontWeight: 600 }}>Origen</span>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{item.origen_label}</div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase', fontWeight: 600 }}>Referencia</span>
+                      <div style={{ fontSize: 13, fontFamily: 'monospace' }}>{item.referencia_id || '—'}</div>
+                    </div>
+                    {item.documento && (
+                      <div>
+                        <span style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase', fontWeight: 600 }}>Documento</span>
+                        <div style={{ fontSize: 13 }}>
+                          {item.documento.tipo === 'OT' && `OT #${item.documento.id} — ${item.documento.actividad} (${item.documento.estado})`}
+                          {item.documento.tipo === 'OC' && `${item.documento.id} — ${item.documento.proveedor} (${item.documento.estado})`}
+                          {['GR','GI','AJ'].includes(item.documento.tipo) && `${item.documento.num_documento} — ${item.documento.producto_nombre} (${item.documento.cantidad} uds)`}
+                          {item.documento.tipo === 'NOM' && `Nómina ${item.documento.fecha_inicio} → ${item.documento.fecha_fin} (${item.documento.estado})`}
+                          {item.documento.tipo === 'CXP' && `${item.documento.numero} — ${item.documento.proveedor} (${item.documento.estado})`}
+                          {item.documento.tipo === 'PAG' && `${item.documento.numero} — RD$ ${fmt(item.documento.monto)}`}
+                          {item.documento.tipo === 'COB' && `${item.documento.numero} — RD$ ${fmt(item.documento.monto)}`}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: '#f3f4f6' }}>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Cuenta</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Descripción</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Dimensiones</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Debe</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Haber</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {item.lineas.map((l: any, i: number) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                          <td style={{ padding: '6px 8px' }}>
+                            <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{l.cuenta_codigo}</span>
+                            <span style={{ marginLeft: 6, color: '#6b7280', fontSize: 11 }}>{l.cuenta_nombre}</span>
+                          </td>
+                          <td style={{ padding: '6px 8px', color: '#374151', fontSize: 11 }}>{l.descripcion_linea || '—'}</td>
+                          <td style={{ padding: '6px 8px', fontSize: 10, color: '#6b7280' }}>
+                            {[l.unidad_negocio, l.departamento, l.almacen].filter(Boolean).join(' · ') || '—'}
+                          </td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{l.debe > 0 ? fmt(l.debe) : ''}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{l.haber > 0 ? fmt(l.haber) : ''}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ background: '#f9fafb', fontWeight: 700, borderTop: '2px solid #e5e7eb' }}>
+                        <td colSpan={3} style={{ padding: '6px 8px', textAlign: 'right' }}>Totales</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(item.total_debe)}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(item.total_haber)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ═══════════════════ MAIN PAGE ═══════════════════ */
 
 export default function Contabilidad() {
@@ -2703,6 +2859,7 @@ export default function Contabilidad() {
       {tab === 'activos' && <TabActivosFijos />}
       {tab === 'fsv' && <TabFSV />}
       {tab === 'dimensiones' && <TabDimensiones />}
+      {tab === 'trazabilidad' && <TabTrazabilidad />}
       {tab === 'config' && <TabConfig />}
     </div>
   )
