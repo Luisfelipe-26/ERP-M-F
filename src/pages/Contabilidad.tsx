@@ -4,7 +4,8 @@ import toast from 'react-hot-toast'
 import {
   BookOpen, Plus, Search, RefreshCw, X, ChevronDown, ChevronRight,
   Check, Lock, Unlock, FileText, Calendar, Settings, BarChart3,
-  Edit2, Trash2, Eye, Filter, Download, Clock, Repeat, Landmark, FileSpreadsheet
+  Edit2, Trash2, Eye, Filter, Download, Clock, Repeat, Landmark, FileSpreadsheet,
+  TrendingUp, Package, AlertTriangle, Play
 } from 'lucide-react'
 
 /* ═══════════════════ Shared ═══════════════════ */
@@ -53,6 +54,7 @@ const Monto = ({ v, bold = false }: any) => {
 }
 
 const TABS = [
+  { key: 'dashboard', label: 'Dashboard', icon: TrendingUp },
   { key: 'cuentas', label: 'Plan de Cuentas', icon: BookOpen },
   { key: 'asientos', label: 'Asientos', icon: FileText },
   { key: 'periodos', label: 'Períodos', icon: Calendar },
@@ -62,9 +64,123 @@ const TABS = [
   { key: 'recurrentes', label: 'Recurrentes', icon: Repeat },
   { key: 'dgii', label: 'DGII', icon: FileSpreadsheet },
   { key: 'conciliacion', label: 'Conciliación', icon: Landmark },
+  { key: 'activos', label: 'Activos Fijos', icon: Package },
   { key: 'fsv', label: 'Estados Financieros', icon: Settings },
   { key: 'config', label: 'Configuración', icon: Settings },
 ]
+
+/* ═══════════════════ TAB: Dashboard Financiero ═══════════════════ */
+
+function TabDashboard() {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [alertas, setAlertas] = useState<any[]>([])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [d, n] = await Promise.allSettled([
+        api.get('/contabilidad/dashboard-financiero'),
+        api.get('/contabilidad/notificaciones'),
+      ])
+      if (d.status === 'fulfilled') setData(d.value.data)
+      else throw new Error('dashboard')
+      if (n.status === 'fulfilled') setAlertas(n.value.data.alertas || [])
+    } catch { toast.error('Error al cargar dashboard') }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando dashboard...</div>
+  if (!data) return null
+
+  const KPI = ({ label, value, sub, color, warn }: any) => (
+    <div className="card" style={{ padding: '14px 18px', margin: 0, minWidth: 170, flex: '1 1 170px', borderLeft: `3px solid ${color}` }}>
+      <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontWeight: 700, fontSize: 22, fontFamily: 'monospace', marginTop: 4 }}>RD$ {fmt(value)}</div>
+      {sub && <div style={{ fontSize: 11, color: warn ? '#dc2626' : '#6b7280', marginTop: 2 }}>{sub}</div>}
+    </div>
+  )
+
+  const maxBar = Math.max(...data.tendencia.map((t: any) => Math.max(t.ingresos, t.gastos)), 1)
+
+  const NIVEL_COLORS: Record<string, { bg: string; fg: string; icon: string }> = {
+    danger: { bg: '#fee2e2', fg: '#991b1b', icon: '#dc2626' },
+    warning: { bg: '#fef9c3', fg: '#854d0e', icon: '#ca8a04' },
+    info: { bg: '#dbeafe', fg: '#1e40af', icon: '#3b82f6' },
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <KPI label="Saldo Bancos" value={data.saldo_bancos} color="#166534" />
+        <KPI label="Cuentas por Cobrar" value={data.total_cxc} sub={data.cxc_vencidas > 0 ? `RD$ ${fmt(data.cxc_vencidas)} vencidas (${data.num_cxc} doc.)` : `${data.num_cxc} documentos`} color="#1e40af" warn={data.cxc_vencidas > 0} />
+        <KPI label="Cuentas por Pagar" value={data.total_cxp} sub={data.cxp_vencidas > 0 ? `RD$ ${fmt(data.cxp_vencidas)} vencidas (${data.num_cxp} doc.)` : `${data.num_cxp} documentos`} color="#dc2626" warn={data.cxp_vencidas > 0} />
+        <KPI label="Ingresos del Año" value={data.ingresos_anio} color="#166534" />
+        <KPI label="Utilidad del Año" value={data.utilidad_anio} sub={`Gastos: RD$ ${fmt(data.gastos_anio)}`} color={data.utilidad_anio >= 0 ? '#166534' : '#dc2626'} />
+      </div>
+
+      {alertas.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          {alertas.map((a: any, i: number) => {
+            const nc = NIVEL_COLORS[a.nivel] || NIVEL_COLORS.info
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 6, borderRadius: 6, background: nc.bg, border: `1px solid ${nc.fg}22` }}>
+                <AlertTriangle size={16} style={{ color: nc.icon, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: nc.fg }}>{a.titulo}</div>
+                  <div style={{ fontSize: 11, color: nc.fg + 'cc' }}>{a.detalle}</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="card" style={{ padding: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Tendencia Mensual {new Date().getFullYear()}</h3>
+          <button className="btn-secondary" onClick={load} style={{ padding: '4px 8px' }}><RefreshCw size={14} /></button>
+        </div>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 11 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: '#166534', display: 'inline-block' }}></span> Ingresos</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: '#dc2626', display: 'inline-block' }}></span> Gastos</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 12, borderRadius: 2, background: '#1e40af', display: 'inline-block' }}></span> Utilidad</span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', minHeight: 180, minWidth: 600 }}>
+            {data.tendencia.map((t: any) => (
+              <div key={t.mes} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 140 }}>
+                  <div style={{ width: 14, background: '#166534', borderRadius: '3px 3px 0 0', height: `${Math.max(2, (t.ingresos / maxBar) * 130)}px`, transition: 'height 0.3s' }} title={`Ingresos: RD$ ${fmt(t.ingresos)}`}></div>
+                  <div style={{ width: 14, background: '#dc2626', borderRadius: '3px 3px 0 0', height: `${Math.max(2, (t.gastos / maxBar) * 130)}px`, transition: 'height 0.3s' }} title={`Gastos: RD$ ${fmt(t.gastos)}`}></div>
+                </div>
+                <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600 }}>{t.mes}</div>
+                <div style={{ fontSize: 9, color: t.utilidad >= 0 ? '#166534' : '#dc2626', fontWeight: 700, fontFamily: 'monospace' }}>{t.utilidad !== 0 ? fmt(t.utilidad) : ''}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 12, paddingTop: 12, borderTop: '1px solid #e5e7eb', fontSize: 13 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: '#6b7280' }}>Total Ingresos</div>
+            <div style={{ fontWeight: 700, color: '#166534', fontFamily: 'monospace' }}>RD$ {fmt(data.ingresos_anio)}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: '#6b7280' }}>Total Gastos</div>
+            <div style={{ fontWeight: 700, color: '#dc2626', fontFamily: 'monospace' }}>RD$ {fmt(data.gastos_anio)}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: '#6b7280' }}>Utilidad Neta</div>
+            <div style={{ fontWeight: 700, color: data.utilidad_anio >= 0 ? '#166534' : '#dc2626', fontFamily: 'monospace' }}>RD$ {fmt(data.utilidad_anio)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 /* ═══════════════════ TAB: Plan de Cuentas ═══════════════════ */
 
@@ -1655,6 +1771,272 @@ function TabConciliacion() {
 }
 
 
+/* ═══════════════════ TAB: Activos Fijos ═══════════════════ */
+
+function TabActivosFijos() {
+  const [items, setItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [detail, setDetail] = useState<any>(null)
+  const [cuentas, setCuentas] = useState<any[]>([])
+  const [campos, setCampos] = useState<any[]>([])
+  const [catFilter, setCatFilter] = useState('')
+  const [campoFilter, setCampoFilter] = useState('')
+  const [showDepModal, setShowDepModal] = useState(false)
+  const [depMes, setDepMes] = useState(new Date().getMonth() + 1)
+  const [depAno, setDepAno] = useState(new Date().getFullYear())
+  const [depLoading, setDepLoading] = useState(false)
+
+  const CATEGORIAS = ['terreno', 'planta', 'edificacion', 'maquinaria', 'vehiculo', 'riego', 'equipo', 'otro']
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params: any = {}
+      if (catFilter) params.categoria = catFilter
+      if (campoFilter) params.campo_id = campoFilter
+      const [a, c, ca] = await Promise.all([
+        api.get('/contabilidad/activos-fijos', { params }),
+        api.get('/contabilidad/cuentas'),
+        api.get('/campos'),
+      ])
+      setItems(a.data)
+      setCuentas(c.data.filter((x: any) => x.acepta_movimientos))
+      setCampos(ca.data)
+    } catch { toast.error('Error al cargar activos') }
+    finally { setLoading(false) }
+  }, [catFilter, campoFilter])
+
+  useEffect(() => { load() }, [load])
+
+  const blank = { codigo: '', nombre: '', categoria: '', fecha_adquisicion: new Date().toISOString().slice(0, 10), costo_adquisicion: 0, vida_util_meses: 60, valor_residual: 0, metodo_depreciacion: 'lineal', campo_id: '', cuenta_activo_id: '', cuenta_depreciacion_id: '', cuenta_gasto_dep_id: '' }
+
+  async function save(e: any) {
+    e.preventDefault()
+    const payload = {
+      ...editing,
+      costo_adquisicion: Number(editing.costo_adquisicion) || 0,
+      vida_util_meses: Number(editing.vida_util_meses) || 60,
+      valor_residual: Number(editing.valor_residual) || 0,
+      campo_id: editing.campo_id || null,
+      cuenta_activo_id: editing.cuenta_activo_id ? Number(editing.cuenta_activo_id) : null,
+      cuenta_depreciacion_id: editing.cuenta_depreciacion_id ? Number(editing.cuenta_depreciacion_id) : null,
+      cuenta_gasto_dep_id: editing.cuenta_gasto_dep_id ? Number(editing.cuenta_gasto_dep_id) : null,
+    }
+    try {
+      if (editing.id) await api.put(`/contabilidad/activos-fijos/${editing.id}`, payload)
+      else await api.post('/contabilidad/activos-fijos', payload)
+      toast.success(editing.id ? 'Actualizado' : 'Creado')
+      setShowModal(false); load()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function del(id: number) {
+    if (!confirm('¿Desactivar este activo fijo?')) return
+    try { await api.delete(`/contabilidad/activos-fijos/${id}`); toast.success('Desactivado'); load() }
+    catch { toast.error('Error') }
+  }
+
+  async function viewDetail(id: number) {
+    try { const { data } = await api.get(`/contabilidad/activos-fijos/${id}`); setDetail(data) }
+    catch { toast.error('Error') }
+  }
+
+  async function correrDepreciacion(e: any) {
+    e.preventDefault()
+    setDepLoading(true)
+    try {
+      const { data } = await api.post(`/contabilidad/activos-fijos/depreciar?mes=${depMes}&ano=${depAno}`)
+      toast.success(`${data.depreciados} activo(s) depreciados — Total: RD$ ${fmt(data.total)}`)
+      setShowDepModal(false); load()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+    finally { setDepLoading(false) }
+  }
+
+  const totalCosto = items.reduce((s, a) => s + (a.costo_adquisicion || 0), 0)
+  const totalDepAcum = items.reduce((s, a) => s + (a.depreciacion_acumulada || 0), 0)
+  const totalLibros = items.reduce((s, a) => s + (a.valor_en_libros || 0), 0)
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select className="select" style={{ width: 150 }} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+          <option value="">Todas las categorías</option>
+          {CATEGORIAS.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+        </select>
+        <select className="select" style={{ width: 160 }} value={campoFilter} onChange={e => setCampoFilter(e.target.value)}>
+          <option value="">Todos los campos</option>
+          {campos.map((c: any) => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}
+        </select>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button className="btn-secondary" onClick={() => setShowDepModal(true)}><Play size={13} /> Correr Depreciación</button>
+          <button className="btn-primary" onClick={() => { setEditing({ ...blank }); setShowModal(true) }}><Plus size={14} /> Nuevo Activo</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 130 }}>
+          <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>ACTIVOS</div>
+          <div style={{ fontWeight: 700, fontSize: 18 }}>{items.length}</div>
+        </div>
+        <div className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 150 }}>
+          <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>COSTO TOTAL</div>
+          <div style={{ fontWeight: 700, fontSize: 16, fontFamily: 'monospace' }}>RD$ {fmt(totalCosto)}</div>
+        </div>
+        <div className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 150 }}>
+          <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>DEP. ACUMULADA</div>
+          <div style={{ fontWeight: 700, fontSize: 16, fontFamily: 'monospace', color: '#dc2626' }}>RD$ {fmt(totalDepAcum)}</div>
+        </div>
+        <div className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 150, borderLeft: '3px solid #166534' }}>
+          <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>VALOR EN LIBROS</div>
+          <div style={{ fontWeight: 700, fontSize: 16, fontFamily: 'monospace', color: '#166534' }}>RD$ {fmt(totalLibros)}</div>
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ fontSize: 12 }}>
+          <thead><tr>
+            <th>Código</th><th>Nombre</th><th>Categoría</th><th>Campo</th><th>Fecha Adq.</th>
+            <th style={{ textAlign: 'right' }}>Costo</th><th style={{ textAlign: 'right' }}>Dep. Acum.</th>
+            <th style={{ textAlign: 'right' }}>Valor Libros</th><th style={{ textAlign: 'right' }}>Dep./Mes</th><th></th>
+          </tr></thead>
+          <tbody>
+            {items.length === 0 ? (
+              <tr><td colSpan={10} style={{ textAlign: 'center', color: '#9ca3af', padding: 30 }}>Sin activos fijos registrados</td></tr>
+            ) : items.map((a: any) => {
+              const pctDep = a.costo_adquisicion > 0 ? (a.depreciacion_acumulada / a.costo_adquisicion) * 100 : 0
+              return (
+                <tr key={a.id}>
+                  <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{a.codigo}</td>
+                  <td>{a.nombre}</td>
+                  <td><Badge color="blue">{a.categoria || '—'}</Badge></td>
+                  <td style={{ fontSize: 11 }}>{a.campo_nombre || '—'}</td>
+                  <td style={{ fontSize: 11 }}>{a.fecha_adquisicion}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(a.costo_adquisicion)}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'monospace', color: '#dc2626' }}>{fmt(a.depreciacion_acumulada)}</div>
+                    <div style={{ height: 3, background: '#f3f4f6', borderRadius: 2, marginTop: 2 }}>
+                      <div style={{ height: '100%', background: pctDep > 90 ? '#dc2626' : '#ca8a04', borderRadius: 2, width: `${Math.min(100, pctDep)}%` }}></div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#166534' }}>{fmt(a.valor_en_libros)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 11, color: '#6b7280' }}>{fmt(a.dep_mensual_estimada)}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 2 }}>
+                      <button className="btn-icon" title="Ver detalle" onClick={() => viewDetail(a.id)}><Eye size={14} /></button>
+                      <button className="btn-icon" title="Editar" onClick={() => { setEditing(a); setShowModal(true) }}><Edit2 size={14} /></button>
+                      <button className="btn-icon" title="Desactivar" onClick={() => del(a.id)}><Trash2 size={14} /></button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+            {items.length > 0 && (
+              <tr style={{ fontWeight: 700, background: '#f9fafb', borderTop: '2px solid #e5e7eb' }}>
+                <td colSpan={5}>TOTALES ({items.length} activos)</td>
+                <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(totalCosto)}</td>
+                <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#dc2626' }}>{fmt(totalDepAcum)}</td>
+                <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#166534' }}>{fmt(totalLibros)}</td>
+                <td colSpan={2}></td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showModal && editing && (
+        <Modal title={editing.id ? 'Editar Activo Fijo' : 'Nuevo Activo Fijo'} onClose={() => setShowModal(false)} width={650}>
+          <form onSubmit={save}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div><Label>Código</Label><input className="input" required value={editing.codigo} onChange={e => setEditing({ ...editing, codigo: e.target.value })} placeholder="AF-001" /></div>
+              <div><Label>Nombre</Label><input className="input" required value={editing.nombre} onChange={e => setEditing({ ...editing, nombre: e.target.value })} /></div>
+              <div><Label>Categoría</Label><select className="select" value={editing.categoria || ''} onChange={e => setEditing({ ...editing, categoria: e.target.value })}><option value="">Seleccionar...</option>{CATEGORIAS.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}</select></div>
+              <div><Label>Campo</Label><select className="select" value={editing.campo_id || ''} onChange={e => setEditing({ ...editing, campo_id: e.target.value })}><option value="">Sin campo</option>{campos.map((c: any) => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}</select></div>
+              <div><Label>Fecha Adquisición</Label><input className="input" type="date" required value={editing.fecha_adquisicion} onChange={e => setEditing({ ...editing, fecha_adquisicion: e.target.value })} /></div>
+              <div><Label>Método Depreciación</Label><select className="select" value={editing.metodo_depreciacion} onChange={e => setEditing({ ...editing, metodo_depreciacion: e.target.value })}><option value="lineal">Línea recta</option><option value="saldo_decreciente">Saldo decreciente</option></select></div>
+              <div><Label>Costo Adquisición (RD$)</Label><input className="input" type="number" step="0.01" required value={editing.costo_adquisicion} onChange={e => setEditing({ ...editing, costo_adquisicion: e.target.value })} /></div>
+              <div><Label>Valor Residual (RD$)</Label><input className="input" type="number" step="0.01" value={editing.valor_residual} onChange={e => setEditing({ ...editing, valor_residual: e.target.value })} /></div>
+              <div><Label>Vida Útil (meses)</Label><input className="input" type="number" required value={editing.vida_util_meses} onChange={e => setEditing({ ...editing, vida_util_meses: e.target.value })} /></div>
+              <div><Label>Cuenta del Activo</Label><select className="select" value={editing.cuenta_activo_id || ''} onChange={e => setEditing({ ...editing, cuenta_activo_id: e.target.value })}><option value="">Seleccionar...</option>{cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}</select></div>
+              <div><Label>Cuenta Dep. Acumulada</Label><select className="select" value={editing.cuenta_depreciacion_id || ''} onChange={e => setEditing({ ...editing, cuenta_depreciacion_id: e.target.value })}><option value="">Seleccionar...</option>{cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}</select></div>
+              <div><Label>Cuenta Gasto Dep.</Label><select className="select" value={editing.cuenta_gasto_dep_id || ''} onChange={e => setEditing({ ...editing, cuenta_gasto_dep_id: e.target.value })}><option value="">Seleccionar...</option>{cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}</select></div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary">{editing.id ? 'Guardar' : 'Crear'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {showDepModal && (
+        <Modal title="Correr Depreciación Mensual" onClose={() => setShowDepModal(false)} width={400}>
+          <form onSubmit={correrDepreciacion}>
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>Calcula la depreciación de todos los activos fijos activos para el período seleccionado.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div><Label>Mes</Label><select className="select" value={depMes} onChange={e => setDepMes(Number(e.target.value))}>{MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select></div>
+              <div><Label>Año</Label><input className="input" type="number" value={depAno} onChange={e => setDepAno(Number(e.target.value))} /></div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowDepModal(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary" disabled={depLoading}>{depLoading ? 'Procesando...' : 'Correr Depreciación'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {detail && (
+        <Modal title={`Activo: ${detail.codigo}`} subtitle={detail.nombre} onClose={() => setDetail(null)} width={650}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16, fontSize: 13 }}>
+            <div>Categoría: <strong>{detail.categoria || '—'}</strong></div>
+            <div>Campo: <strong>{detail.campo_nombre || '—'}</strong></div>
+            <div>Fecha Adquisición: <strong>{detail.fecha_adquisicion}</strong></div>
+            <div>Método: <strong>{detail.metodo_depreciacion}</strong></div>
+            <div>Costo: <strong>RD$ {fmt(detail.costo_adquisicion)}</strong></div>
+            <div>Valor Residual: <strong>RD$ {fmt(detail.valor_residual)}</strong></div>
+            <div>Dep. Acumulada: <strong style={{ color: '#dc2626' }}>RD$ {fmt(detail.depreciacion_acumulada)}</strong></div>
+            <div>Valor en Libros: <strong style={{ color: '#166534' }}>RD$ {fmt(detail.valor_en_libros)}</strong></div>
+            <div>Vida Útil: <strong>{detail.vida_util_meses} meses</strong></div>
+            <div>Dep. Mensual Est.: <strong>RD$ {fmt(detail.dep_mensual_estimada)}</strong></div>
+          </div>
+          {detail.costo_adquisicion > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Progreso de depreciación</div>
+              <div style={{ height: 14, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.min(100, (detail.depreciacion_acumulada / (detail.costo_adquisicion - detail.valor_residual)) * 100)}%`, background: '#ca8a04', borderRadius: 6, transition: 'width 0.3s' }}></div>
+              </div>
+              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                {Math.round((detail.depreciacion_acumulada / Math.max(1, detail.costo_adquisicion - detail.valor_residual)) * 100)}% depreciado
+              </div>
+            </div>
+          )}
+          <h4 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 8px' }}>Historial de Depreciación</h4>
+          <table style={{ fontSize: 12 }}>
+            <thead><tr><th>Período</th><th style={{ textAlign: 'right' }}>Monto</th><th style={{ textAlign: 'right' }}>Dep. Acum. Post</th><th>Asiento</th></tr></thead>
+            <tbody>
+              {(!detail.historial || detail.historial.length === 0) ? (
+                <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9ca3af', padding: 16 }}>Sin historial de depreciación</td></tr>
+              ) : detail.historial.map((h: any) => (
+                <tr key={h.id}>
+                  <td>{h.periodo_nombre || '—'}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>RD$ {fmt(h.monto)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#dc2626' }}>RD$ {fmt(h.depreciacion_acumulada_post)}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: 11, color: '#166534' }}>{h.asiento_id ? `#${h.asiento_id}` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+
 /* ═══════════════════ TAB: FSV — Editor de Estados Financieros ═══════════════════ */
 
 function TabFSV() {
@@ -2116,7 +2498,7 @@ function TabConfig() {
 /* ═══════════════════ MAIN PAGE ═══════════════════ */
 
 export default function Contabilidad() {
-  const [tab, setTab] = useState('cuentas')
+  const [tab, setTab] = useState('dashboard')
 
   return (
     <div>
@@ -2148,6 +2530,7 @@ export default function Contabilidad() {
         </div>
       </div>
 
+      {tab === 'dashboard' && <TabDashboard />}
       {tab === 'cuentas' && <TabCuentas />}
       {tab === 'asientos' && <TabAsientos />}
       {tab === 'periodos' && <TabPeriodos />}
@@ -2157,6 +2540,7 @@ export default function Contabilidad() {
       {tab === 'recurrentes' && <TabRecurrentes />}
       {tab === 'dgii' && <TabDGII />}
       {tab === 'conciliacion' && <TabConciliacion />}
+      {tab === 'activos' && <TabActivosFijos />}
       {tab === 'fsv' && <TabFSV />}
       {tab === 'config' && <TabConfig />}
     </div>
