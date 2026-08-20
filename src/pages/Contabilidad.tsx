@@ -5,7 +5,7 @@ import {
   BookOpen, Plus, Search, RefreshCw, X, ChevronDown, ChevronRight,
   Check, Lock, Unlock, FileText, Calendar, Settings, BarChart3,
   Edit2, Trash2, Eye, Filter, Download, Clock, Repeat, Landmark, FileSpreadsheet,
-  TrendingUp, Package, AlertTriangle, Play, DollarSign
+  TrendingUp, AlertTriangle, DollarSign
 } from 'lucide-react'
 
 /* ═══════════════════ Shared ═══════════════════ */
@@ -64,8 +64,8 @@ const TABS = [
   { key: 'recurrentes', label: 'Recurrentes', icon: Repeat },
   { key: 'dgii', label: 'DGII', icon: FileSpreadsheet },
   { key: 'conciliacion', label: 'Conciliación', icon: Landmark },
-  { key: 'activos', label: 'Activos Fijos', icon: Package },
   { key: 'fsv', label: 'Estados Financieros', icon: Settings },
+  { key: 'diarios', label: 'Diarios', icon: BookOpen },
   { key: 'dimensiones', label: 'Dimensiones', icon: Filter },
   { key: 'trazabilidad', label: 'Trazabilidad', icon: Eye },
   { key: 'config', label: 'Configuración', icon: Settings },
@@ -444,11 +444,13 @@ function TabAsientos() {
   const [filtroDesde, setFiltroDesde] = useState('')
   const [filtroHasta, setFiltroHasta] = useState('')
   const [filtroOrigen, setFiltroOrigen] = useState('')
+  const [filtroDiario, setFiltroDiario] = useState('')
   const [page, setPage] = useState(0)
   const pageSize = 25
   const [modalNew, setModalNew] = useState(false)
   const [modalVer, setModalVer] = useState(null)
   const [cuentas, setCuentas] = useState([])
+  const [diarios, setDiarios] = useState<any[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -456,6 +458,7 @@ function TabAsientos() {
       const params = new URLSearchParams()
       if (filtroEstado) params.set('estado', filtroEstado)
       if (filtroOrigen) params.set('origen', filtroOrigen)
+      if (filtroDiario) params.set('diario_id', filtroDiario)
       if (filtroDesde) params.set('desde', filtroDesde)
       if (filtroHasta) params.set('hasta', filtroHasta)
       params.set('limit', String(pageSize))
@@ -464,11 +467,12 @@ function TabAsientos() {
       setData(d)
     } catch { toast.error('Error al cargar asientos') }
     finally { setLoading(false) }
-  }, [filtroEstado, filtroOrigen, filtroDesde, filtroHasta, page])
+  }, [filtroEstado, filtroOrigen, filtroDiario, filtroDesde, filtroHasta, page])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
     api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => {})
+    api.get('/contabilidad/diarios').then(r => setDiarios(r.data)).catch(() => {})
   }, [])
 
   async function contabilizar(numero) {
@@ -501,10 +505,14 @@ function TabAsientos() {
           <option value="COB">Cobro</option>
           <option value="CIE">Cierre</option>
         </select>
+        <select className="select" style={{ width: 140 }} value={filtroDiario} onChange={e => { setFiltroDiario(e.target.value); setPage(0) }}>
+          <option value="">Todos los diarios</option>
+          {diarios.map(d => <option key={d.id} value={d.id}>{d.codigo} — {d.nombre}</option>)}
+        </select>
         <input className="input" type="date" style={{ width: 140 }} value={filtroDesde} onChange={e => { setFiltroDesde(e.target.value); setPage(0) }} title="Desde" />
         <input className="input" type="date" style={{ width: 140 }} value={filtroHasta} onChange={e => { setFiltroHasta(e.target.value); setPage(0) }} title="Hasta" />
-        {(filtroEstado || filtroOrigen || filtroDesde || filtroHasta) && (
-          <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => { setFiltroEstado(''); setFiltroOrigen(''); setFiltroDesde(''); setFiltroHasta(''); setPage(0) }}><X size={12} /> Limpiar</button>
+        {(filtroEstado || filtroOrigen || filtroDiario || filtroDesde || filtroHasta) && (
+          <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => { setFiltroEstado(''); setFiltroOrigen(''); setFiltroDiario(''); setFiltroDesde(''); setFiltroHasta(''); setPage(0) }}><X size={12} /> Limpiar</button>
         )}
         <div style={{ flex: 1 }} />
         <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
@@ -518,6 +526,7 @@ function TabAsientos() {
               <th>Número</th>
               <th>Fecha</th>
               <th>Descripción</th>
+              <th>Diario</th>
               <th>Origen</th>
               <th style={{ textAlign: 'right' }}>Debe</th>
               <th style={{ textAlign: 'right' }}>Haber</th>
@@ -527,9 +536,9 @@ function TabAsientos() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
             ) : data.items.length === 0 ? (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin asientos</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin asientos</td></tr>
             ) : data.items.map(a => (
               <tr key={a.id} style={{ cursor: 'pointer' }} onClick={() => setModalVer(a)}
                 onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
@@ -537,6 +546,7 @@ function TabAsientos() {
                 <td style={{ fontWeight: 700, fontFamily: 'monospace', color: '#166534' }}>{a.numero}</td>
                 <td style={{ fontSize: 12 }}>{a.fecha}</td>
                 <td style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.descripcion || '—'}</td>
+                <td>{a.diario_codigo ? <Badge color="blue">{a.diario_codigo}</Badge> : '—'}</td>
                 <td><Badge color={a.tipo === 'automatico' ? 'blue' : 'gray'}>{a.origen || a.tipo}</Badge></td>
                 <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(a.total_debe)}</td>
                 <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(a.total_haber)}</td>
@@ -573,20 +583,21 @@ function TabAsientos() {
         </div>
       )}
 
-      {modalNew && <ModalNuevoAsiento cuentas={cuentas} onClose={() => setModalNew(false)} onDone={() => { setModalNew(false); setPage(0); load() }} />}
+      {modalNew && <ModalNuevoAsiento cuentas={cuentas} diarios={diarios} onClose={() => setModalNew(false)} onDone={() => { setModalNew(false); setPage(0); load() }} />}
       {modalVer && <ModalVerAsiento asiento={modalVer} onClose={() => setModalVer(null)} />}
     </div>
   )
 }
 
-function ModalNuevoAsiento({ cuentas, onClose, onDone }) {
-  const [form, setForm] = useState({ fecha: new Date().toISOString().slice(0, 10), tipo: 'manual', origen: 'MAN', descripcion: '' })
+function ModalNuevoAsiento({ cuentas, diarios: diariosParent = [], onClose, onDone }) {
+  const [form, setForm] = useState({ fecha: new Date().toISOString().slice(0, 10), tipo: 'manual', origen: 'MAN', descripcion: '', diario_id: '' })
   const [lineas, setLineas] = useState([
     { cuenta_id: '', debe: '', haber: '', descripcion_linea: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', almacen_id: '' },
     { cuenta_id: '', debe: '', haber: '', descripcion_linea: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', almacen_id: '' },
   ])
   const [saving, setSaving] = useState(false)
   const [dims, setDims] = useState<{ campos: any[]; unidades: any[]; deptos: any[]; almacenes: any[] }>({ campos: [], unidades: [], deptos: [], almacenes: [] })
+  const diariosActivos = diariosParent.filter(x => x.activo)
 
   useEffect(() => {
     Promise.all([
@@ -610,6 +621,7 @@ function ModalNuevoAsiento({ cuentas, onClose, onDone }) {
     try {
       const payload = {
         ...form,
+        diario_id: form.diario_id ? Number(form.diario_id) : null,
         lineas: lineas.filter(l => l.cuenta_id).map(l => ({
           cuenta_id: Number(l.cuenta_id),
           debe: Number(l.debe) || 0,
@@ -631,7 +643,7 @@ function ModalNuevoAsiento({ cuentas, onClose, onDone }) {
   return (
     <Modal title="Nuevo Asiento Contable" onClose={onClose} width={850}>
       <form onSubmit={submit}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
           <div>
             <Label>Fecha *</Label>
             <input className="input" type="date" value={form.fecha} onChange={e => setForm({ ...form, fecha: e.target.value })} required />
@@ -647,6 +659,13 @@ function ModalNuevoAsiento({ cuentas, onClose, onDone }) {
           <div>
             <Label>Origen</Label>
             <input className="input" value={form.origen} onChange={e => setForm({ ...form, origen: e.target.value })} />
+          </div>
+          <div>
+            <Label>Diario</Label>
+            <select className="select" value={form.diario_id} onChange={e => setForm({ ...form, diario_id: e.target.value })}>
+              <option value="">— Automático —</option>
+              {diariosActivos.map(d => <option key={d.id} value={d.id}>{d.codigo} — {d.nombre}</option>)}
+            </select>
           </div>
           <div style={{ gridColumn: '1/-1' }}>
             <Label>Descripción</Label>
@@ -864,41 +883,59 @@ function TabReportes() {
   const [lmDesde, setLmDesde] = useState('')
   const [lmHasta, setLmHasta] = useState('')
   const [campoId, setCampoId] = useState('')
+  const [unId, setUnId] = useState('')
+  const [deptoId, setDeptoId] = useState('')
+  const [almId, setAlmId] = useState('')
   const [cuentas, setCuentas] = useState([])
   const [campos, setCampos] = useState<any[]>([])
+  const [unidades, setUnidades] = useState<any[]>([])
+  const [deptos, setDeptos] = useState<any[]>([])
+  const [almacenes, setAlmacenes] = useState<any[]>([])
+  const [showDimFilters, setShowDimFilters] = useState(false)
 
   useEffect(() => {
     api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => {})
     api.get('/campos').then(r => setCampos(r.data)).catch(() => {})
+    api.get('/contabilidad/dimensiones/unidades-negocio').then(r => setUnidades(r.data)).catch(() => {})
+    api.get('/contabilidad/dimensiones/departamentos').then(r => setDeptos(r.data)).catch(() => {})
+    api.get('/contabilidad/dimensiones/almacenes').then(r => setAlmacenes(r.data)).catch(() => {})
   }, [])
+
+  function dimParams() {
+    let p = ''
+    if (campoId) p += `&campo_id=${campoId}`
+    if (unId) p += `&unidad_negocio_id=${unId}`
+    if (deptoId) p += `&departamento_id=${deptoId}`
+    if (almId) p += `&almacen_id=${almId}`
+    return p
+  }
 
   async function generar() {
     setLoading(true)
     setData(null)
     try {
       let url = ''
-      if (reporte === 'balance-comprobacion') url = `/contabilidad/balance-comprobacion?anio=${anio}&mes=${mes}`
-      else if (reporte === 'balance-general') url = `/contabilidad/balance-general?anio=${anio}&mes=${mes}`
-      else if (reporte === 'estado-resultados') {
-        url = `/contabilidad/estado-resultados?anio=${anio}&mes=${mes}`
-        if (campoId) url += `&campo_id=${campoId}`
-      }
+      if (reporte === 'balance-comprobacion') url = `/contabilidad/balance-comprobacion?anio=${anio}&mes=${mes}${dimParams()}`
+      else if (reporte === 'balance-general') url = `/contabilidad/balance-general?anio=${anio}&mes=${mes}${dimParams()}`
+      else if (reporte === 'estado-resultados') url = `/contabilidad/estado-resultados?anio=${anio}&mes=${mes}${dimParams()}`
       else if (reporte === 'libro-mayor') {
         url = `/contabilidad/libro-mayor?cuenta_id=${cuentaLM}&limit=500`
         if (lmDesde) url += `&desde=${lmDesde}`
         if (lmHasta) url += `&hasta=${lmHasta}`
+        url += dimParams()
       }
       const { data: d } = await api.get(url)
       setData(d)
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error al generar reporte') }
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al generar reporte') }
     finally { setLoading(false) }
   }
 
   const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  const hasDimFilter = !!(campoId || unId || deptoId || almId)
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <select className="select" style={{ width: 200 }} value={reporte} onChange={e => { setReporte(e.target.value); setData(null) }}>
           <option value="balance-comprobacion">Balance de Comprobación</option>
           <option value="balance-general">Balance General</option>
@@ -913,12 +950,6 @@ function TabReportes() {
             </select>
           </>
         )}
-        {reporte === 'estado-resultados' && campos.length > 0 && (
-          <select className="select" style={{ width: 180 }} value={campoId} onChange={e => setCampoId(e.target.value)}>
-            <option value="">Todos los campos</option>
-            {campos.map((c: any) => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}
-          </select>
-        )}
         {reporte === 'libro-mayor' && (
           <>
             <select className="select" style={{ width: 280 }} value={cuentaLM} onChange={e => setCuentaLM(e.target.value)}>
@@ -929,11 +960,42 @@ function TabReportes() {
             <input className="input" type="date" style={{ width: 140 }} value={lmHasta} onChange={e => setLmHasta(e.target.value)} title="Hasta" />
           </>
         )}
+        <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 10px', background: hasDimFilter ? '#dbeafe' : undefined }}
+          onClick={() => setShowDimFilters(!showDimFilters)}>
+          <Filter size={12} /> Dimensiones {hasDimFilter ? `(${[campoId, unId, deptoId, almId].filter(Boolean).length})` : ''}
+        </button>
         <button className="btn-primary" onClick={generar} disabled={loading || (reporte === 'libro-mayor' && !cuentaLM)}>
           {loading ? 'Generando...' : 'Generar'}
         </button>
         {data && <button className="btn-secondary" onClick={() => window.print()} style={{ fontSize: 12 }}><Download size={13} /> Imprimir / PDF</button>}
       </div>
+
+      {showDimFilters && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap', padding: '8px 12px', background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
+          <select className="select" style={{ width: 170, fontSize: 12 }} value={campoId} onChange={e => setCampoId(e.target.value)}>
+            <option value="">Centro de Costo</option>
+            {campos.map((c: any) => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}
+          </select>
+          <select className="select" style={{ width: 170, fontSize: 12 }} value={unId} onChange={e => setUnId(e.target.value)}>
+            <option value="">Unidad de Negocio</option>
+            {unidades.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+          </select>
+          <select className="select" style={{ width: 170, fontSize: 12 }} value={deptoId} onChange={e => setDeptoId(e.target.value)}>
+            <option value="">Departamento</option>
+            {deptos.map((d: any) => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+          </select>
+          <select className="select" style={{ width: 170, fontSize: 12 }} value={almId} onChange={e => setAlmId(e.target.value)}>
+            <option value="">Almacén</option>
+            {almacenes.map((a: any) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+          </select>
+          {hasDimFilter && (
+            <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 8px' }}
+              onClick={() => { setCampoId(''); setUnId(''); setDeptoId(''); setAlmId('') }}>
+              <X size={12} /> Limpiar
+            </button>
+          )}
+        </div>
+      )}
 
       {data && reporte === 'balance-comprobacion' && <ReporteBalanceComprobacion data={data} />}
       {data && reporte === 'balance-general' && <ReporteBalanceGeneral data={data} />}
@@ -1793,271 +1855,6 @@ function TabConciliacion() {
 }
 
 
-/* ═══════════════════ TAB: Activos Fijos ═══════════════════ */
-
-function TabActivosFijos() {
-  const [items, setItems] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [editing, setEditing] = useState<any>(null)
-  const [detail, setDetail] = useState<any>(null)
-  const [cuentas, setCuentas] = useState<any[]>([])
-  const [campos, setCampos] = useState<any[]>([])
-  const [catFilter, setCatFilter] = useState('')
-  const [campoFilter, setCampoFilter] = useState('')
-  const [showDepModal, setShowDepModal] = useState(false)
-  const [depMes, setDepMes] = useState(new Date().getMonth() + 1)
-  const [depAno, setDepAno] = useState(new Date().getFullYear())
-  const [depLoading, setDepLoading] = useState(false)
-
-  const CATEGORIAS = ['terreno', 'planta', 'edificacion', 'maquinaria', 'vehiculo', 'riego', 'equipo', 'otro']
-  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params: any = {}
-      if (catFilter) params.categoria = catFilter
-      if (campoFilter) params.campo_id = campoFilter
-      const [a, c, ca] = await Promise.all([
-        api.get('/contabilidad/activos-fijos', { params }),
-        api.get('/contabilidad/cuentas'),
-        api.get('/campos'),
-      ])
-      setItems(a.data)
-      setCuentas(c.data.filter((x: any) => x.acepta_movimientos))
-      setCampos(ca.data)
-    } catch { toast.error('Error al cargar activos') }
-    finally { setLoading(false) }
-  }, [catFilter, campoFilter])
-
-  useEffect(() => { load() }, [load])
-
-  const blank = { codigo: '', nombre: '', categoria: '', fecha_adquisicion: new Date().toISOString().slice(0, 10), costo_adquisicion: 0, vida_util_meses: 60, valor_residual: 0, metodo_depreciacion: 'lineal', campo_id: '', cuenta_activo_id: '', cuenta_depreciacion_id: '', cuenta_gasto_dep_id: '' }
-
-  async function save(e: any) {
-    e.preventDefault()
-    const payload = {
-      ...editing,
-      costo_adquisicion: Number(editing.costo_adquisicion) || 0,
-      vida_util_meses: Number(editing.vida_util_meses) || 60,
-      valor_residual: Number(editing.valor_residual) || 0,
-      campo_id: editing.campo_id || null,
-      cuenta_activo_id: editing.cuenta_activo_id ? Number(editing.cuenta_activo_id) : null,
-      cuenta_depreciacion_id: editing.cuenta_depreciacion_id ? Number(editing.cuenta_depreciacion_id) : null,
-      cuenta_gasto_dep_id: editing.cuenta_gasto_dep_id ? Number(editing.cuenta_gasto_dep_id) : null,
-    }
-    try {
-      if (editing.id) await api.put(`/contabilidad/activos-fijos/${editing.id}`, payload)
-      else await api.post('/contabilidad/activos-fijos', payload)
-      toast.success(editing.id ? 'Actualizado' : 'Creado')
-      setShowModal(false); load()
-    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
-  }
-
-  async function del(id: number) {
-    if (!confirm('¿Desactivar este activo fijo?')) return
-    try { await api.delete(`/contabilidad/activos-fijos/${id}`); toast.success('Desactivado'); load() }
-    catch { toast.error('Error') }
-  }
-
-  async function viewDetail(id: number) {
-    try { const { data } = await api.get(`/contabilidad/activos-fijos/${id}`); setDetail(data) }
-    catch { toast.error('Error') }
-  }
-
-  async function correrDepreciacion(e: any) {
-    e.preventDefault()
-    setDepLoading(true)
-    try {
-      const { data } = await api.post(`/contabilidad/activos-fijos/depreciar?mes=${depMes}&ano=${depAno}`)
-      toast.success(`${data.depreciados} activo(s) depreciados — Total: RD$ ${fmt(data.total)}`)
-      setShowDepModal(false); load()
-    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
-    finally { setDepLoading(false) }
-  }
-
-  const totalCosto = items.reduce((s, a) => s + (a.costo_adquisicion || 0), 0)
-  const totalDepAcum = items.reduce((s, a) => s + (a.depreciacion_acumulada || 0), 0)
-  const totalLibros = items.reduce((s, a) => s + (a.valor_en_libros || 0), 0)
-
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
-
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select className="select" style={{ width: 150 }} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
-          <option value="">Todas las categorías</option>
-          {CATEGORIAS.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-        </select>
-        <select className="select" style={{ width: 160 }} value={campoFilter} onChange={e => setCampoFilter(e.target.value)}>
-          <option value="">Todos los campos</option>
-          {campos.map((c: any) => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}
-        </select>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button className="btn-secondary" onClick={() => setShowDepModal(true)}><Play size={13} /> Correr Depreciación</button>
-          <button className="btn-primary" onClick={() => { setEditing({ ...blank }); setShowModal(true) }}><Plus size={14} /> Nuevo Activo</button>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 130 }}>
-          <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>ACTIVOS</div>
-          <div style={{ fontWeight: 700, fontSize: 18 }}>{items.length}</div>
-        </div>
-        <div className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 150 }}>
-          <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>COSTO TOTAL</div>
-          <div style={{ fontWeight: 700, fontSize: 16, fontFamily: 'monospace' }}>RD$ {fmt(totalCosto)}</div>
-        </div>
-        <div className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 150 }}>
-          <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>DEP. ACUMULADA</div>
-          <div style={{ fontWeight: 700, fontSize: 16, fontFamily: 'monospace', color: '#dc2626' }}>RD$ {fmt(totalDepAcum)}</div>
-        </div>
-        <div className="card" style={{ padding: '8px 14px', margin: 0, minWidth: 150, borderLeft: '3px solid #166534' }}>
-          <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>VALOR EN LIBROS</div>
-          <div style={{ fontWeight: 700, fontSize: 16, fontFamily: 'monospace', color: '#166534' }}>RD$ {fmt(totalLibros)}</div>
-        </div>
-      </div>
-
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ fontSize: 12 }}>
-          <thead><tr>
-            <th>Código</th><th>Nombre</th><th>Categoría</th><th>Campo</th><th>Fecha Adq.</th>
-            <th style={{ textAlign: 'right' }}>Costo</th><th style={{ textAlign: 'right' }}>Dep. Acum.</th>
-            <th style={{ textAlign: 'right' }}>Valor Libros</th><th style={{ textAlign: 'right' }}>Dep./Mes</th><th></th>
-          </tr></thead>
-          <tbody>
-            {items.length === 0 ? (
-              <tr><td colSpan={10} style={{ textAlign: 'center', color: '#9ca3af', padding: 30 }}>Sin activos fijos registrados</td></tr>
-            ) : items.map((a: any) => {
-              const pctDep = a.costo_adquisicion > 0 ? (a.depreciacion_acumulada / a.costo_adquisicion) * 100 : 0
-              return (
-                <tr key={a.id}>
-                  <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{a.codigo}</td>
-                  <td>{a.nombre}</td>
-                  <td><Badge color="blue">{a.categoria || '—'}</Badge></td>
-                  <td style={{ fontSize: 11 }}>{a.campo_nombre || '—'}</td>
-                  <td style={{ fontSize: 11 }}>{a.fecha_adquisicion}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(a.costo_adquisicion)}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: 'monospace', color: '#dc2626' }}>{fmt(a.depreciacion_acumulada)}</div>
-                    <div style={{ height: 3, background: '#f3f4f6', borderRadius: 2, marginTop: 2 }}>
-                      <div style={{ height: '100%', background: pctDep > 90 ? '#dc2626' : '#ca8a04', borderRadius: 2, width: `${Math.min(100, pctDep)}%` }}></div>
-                    </div>
-                  </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#166534' }}>{fmt(a.valor_en_libros)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 11, color: '#6b7280' }}>{fmt(a.dep_mensual_estimada)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 2 }}>
-                      <button className="btn-icon" title="Ver detalle" onClick={() => viewDetail(a.id)}><Eye size={14} /></button>
-                      <button className="btn-icon" title="Editar" onClick={() => { setEditing(a); setShowModal(true) }}><Edit2 size={14} /></button>
-                      <button className="btn-icon" title="Desactivar" onClick={() => del(a.id)}><Trash2 size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-            {items.length > 0 && (
-              <tr style={{ fontWeight: 700, background: '#f9fafb', borderTop: '2px solid #e5e7eb' }}>
-                <td colSpan={5}>TOTALES ({items.length} activos)</td>
-                <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(totalCosto)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#dc2626' }}>{fmt(totalDepAcum)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#166534' }}>{fmt(totalLibros)}</td>
-                <td colSpan={2}></td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {showModal && editing && (
-        <Modal title={editing.id ? 'Editar Activo Fijo' : 'Nuevo Activo Fijo'} onClose={() => setShowModal(false)} width={650}>
-          <form onSubmit={save}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div><Label>Código</Label><input className="input" required value={editing.codigo} onChange={e => setEditing({ ...editing, codigo: e.target.value })} placeholder="AF-001" /></div>
-              <div><Label>Nombre</Label><input className="input" required value={editing.nombre} onChange={e => setEditing({ ...editing, nombre: e.target.value })} /></div>
-              <div><Label>Categoría</Label><select className="select" value={editing.categoria || ''} onChange={e => setEditing({ ...editing, categoria: e.target.value })}><option value="">Seleccionar...</option>{CATEGORIAS.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}</select></div>
-              <div><Label>Campo</Label><select className="select" value={editing.campo_id || ''} onChange={e => setEditing({ ...editing, campo_id: e.target.value })}><option value="">Sin campo</option>{campos.map((c: any) => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}</select></div>
-              <div><Label>Fecha Adquisición</Label><input className="input" type="date" required value={editing.fecha_adquisicion} onChange={e => setEditing({ ...editing, fecha_adquisicion: e.target.value })} /></div>
-              <div><Label>Método Depreciación</Label><select className="select" value={editing.metodo_depreciacion} onChange={e => setEditing({ ...editing, metodo_depreciacion: e.target.value })}><option value="lineal">Línea recta</option><option value="saldo_decreciente">Saldo decreciente</option></select></div>
-              <div><Label>Costo Adquisición (RD$)</Label><input className="input" type="number" step="0.01" required value={editing.costo_adquisicion} onChange={e => setEditing({ ...editing, costo_adquisicion: e.target.value })} /></div>
-              <div><Label>Valor Residual (RD$)</Label><input className="input" type="number" step="0.01" value={editing.valor_residual} onChange={e => setEditing({ ...editing, valor_residual: e.target.value })} /></div>
-              <div><Label>Vida Útil (meses)</Label><input className="input" type="number" required value={editing.vida_util_meses} onChange={e => setEditing({ ...editing, vida_util_meses: e.target.value })} /></div>
-              <div><Label>Cuenta del Activo</Label><select className="select" value={editing.cuenta_activo_id || ''} onChange={e => setEditing({ ...editing, cuenta_activo_id: e.target.value })}><option value="">Seleccionar...</option>{cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}</select></div>
-              <div><Label>Cuenta Dep. Acumulada</Label><select className="select" value={editing.cuenta_depreciacion_id || ''} onChange={e => setEditing({ ...editing, cuenta_depreciacion_id: e.target.value })}><option value="">Seleccionar...</option>{cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}</select></div>
-              <div><Label>Cuenta Gasto Dep.</Label><select className="select" value={editing.cuenta_gasto_dep_id || ''} onChange={e => setEditing({ ...editing, cuenta_gasto_dep_id: e.target.value })}><option value="">Seleccionar...</option>{cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}</select></div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button type="submit" className="btn-primary">{editing.id ? 'Guardar' : 'Crear'}</button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {showDepModal && (
-        <Modal title="Correr Depreciación Mensual" onClose={() => setShowDepModal(false)} width={400}>
-          <form onSubmit={correrDepreciacion}>
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>Calcula la depreciación de todos los activos fijos activos para el período seleccionado.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-              <div><Label>Mes</Label><select className="select" value={depMes} onChange={e => setDepMes(Number(e.target.value))}>{MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select></div>
-              <div><Label>Año</Label><input className="input" type="number" value={depAno} onChange={e => setDepAno(Number(e.target.value))} /></div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowDepModal(false)}>Cancelar</button>
-              <button type="submit" className="btn-primary" disabled={depLoading}>{depLoading ? 'Procesando...' : 'Correr Depreciación'}</button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {detail && (
-        <Modal title={`Activo: ${detail.codigo}`} subtitle={detail.nombre} onClose={() => setDetail(null)} width={650}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16, fontSize: 13 }}>
-            <div>Categoría: <strong>{detail.categoria || '—'}</strong></div>
-            <div>Campo: <strong>{detail.campo_nombre || '—'}</strong></div>
-            <div>Fecha Adquisición: <strong>{detail.fecha_adquisicion}</strong></div>
-            <div>Método: <strong>{detail.metodo_depreciacion}</strong></div>
-            <div>Costo: <strong>RD$ {fmt(detail.costo_adquisicion)}</strong></div>
-            <div>Valor Residual: <strong>RD$ {fmt(detail.valor_residual)}</strong></div>
-            <div>Dep. Acumulada: <strong style={{ color: '#dc2626' }}>RD$ {fmt(detail.depreciacion_acumulada)}</strong></div>
-            <div>Valor en Libros: <strong style={{ color: '#166534' }}>RD$ {fmt(detail.valor_en_libros)}</strong></div>
-            <div>Vida Útil: <strong>{detail.vida_util_meses} meses</strong></div>
-            <div>Dep. Mensual Est.: <strong>RD$ {fmt(detail.dep_mensual_estimada)}</strong></div>
-          </div>
-          {detail.costo_adquisicion > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Progreso de depreciación</div>
-              <div style={{ height: 14, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${Math.min(100, (detail.depreciacion_acumulada / (detail.costo_adquisicion - detail.valor_residual)) * 100)}%`, background: '#ca8a04', borderRadius: 6, transition: 'width 0.3s' }}></div>
-              </div>
-              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
-                {Math.round((detail.depreciacion_acumulada / Math.max(1, detail.costo_adquisicion - detail.valor_residual)) * 100)}% depreciado
-              </div>
-            </div>
-          )}
-          <h4 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 8px' }}>Historial de Depreciación</h4>
-          <table style={{ fontSize: 12 }}>
-            <thead><tr><th>Período</th><th style={{ textAlign: 'right' }}>Monto</th><th style={{ textAlign: 'right' }}>Dep. Acum. Post</th><th>Asiento</th></tr></thead>
-            <tbody>
-              {(!detail.historial || detail.historial.length === 0) ? (
-                <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9ca3af', padding: 16 }}>Sin historial de depreciación</td></tr>
-              ) : detail.historial.map((h: any) => (
-                <tr key={h.id}>
-                  <td>{h.periodo_nombre || '—'}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>RD$ {fmt(h.monto)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#dc2626' }}>RD$ {fmt(h.depreciacion_acumulada_post)}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: 11, color: '#166534' }}>{h.asiento_id ? `#${h.asiento_id}` : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Modal>
-      )}
-    </div>
-  )
-}
-
 
 /* ═══════════════════ TAB: FSV — Editor de Estados Financieros ═══════════════════ */
 
@@ -2382,12 +2179,146 @@ function TabFSV() {
 }
 
 
+/* ═══════════════════ TAB: Diarios Contables ═══════════════════ */
+
+function TabDiarios() {
+  const [diarios, setDiarios] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editando, setEditando] = useState<any>(null)
+  const [cuentas, setCuentas] = useState<any[]>([])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { data } = await api.get('/contabilidad/diarios')
+      setDiarios(data)
+    } catch { toast.error('Error al cargar diarios') }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => {})
+  }, [])
+
+  async function guardar(e) {
+    e.preventDefault()
+    try {
+      if (editando.id) {
+        await api.put(`/contabilidad/diarios/${editando.id}`, editando)
+      } else {
+        await api.post('/contabilidad/diarios', editando)
+      }
+      toast.success('Diario guardado')
+      setEditando(null)
+      load()
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function eliminar(id: number) {
+    if (!confirm('¿Eliminar este diario?')) return
+    try { await api.delete(`/contabilidad/diarios/${id}`); toast.success('Eliminado'); load() }
+    catch (err) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>Diarios (libros) contables — cada asiento se registra en un diario según su origen.</p>
+        <button className="btn-primary" onClick={() => setEditando({ codigo: '', nombre: '', tipo: '', cuenta_default_id: '', activo: true })}><Plus size={14} /> Nuevo Diario</button>
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nombre</th>
+              <th>Tipo</th>
+              <th>Cuenta Default</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+            ) : diarios.length === 0 ? (
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin diarios</td></tr>
+            ) : diarios.map(d => (
+              <tr key={d.id}>
+                <td style={{ fontWeight: 700, fontFamily: 'monospace' }}>{d.codigo}</td>
+                <td>{d.nombre}</td>
+                <td style={{ fontSize: 12, color: '#6b7280' }}>{d.tipo || '—'}</td>
+                <td style={{ fontSize: 12 }}>
+                  {d.cuenta_default_id ? cuentas.find(c => c.id === d.cuenta_default_id)?.codigo || d.cuenta_default_id : '—'}
+                </td>
+                <td><Badge color={d.activo ? 'green' : 'red'}>{d.activo ? 'Activo' : 'Inactivo'}</Badge></td>
+                <td>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn-secondary" style={{ padding: '4px 6px' }} onClick={() => setEditando({ ...d })}><Edit2 size={12} /></button>
+                    <button className="btn-danger" style={{ padding: '4px 6px' }} onClick={() => eliminar(d.id)}><Trash2 size={12} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {editando && (
+        <Modal title={editando.id ? 'Editar Diario' : 'Nuevo Diario'} onClose={() => setEditando(null)} width={500}>
+          <form onSubmit={guardar}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <Label>Código *</Label>
+                <input className="input" value={editando.codigo} onChange={e => setEditando({ ...editando, codigo: e.target.value.toUpperCase() })} required maxLength={10} />
+              </div>
+              <div>
+                <Label>Tipo</Label>
+                <select className="select" value={editando.tipo} onChange={e => setEditando({ ...editando, tipo: e.target.value })}>
+                  <option value="">— Sin tipo —</option>
+                  <option value="compras">Compras</option>
+                  <option value="ventas">Ventas</option>
+                  <option value="banco">Banco</option>
+                  <option value="nomina">Nómina</option>
+                  <option value="ajuste">Ajuste</option>
+                  <option value="operaciones">Operaciones</option>
+                </select>
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <Label>Nombre *</Label>
+                <input className="input" value={editando.nombre} onChange={e => setEditando({ ...editando, nombre: e.target.value })} required />
+              </div>
+              <div>
+                <Label>Cuenta Default</Label>
+                <select className="select" value={editando.cuenta_default_id || ''} onChange={e => setEditando({ ...editando, cuenta_default_id: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">— Ninguna —</option>
+                  {cuentas.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'end', gap: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={editando.activo} onChange={e => setEditando({ ...editando, activo: e.target.checked })} />
+                  Activo
+                </label>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn-secondary" onClick={() => setEditando(null)}>Cancelar</button>
+              <button type="submit" className="btn-primary">Guardar</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+
 function TabConfig() {
-  const [empresa, setEmpresa] = useState(null)
   const [reglas, setReglas] = useState([])
   const [loading, setLoading] = useState(true)
-  const [editEmpresa, setEditEmpresa] = useState(false)
-  const [formEmpresa, setFormEmpresa] = useState({})
   const [cuentas, setCuentas] = useState<any[]>([])
   const [showReglaModal, setShowReglaModal] = useState(false)
   const [editingRegla, setEditingRegla] = useState<any>(null)
@@ -2395,77 +2326,22 @@ function TabConfig() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [e, r, c] = await Promise.all([
-        api.get('/contabilidad/empresa'),
+      const [r, c] = await Promise.all([
         api.get('/contabilidad/reglas'),
         api.get('/contabilidad/cuentas'),
       ])
-      setEmpresa(e.data)
       setReglas(r.data)
       setCuentas(c.data.filter((x: any) => x.acepta_movimientos))
-      if (e.data) setFormEmpresa(e.data)
     } catch { toast.error('Error al cargar configuración') }
     finally { setLoading(false) }
   }, [])
 
   useEffect(() => { load() }, [load])
 
-  async function saveEmpresa(e) {
-    e.preventDefault()
-    try {
-      const { id, ...payload } = formEmpresa as any
-      await api.put('/contabilidad/empresa', payload)
-      toast.success('Configuración guardada')
-      setEditEmpresa(false)
-      load()
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
-  }
-
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Datos de la Empresa</h3>
-          {!editEmpresa && <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => setEditEmpresa(true)}><Edit2 size={12} /> Editar</button>}
-        </div>
-        {editEmpresa ? (
-          <form onSubmit={saveEmpresa}>
-            {['razon_social', 'nombre_comercial', 'rnc', 'direccion', 'telefono', 'email', 'moneda_funcional', 'regimen_fiscal'].map(k => (
-              <div key={k} style={{ marginBottom: 10 }}>
-                <Label>{k.replace(/_/g, ' ')}</Label>
-                <input className="input" value={formEmpresa[k] || ''} onChange={e => setFormEmpresa({ ...formEmpresa, [k]: e.target.value })} />
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-secondary" onClick={() => setEditEmpresa(false)}>Cancelar</button>
-              <button type="submit" className="btn-primary">Guardar</button>
-            </div>
-          </form>
-        ) : empresa ? (
-          <div style={{ display: 'grid', gap: 8 }}>
-            {[
-              { l: 'Razón Social', v: empresa.razon_social },
-              { l: 'Nombre Comercial', v: empresa.nombre_comercial },
-              { l: 'RNC', v: empresa.rnc },
-              { l: 'Dirección', v: empresa.direccion },
-              { l: 'Teléfono', v: empresa.telefono },
-              { l: 'Email', v: empresa.email },
-              { l: 'Moneda', v: empresa.moneda_funcional },
-              { l: 'Régimen', v: empresa.regimen_fiscal },
-            ].map(f => (
-              <div key={f.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
-                <span style={{ color: '#6b7280' }}>{f.l}</span>
-                <span style={{ fontWeight: 500 }}>{f.v || '—'}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p style={{ color: '#9ca3af' }}>No configurada. Presione Editar.</p>
-        )}
-      </div>
-
+    <div>
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Reglas de Contabilización</h3>
@@ -2519,30 +2395,42 @@ function TabConfig() {
 
 /* ═══════════════════ TAB: Dimensiones Financieras ═══════════════════ */
 
-type DimType = 'unidades-negocio' | 'departamentos' | 'almacenes'
+type DimType = 'unidades-negocio' | 'departamentos' | 'almacenes' | 'campos'
 
-const DIM_SECTIONS: { key: DimType; label: string; fields: string[] }[] = [
+const DIM_SECTIONS: { key: DimType; label: string; fields: string[]; apiBase?: string; idField?: string }[] = [
   { key: 'unidades-negocio', label: 'Unidades de Negocio', fields: ['codigo', 'nombre', 'descripcion'] },
   { key: 'departamentos', label: 'Departamentos', fields: ['codigo', 'nombre', 'descripcion'] },
   { key: 'almacenes', label: 'Almacenes', fields: ['codigo', 'nombre', 'ubicacion'] },
+  { key: 'campos', label: 'Centros de Costo', fields: ['id_campo', 'nombre', 'ubicacion', 'hectareas'], apiBase: '/campos', idField: 'id_campo' },
 ]
 
 function TabDimensiones() {
-  const [data, setData] = useState<Record<DimType, any[]>>({ 'unidades-negocio': [], departamentos: [], almacenes: [] })
+  const [data, setData] = useState<Record<DimType, any[]>>({ 'unidades-negocio': [], departamentos: [], almacenes: [], campos: [] })
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editType, setEditType] = useState<DimType>('unidades-negocio')
   const [editing, setEditing] = useState<any>(null)
 
+  function apiUrl(type: DimType) {
+    const sec = DIM_SECTIONS.find(s => s.key === type)
+    return sec?.apiBase || `/contabilidad/${type}`
+  }
+
+  function idField(type: DimType) {
+    const sec = DIM_SECTIONS.find(s => s.key === type)
+    return sec?.idField || 'id'
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [un, dep, alm] = await Promise.all([
+      const [un, dep, alm, cam] = await Promise.all([
         api.get('/contabilidad/unidades-negocio'),
         api.get('/contabilidad/departamentos'),
         api.get('/contabilidad/almacenes'),
+        api.get('/campos'),
       ])
-      setData({ 'unidades-negocio': un.data, departamentos: dep.data, almacenes: alm.data })
+      setData({ 'unidades-negocio': un.data, departamentos: dep.data, almacenes: alm.data, campos: cam.data })
     } catch { toast.error('Error cargando dimensiones') }
     finally { setLoading(false) }
   }, [])
@@ -2566,17 +2454,19 @@ function TabDimensiones() {
 
   const handleSave = async (e: any) => {
     e.preventDefault()
+    const base = apiUrl(editType)
+    const idf = idField(editType)
     try {
-      if (editing.id) await api.put(`/contabilidad/${editType}/${editing.id}`, editing)
-      else await api.post(`/contabilidad/${editType}`, editing)
-      toast.success(editing.id ? 'Actualizado' : 'Creado')
+      if (editing[idf]) await api.put(`${base}/${editing[idf]}`, editing)
+      else await api.post(base, editing)
+      toast.success(editing[idf] ? 'Actualizado' : 'Creado')
       setShowModal(false); load()
     } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
   }
 
-  const handleDelete = async (type: DimType, id: number) => {
+  const handleDelete = async (type: DimType, itemId: string | number) => {
     if (!confirm('¿Eliminar este registro?')) return
-    try { await api.delete(`/contabilidad/${type}/${id}`); toast.success('Eliminado'); load() }
+    try { await api.delete(`${apiUrl(type)}/${itemId}`); toast.success('Eliminado'); load() }
     catch (err: any) { toast.error(err.response?.data?.detail || 'Error al eliminar') }
   }
 
@@ -2609,21 +2499,25 @@ function TabDimensiones() {
               <tbody>
                 {data[sec.key].length === 0 ? (
                   <tr><td colSpan={4} style={{ textAlign: 'center', padding: 20, color: '#9ca3af' }}>Sin registros</td></tr>
-                ) : data[sec.key].map((item: any) => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{item.codigo}</td>
-                    <td style={{ padding: '6px 8px' }}>{item.nombre}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: item.activo ? '#dcfce7' : '#fee2e2', color: item.activo ? '#166534' : '#991b1b' }}>
-                        {item.activo ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '6px 4px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', padding: 3 }} onClick={() => openEdit(sec.key, item)}><Edit2 size={13} /></button>
-                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 3 }} onClick={() => handleDelete(sec.key, item.id)}><Trash2 size={13} /></button>
-                    </td>
-                  </tr>
-                ))}
+                ) : data[sec.key].map((item: any) => {
+                  const idf = idField(sec.key)
+                  const codeField = sec.fields[0]
+                  return (
+                    <tr key={item[idf]} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{item[codeField]}</td>
+                      <td style={{ padding: '6px 8px' }}>{item.nombre}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                        <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: item.activo !== false ? '#dcfce7' : '#fee2e2', color: item.activo !== false ? '#166534' : '#991b1b' }}>
+                          {item.activo !== false ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '6px 4px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', padding: 3 }} onClick={() => openEdit(sec.key, item)}><Edit2 size={13} /></button>
+                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 3 }} onClick={() => handleDelete(sec.key, item[idf])}><Trash2 size={13} /></button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -2856,8 +2750,8 @@ export default function Contabilidad() {
       {tab === 'recurrentes' && <TabRecurrentes />}
       {tab === 'dgii' && <TabDGII />}
       {tab === 'conciliacion' && <TabConciliacion />}
-      {tab === 'activos' && <TabActivosFijos />}
       {tab === 'fsv' && <TabFSV />}
+      {tab === 'diarios' && <TabDiarios />}
       {tab === 'dimensiones' && <TabDimensiones />}
       {tab === 'trazabilidad' && <TabTrazabilidad />}
       {tab === 'config' && <TabConfig />}

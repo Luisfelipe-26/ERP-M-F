@@ -26,7 +26,10 @@ const EfectivoBanco = lazy(() => import('./pages/EfectivoBanco'))
 const Proveedores = lazy(() => import('./pages/Proveedores'))
 const Contabilidad = lazy(() => import('./pages/Contabilidad'))
 const ActivosFijos = lazy(() => import('./pages/ActivosFijos'))
+const Compras = lazy(() => import('./pages/Compras'))
 const Presupuesto = lazy(() => import('./pages/Presupuesto'))
+const Configuracion = lazy(() => import('./pages/Configuracion'))
+const Administracion = lazy(() => import('./pages/Administracion'))
 
 function PageLoader() {
   return (
@@ -71,9 +74,12 @@ export default function App() {
           <Route path="clientes" element={<Suspense fallback={<PageLoader />}><Clientes /></Suspense>} />
           <Route path="efectivo-banco" element={<Suspense fallback={<PageLoader />}><EfectivoBanco /></Suspense>} />
           <Route path="proveedores" element={<Suspense fallback={<PageLoader />}><Proveedores /></Suspense>} />
+          <Route path="compras" element={<Suspense fallback={<PageLoader />}><Compras /></Suspense>} />
           <Route path="contabilidad" element={<Suspense fallback={<PageLoader />}><Contabilidad /></Suspense>} />
           <Route path="activos-fijos" element={<Suspense fallback={<PageLoader />}><ActivosFijos /></Suspense>} />
           <Route path="presupuesto" element={<Suspense fallback={<PageLoader />}><Presupuesto /></Suspense>} />
+          <Route path="configuracion" element={<Suspense fallback={<PageLoader />}><Configuracion /></Suspense>} />
+          <Route path="admin" element={<Suspense fallback={<PageLoader />}><Administracion /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

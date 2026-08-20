@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   LayoutDashboard, MapPin, Users, Package, Wrench, ClipboardList, LogOut, Leaf,
   DollarSign, TrendingUp, Warehouse, CloudSun, Bug, Droplets, BarChart3,
-  UserCheck, Landmark, Truck, BookOpen, Building2, PiggyBank, Bell, X
+  UserCheck, Landmark, Truck, BookOpen, Building2, PiggyBank, Bell, X, Settings, Shield
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../api'
@@ -31,6 +31,9 @@ const nav: any[] = [
   { to: '/productos', icon: Package, label: 'Productos' },
   { to: '/inventario', icon: Warehouse, label: 'Inventario' },
   { to: '/actividades', icon: Wrench, label: 'Actividades' },
+  { divider: true, label: 'ADMIN' },
+  { to: '/configuracion', icon: Settings, label: 'Configuración' },
+  { to: '/admin', icon: Shield, label: 'Usuarios y Perfiles' },
 ]
 
 export default function Layout() {
