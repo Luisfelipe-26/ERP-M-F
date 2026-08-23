@@ -309,8 +309,9 @@ export default function Riego() {
               <Field label="Profundidad (cm) *">
                 <select className="select" value={form.depth_cm} onChange={e => f('depth_cm', e.target.value)}>
                   <option value="20">20 cm</option>
-                  <option value="50">50 cm</option>
                   <option value="30">30 cm</option>
+                  <option value="50">50 cm</option>
+                  <option value="60">60 cm</option>
                 </select>
               </Field>
               <Field label="Tipo de lectura *">
