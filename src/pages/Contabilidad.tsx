@@ -208,7 +208,7 @@ function TabCuentas() {
 
   useEffect(() => { load() }, [load])
 
-  const cuentasGrupo = cuentas.filter(c => !c.acepta_movimientos)
+  const cuentasPorNivel = (nivel: number) => cuentas.filter((c: any) => c.nivel === nivel)
   const tree = buildTree(cuentas)
 
   function buildTree(list) {
@@ -266,7 +266,7 @@ function TabCuentas() {
     setForm(f => ({ ...f, cuenta_padre_id: parentId, codigo, nivel, tipo: padre?.tipo || f.tipo, naturaleza: padre?.naturaleza || f.naturaleza, grupo: padre?.grupo || f.grupo }))
   }
 
-  const padresParaNivel = cuentasGrupo.filter((c: any) => c.nivel === form.nivel - 1)
+  const padresParaNivel = cuentasPorNivel(form.nivel - 1)
 
   function openNew() {
     setForm({ codigo: '', nombre: '', tipo: 'activo', naturaleza: 'deudora', grupo: '', nivel: 1, cuenta_padre_id: '', partida_id: '', acepta_movimientos: false })
