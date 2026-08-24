@@ -4,7 +4,8 @@ import toast from 'react-hot-toast'
 import {
   Droplets, CloudRain, BarChart3, Settings, Plus, RefreshCw, Search,
   AlertTriangle, CheckCircle, ThermometerSun, Clock, Gauge, ChevronDown,
-  ChevronUp, Save, X, Zap, Filter
+  ChevronUp, Save, X, Zap, Filter, Download, Edit2, Trash2, Calendar,
+  TrendingUp, Target
 } from 'lucide-react'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -26,6 +27,7 @@ const STATUS_COLORS = {
   estres:   { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'Estrés' },
   sin_dato: { bg: '#f3f4f6', color: '#6b7280', border: '#d1d5db', label: 'Sin dato' },
 }
+const DIAS_LABEL = { 0: 'Lun', 1: 'Mar', 2: 'Mié', 3: 'Jue', 4: 'Vie', 5: 'Sáb', 6: 'Dom' }
 
 const StatusBadge = ({ status }) => {
   const s = STATUS_COLORS[status] || STATUS_COLORS.sin_dato
@@ -58,7 +60,7 @@ const TabBtn = ({ active, icon: Icon, label, onClick }) => (
   </button>
 )
 
-const Field = ({ label, children, full }) => (
+const Field = ({ label, children, full }: { label: string; children: any; full?: boolean }) => (
   <div style={{ gridColumn: full ? '1/-1' : undefined }}>
     <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</label>
     {children}
@@ -78,36 +80,55 @@ const Modal = ({ title, onClose, children, width = 560 }) => (
   </div>
 )
 
+const IconBtn = ({ icon: Icon, color, title, onClick }) => (
+  <button onClick={onClick} title={title} style={{ background: 'none', border: 'none', cursor: 'pointer', color, padding: 2 }}>
+    <Icon size={14} />
+  </button>
+)
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function Riego() {
   const [tab, setTab] = useState('dashboard')
-  const [campos, setCampos] = useState([])
+  const [campos, setCampos] = useState<any[]>([])
   const [selCampo, setSelCampo] = useState('')
   const [loading, setLoading] = useState(false)
 
   // Dashboard
-  const [dashboard, setDashboard] = useState({ campos: [], alert_count: 0 })
-  const [alertas, setAlertas] = useState([])
+  const [dashboard, setDashboard] = useState<any>({ campos: [], alert_count: 0 })
+  const [alertas, setAlertas] = useState<any[]>([])
+  const [recomendaciones, setRecomendaciones] = useState<any[]>([])
 
   // Lecturas
-  const [lecturas, setLecturas] = useState([])
+  const [lecturas, setLecturas] = useState<any[]>([])
   const [showLecturaForm, setShowLecturaForm] = useState(false)
+  const [editLectura, setEditLectura] = useState<any>(null)
+  const [filtroDepth, setFiltroDepth] = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('')
 
   // Eventos
-  const [eventos, setEventos] = useState([])
+  const [eventos, setEventos] = useState<any[]>([])
   const [showEventoForm, setShowEventoForm] = useState(false)
+  const [editEvento, setEditEvento] = useState<any>(null)
 
   // Balance
-  const [balance, setBalance] = useState([])
+  const [balance, setBalance] = useState<any[]>([])
   const [balFechas, setBalFechas] = useState({ desde: daysAgo(30), hasta: today() })
   const [balCampo, setBalCampo] = useState('')
 
   // Config
   const [showConfig, setShowConfig] = useState(false)
-  const [configs, setConfigs] = useState([])
+  const [configs, setConfigs] = useState<any[]>([])
+
+  // Programas
+  const [programas, setProgramas] = useState<any[]>([])
+  const [showProgForm, setShowProgForm] = useState(false)
+  const [editProg, setEditProg] = useState<any>(null)
+
+  // Consumo
+  const [consumo, setConsumo] = useState<any>(null)
 
   // ── Load campos once ──
   useEffect(() => {
@@ -128,27 +149,31 @@ export default function Riego() {
       setDashboard(dash.data)
       setAlertas(alerts.data)
     } catch (err) { toast.error('Error cargando dashboard de riego') }
+    try { const r = await api.get('/riego/recomendaciones'); setRecomendaciones(r.data) } catch {}
+    try { const r = await api.get('/riego/consumo', { params: { fecha_desde: daysAgo(30), fecha_hasta: today() } }); setConsumo(r.data) } catch {}
     setLoading(false)
   }, [])
 
   const loadLecturas = useCallback(async () => {
     setLoading(true)
     try {
-      const params = {}
+      const params: any = {}
       if (selCampo) params.campo_id = selCampo
+      if (filtroDepth) params.depth_cm = Number(filtroDepth)
       const r = await api.get('/riego/lecturas', { params })
       setLecturas(r.data)
     } catch { toast.error('Error cargando lecturas') }
     setLoading(false)
-  }, [selCampo])
+  }, [selCampo, filtroDepth])
 
   const loadEventos = useCallback(async () => {
     setLoading(true)
     try {
-      const params = {}
+      const params: any = {}
       if (selCampo) params.campo_id = selCampo
       const r = await api.get('/riego/eventos', { params })
       setEventos(r.data)
+      try { const p = await api.get('/riego/programas', { params }); setProgramas(p.data) } catch {}
     } catch { toast.error('Error cargando eventos') }
     setLoading(false)
   }, [selCampo])
@@ -213,10 +238,36 @@ export default function Riego() {
             {(dashboard.campos || []).filter(c => c.days_since_irrigation === 0).length}
           </div>
         </div>
+        {consumo && (
+          <div style={{ flex: 1, minWidth: 140, background: '#f0f9ff', borderRadius: 10, padding: '12px 16px', border: '1px solid #7dd3fc' }}>
+            <div style={{ fontSize: 11, color: '#0369a1', fontWeight: 600 }}>CONSUMO 30D</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#0c4a6e' }}>{fmtN(consumo.total_m3, 0)}<span style={{ fontSize: 14, fontWeight: 500 }}> m³</span></div>
+          </div>
+        )}
       </div>
 
+      {/* Recommendations */}
+      {recomendaciones.length > 0 && (
+        <div style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Target size={16} color="#854d0e" />
+            <strong style={{ color: '#854d0e', fontSize: 13 }}>Recomendaciones de Riego</strong>
+          </div>
+          {recomendaciones.map((r, i) => (
+            <div key={i} style={{ fontSize: 12, color: '#713f12', marginLeft: 24, marginBottom: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ background: r.prioridad === 'urgente' ? '#fca5a5' : '#fde68a', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
+                {r.prioridad === 'urgente' ? 'URGENTE' : 'NORMAL'}
+              </span>
+              <strong>{r.campo_id}</strong> — Déficit {fmtN(r.deficit_mm, 1)} mm →
+              <span style={{ fontWeight: 600 }}>{fmtN(r.litros_sugeridos, 0)} L</span>
+              {r.duracion_sugerida_min && <span>({fmtN(r.duracion_sugerida_min, 0)} min)</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Campo cards grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12 }}>
         {(dashboard.campos || []).map(c => {
           const sc = STATUS_COLORS[c.status] || STATUS_COLORS.sin_dato
           return (
@@ -226,8 +277,8 @@ export default function Riego() {
                 background: '#fff', borderRadius: 10, padding: 14, border: `2px solid ${sc.border}`,
                 cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
               }}
-              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+              onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
+              onMouseLeave={e => (e.currentTarget.style.transform = 'none')}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <strong style={{ fontSize: 14, color: '#1F3A5F' }}>{c.campo_nombre || c.campo_id}</strong>
@@ -235,12 +286,13 @@ export default function Riego() {
               </div>
               <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.7 }}>
                 {c.value_cbar != null ? (
-                  <div><Gauge size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> <span style={{ color: cbarColor(c.value_cbar), fontWeight: 700 }}>{fmtN(c.value_cbar, 0)} cbar</span></div>
+                  <div><Gauge size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> <span style={{ color: cbarColor(c.value_cbar), fontWeight: 700 }}>{fmtN(c.value_cbar, 0)} cbar</span>{c.depth_cm ? <span style={{ color: '#9ca3af' }}> @ {c.depth_cm}cm</span> : null}</div>
                 ) : c.visual_scale != null ? (
-                  <div>{VISUAL_EMOJIS[c.visual_scale] || '—'}</div>
+                  <div>{VISUAL_EMOJIS[c.visual_scale] || '—'}{c.depth_cm ? <span style={{ color: '#9ca3af' }}> @ {c.depth_cm}cm</span> : null}</div>
                 ) : (
                   <div style={{ color: '#9ca3af' }}>Sin lectura</div>
                 )}
+                {c.etapa && <div><TrendingUp size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> Etapa: <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{c.etapa}</span></div>}
                 <div><Clock size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> Último riego: {c.days_since_irrigation != null ? `hace ${c.days_since_irrigation}d` : '—'}</div>
                 <div><CloudRain size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> Lectura: {c.reading_datetime ? fmtDate(c.reading_datetime) : '—'}</div>
                 {c.cumulative_deficit_mm != null && (
@@ -256,13 +308,25 @@ export default function Riego() {
 
   // ── Lecturas tab ───────────────────────────────────────────────────────────
   const LecturasTab = () => {
-    const [form, setForm] = useState({
-      campo_id: selCampo || '', depth_cm: '20', reading_type: 'visual',
-      value_cbar: '', visual_scale: '3', position: 'bajo_gotero',
-      location_zone: '', notes: '', reading_datetime: new Date().toISOString().slice(0, 16)
+    const initForm = (l?: any) => ({
+      campo_id: l?.campo_id || selCampo || '', depth_cm: String(l?.depth_cm || '20'),
+      reading_type: l?.reading_type || 'visual',
+      value_cbar: l?.value_cbar != null ? String(l.value_cbar) : '',
+      visual_scale: l?.visual_scale != null ? String(l.visual_scale) : '3',
+      position: l?.position || 'bajo_gotero',
+      location_zone: l?.location_zone || '', sensor_id: l?.sensor_id || '',
+      notes: l?.notes || '',
+      reading_datetime: l?.reading_datetime ? l.reading_datetime.slice(0, 16) : new Date().toISOString().slice(0, 16)
     })
+    const [form, setForm] = useState(initForm())
     const [saving, setSaving] = useState(false)
     const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
+    const isEdit = editLectura != null
+
+    useEffect(() => {
+      if (editLectura) setForm(initForm(editLectura))
+      else if (showLecturaForm) setForm(initForm())
+    }, [editLectura, showLecturaForm])
 
     async function submit(e) {
       e.preventDefault()
@@ -271,16 +335,39 @@ export default function Riego() {
         const payload = {
           ...form,
           depth_cm: Number(form.depth_cm),
-          value_cbar: form.reading_type === 'tensiometro' && form.value_cbar ? Number(form.value_cbar) : null,
+          value_cbar: (form.reading_type === 'tensiometro' || form.reading_type === 'sensor') && form.value_cbar ? Number(form.value_cbar) : null,
           visual_scale: form.reading_type === 'visual' ? Number(form.visual_scale) : null,
+          sensor_id: form.reading_type === 'sensor' ? form.sensor_id : null,
         }
-        await api.post('/riego/lecturas', payload)
-        toast.success('Lectura registrada')
+        if (isEdit) {
+          await api.put(`/riego/lecturas/${editLectura.id}`, payload)
+          toast.success('Lectura actualizada')
+        } else {
+          await api.post('/riego/lecturas', payload)
+          toast.success('Lectura registrada')
+        }
         setShowLecturaForm(false)
+        setEditLectura(null)
         loadLecturas()
-      } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
+      } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
       setSaving(false)
     }
+
+    async function handleDelete(id) {
+      if (!confirm('¿Eliminar esta lectura?')) return
+      try { await api.delete(`/riego/lecturas/${id}`); toast.success('Eliminada'); loadLecturas() }
+      catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+    }
+
+    const filtered = lecturas.filter(r => !filtroTipo || r.reading_type === filtroTipo)
+
+    // Trend chart data
+    const trendData = [...filtered].reverse().slice(-60).map(r => ({
+      date: r.reading_datetime ? new Date(r.reading_datetime).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit' }) : '',
+      cbar: r.value_cbar,
+      visual: r.visual_scale ? r.visual_scale * 15 : null,
+      depth: r.depth_cm,
+    }))
 
     return (
       <div>
@@ -289,16 +376,34 @@ export default function Riego() {
             <option value="">Todos los campos</option>
             {campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.id_campo} — {c.nombre}</option>)}
           </select>
-          <button className="btn-primary" onClick={() => setShowLecturaForm(true)} style={{ background: '#14532d', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <select className="select" value={filtroDepth} onChange={e => setFiltroDepth(e.target.value)} style={{ maxWidth: 120 }}>
+            <option value="">Profundidad</option>
+            <option value="20">20 cm</option>
+            <option value="30">30 cm</option>
+            <option value="50">50 cm</option>
+            <option value="60">60 cm</option>
+          </select>
+          <select className="select" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{ maxWidth: 140 }}>
+            <option value="">Tipo lectura</option>
+            <option value="visual">Visual</option>
+            <option value="tensiometro">Tensiómetro</option>
+            <option value="sensor">Sensor</option>
+          </select>
+          <button className="btn-primary" onClick={() => { setEditLectura(null); setShowLecturaForm(true) }} style={{ background: '#14532d', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Plus size={14} /> Nueva Lectura
           </button>
           <button className="btn-secondary" onClick={loadLecturas} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <RefreshCw size={14} /> Actualizar
+            <RefreshCw size={14} />
           </button>
+          <a href={`${api.defaults.baseURL}/riego/lecturas/exportar?${selCampo ? `campo_id=${selCampo}&` : ''}format=csv`}
+            target="_blank" rel="noopener noreferrer" className="btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontSize: 13, padding: '6px 12px' }}>
+            <Download size={14} /> CSV
+          </a>
         </div>
 
-        {showLecturaForm && (
-          <Modal title="Nueva Lectura de Suelo" onClose={() => setShowLecturaForm(false)} width={580}>
+        {(showLecturaForm || isEdit) && (
+          <Modal title={isEdit ? 'Editar Lectura' : 'Nueva Lectura de Suelo'} onClose={() => { setShowLecturaForm(false); setEditLectura(null) }} width={580}>
             <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <Field label="Campo *">
                 <select className="select" value={form.campo_id} onChange={e => f('campo_id', e.target.value)} required>
@@ -336,6 +441,11 @@ export default function Riego() {
                   </select>
                 </Field>
               )}
+              {form.reading_type === 'sensor' && (
+                <Field label="Sensor ID *">
+                  <input className="input" value={form.sensor_id} onChange={e => f('sensor_id', e.target.value)} required placeholder="ID del sensor" />
+                </Field>
+              )}
               <Field label="Posición">
                 <select className="select" value={form.position} onChange={e => f('position', e.target.value)}>
                   <option value="bajo_gotero">Bajo gotero</option>
@@ -353,13 +463,32 @@ export default function Riego() {
                 <input className="input" value={form.notes} onChange={e => f('notes', e.target.value)} placeholder="Observaciones…" />
               </Field>
               <div style={{ gridColumn: '1/-1', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-secondary" onClick={() => setShowLecturaForm(false)}>Cancelar</button>
+                <button type="button" className="btn-secondary" onClick={() => { setShowLecturaForm(false); setEditLectura(null) }}>Cancelar</button>
                 <button type="submit" className="btn-primary" disabled={saving} style={{ background: '#14532d' }}>
-                  {saving ? 'Guardando...' : 'Guardar Lectura'}
+                  {saving ? 'Guardando...' : isEdit ? 'Actualizar' : 'Guardar Lectura'}
                 </button>
               </div>
             </form>
           </Modal>
+        )}
+
+        {/* Trend chart */}
+        {trendData.length > 2 && trendData.some(d => d.cbar != null) && (
+          <div style={{ background: '#fff', borderRadius: 10, padding: 16, border: '1px solid #e5e7eb', marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1F3A5F', marginBottom: 12 }}>
+              <TrendingUp size={15} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />
+              Tendencia de Humedad {selCampo && `— ${selCampo}`}
+            </h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="date" fontSize={10} />
+                <YAxis fontSize={10} label={{ value: 'cbar', angle: -90, position: 'insideLeft', fontSize: 10 }} />
+                <Tooltip contentStyle={{ fontSize: 12 }} />
+                <Line dataKey="cbar" stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} name="Tensión (cbar)" connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         )}
 
         {/* Lecturas table */}
@@ -375,12 +504,13 @@ export default function Riego() {
                 <th style={th}>Estado</th>
                 <th style={th}>Posición</th>
                 <th style={th}>Notas</th>
+                <th style={th}></th>
               </tr>
             </thead>
             <tbody>
-              {lecturas.length === 0 ? (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: '#9ca3af' }}>Sin lecturas registradas</td></tr>
-              ) : lecturas.map(r => (
+              {filtered.length === 0 ? (
+                <tr><td colSpan={9} style={{ textAlign: 'center', padding: 24, color: '#9ca3af' }}>Sin lecturas registradas</td></tr>
+              ) : filtered.map(r => (
                 <tr key={r.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={td}><strong>{r.campo_id}</strong></td>
                   <td style={td}>{fmtDT(r.reading_datetime)}</td>
@@ -402,6 +532,12 @@ export default function Riego() {
                   </td>
                   <td style={td}>{r.position || '—'}</td>
                   <td style={{ ...td, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.notes || '—'}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <IconBtn icon={Edit2} color="#3b82f6" title="Editar" onClick={() => { setEditLectura(r); setShowLecturaForm(false) }} />
+                      <IconBtn icon={Trash2} color="#dc2626" title="Eliminar" onClick={() => handleDelete(r.id)} />
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -413,13 +549,22 @@ export default function Riego() {
 
   // ── Riego (Events) tab ────────────────────────────────────────────────────
   const RiegoTab = () => {
-    const [form, setForm] = useState({
-      campo_id: selCampo || '', start_time: new Date().toISOString().slice(0, 16),
-      end_time: '', volume_liters: '', volume_mm: '', duration_minutes: '',
-      fertigation: false, fert_product: '', fert_dose: '', source: 'manual', notes: ''
+    const initEvForm = (ev?: any) => ({
+      campo_id: ev?.campo_id || selCampo || '', start_time: ev?.start_time ? ev.start_time.slice(0, 16) : new Date().toISOString().slice(0, 16),
+      end_time: ev?.end_time ? ev.end_time.slice(0, 16) : '', volume_liters: ev?.volume_liters ? String(ev.volume_liters) : '',
+      volume_mm: ev?.volume_mm ? String(ev.volume_mm) : '', duration_minutes: ev?.duration_minutes ? String(ev.duration_minutes) : '',
+      fertigation: ev?.fertigation || false, fert_product: ev?.fert_product || '', fert_dose: ev?.fert_dose || '',
+      source: ev?.source || 'manual', notes: ev?.notes || ''
     })
+    const [form, setForm] = useState(initEvForm())
     const [saving, setSaving] = useState(false)
     const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
+    const isEdit = editEvento != null
+
+    useEffect(() => {
+      if (editEvento) setForm(initEvForm(editEvento))
+      else if (showEventoForm) setForm(initEvForm())
+    }, [editEvento, showEventoForm])
 
     async function submit(e) {
       e.preventDefault()
@@ -432,12 +577,24 @@ export default function Riego() {
           duration_minutes: form.duration_minutes ? Number(form.duration_minutes) : null,
           end_time: form.end_time || null,
         }
-        await api.post('/riego/eventos', payload)
-        toast.success('Evento de riego registrado')
+        if (isEdit) {
+          await api.put(`/riego/eventos/${editEvento.id}`, payload)
+          toast.success('Evento actualizado')
+        } else {
+          await api.post('/riego/eventos', payload)
+          toast.success('Evento de riego registrado')
+        }
         setShowEventoForm(false)
+        setEditEvento(null)
         loadEventos()
-      } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
+      } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
       setSaving(false)
+    }
+
+    async function handleDeleteEv(id) {
+      if (!confirm('¿Eliminar este evento?')) return
+      try { await api.delete(`/riego/eventos/${id}`); toast.success('Eliminado'); loadEventos() }
+      catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
     }
 
     // Monthly summary
@@ -449,6 +606,45 @@ export default function Riego() {
       monthSummary[e.campo_id].volume_mm += e.volume_mm || 0
     })
 
+    // Programa form
+    const [progForm, setProgForm] = useState<any>({})
+    const [progSaving, setProgSaving] = useState(false)
+    const pf = (k, v) => setProgForm(p => ({ ...p, [k]: v }))
+    const isProgEdit = editProg != null
+
+    useEffect(() => {
+      if (editProg) setProgForm({ ...editProg })
+      else if (showProgForm) setProgForm({ campo_id: selCampo || '', nombre: '', dias_semana: '', hora_inicio: '06:00', duracion_minutos: '', volumen_litros: '', fertiriego: false, activo: true, notas: '' })
+    }, [editProg, showProgForm])
+
+    async function submitProg(e) {
+      e.preventDefault()
+      setProgSaving(true)
+      try {
+        const payload = { ...progForm, duracion_minutos: progForm.duracion_minutos ? Number(progForm.duracion_minutos) : null, volumen_litros: progForm.volumen_litros ? Number(progForm.volumen_litros) : null }
+        if (isProgEdit) {
+          await api.put(`/riego/programas/${editProg.id}`, payload)
+          toast.success('Programa actualizado')
+        } else {
+          await api.post('/riego/programas', payload)
+          toast.success('Programa creado')
+        }
+        setShowProgForm(false); setEditProg(null); loadEventos()
+      } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+      setProgSaving(false)
+    }
+
+    async function handleDeleteProg(id) {
+      if (!confirm('¿Eliminar este programa?')) return
+      try { await api.delete(`/riego/programas/${id}`); toast.success('Eliminado'); loadEventos() }
+      catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+    }
+
+    function diasLabel(dias: string) {
+      if (!dias) return '—'
+      return dias.split(',').map(d => DIAS_LABEL[Number(d.trim())] || d).join(', ')
+    }
+
     return (
       <div>
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -456,18 +652,111 @@ export default function Riego() {
             <option value="">Todos los campos</option>
             {campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.id_campo} — {c.nombre}</option>)}
           </select>
-          <button className="btn-primary" onClick={() => setShowEventoForm(true)} style={{ background: '#14532d', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn-primary" onClick={() => { setEditEvento(null); setShowEventoForm(true) }} style={{ background: '#14532d', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Plus size={14} /> Registrar Riego
           </button>
-          <button className="btn-secondary" onClick={loadEventos} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <RefreshCw size={14} /> Actualizar
+          <button className="btn-secondary" onClick={() => { setEditProg(null); setShowProgForm(true) }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Calendar size={14} /> Nuevo Programa
           </button>
+          <button className="btn-secondary" onClick={loadEventos} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <RefreshCw size={14} />
+          </button>
+          <a href={`${api.defaults.baseURL}/riego/eventos/exportar?${selCampo ? `campo_id=${selCampo}&` : ''}format=csv`}
+            target="_blank" rel="noopener noreferrer" className="btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontSize: 13, padding: '6px 12px' }}>
+            <Download size={14} /> CSV
+          </a>
         </div>
+
+        {/* Schedules */}
+        {programas.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1F3A5F', marginBottom: 8 }}><Calendar size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />Programas de Riego</h3>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {programas.map(p => (
+                <div key={p.id} style={{ background: p.activo ? '#f0fdf4' : '#f3f4f6', borderRadius: 8, padding: '10px 14px', border: `1px solid ${p.activo ? '#86efac' : '#d1d5db'}`, fontSize: 12, minWidth: 200 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <strong style={{ color: '#1F3A5F' }}>{p.nombre}</strong>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <IconBtn icon={Edit2} color="#3b82f6" title="Editar" onClick={() => { setEditProg(p); setShowProgForm(false) }} />
+                      <IconBtn icon={Trash2} color="#dc2626" title="Eliminar" onClick={() => handleDeleteProg(p.id)} />
+                    </div>
+                  </div>
+                  <div style={{ color: '#6b7280', lineHeight: 1.6 }}>
+                    {p.campo_id} · {diasLabel(p.dias_semana)} · {p.hora_inicio || '—'}<br />
+                    {p.duracion_minutos ? `${p.duracion_minutos} min` : ''} {p.volumen_litros ? `· ${fmtN(p.volumen_litros, 0)} L` : ''}
+                    {p.fertiriego && <span style={{ color: '#16a34a' }}> · Fertiriego</span>}
+                    {!p.activo && <span style={{ color: '#dc2626', fontWeight: 600 }}> · Inactivo</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Programa form modal */}
+        {(showProgForm || isProgEdit) && (
+          <Modal title={isProgEdit ? 'Editar Programa' : 'Nuevo Programa de Riego'} onClose={() => { setShowProgForm(false); setEditProg(null) }}>
+            <form onSubmit={submitProg} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <Field label="Nombre *">
+                <input className="input" value={progForm.nombre || ''} onChange={e => pf('nombre', e.target.value)} required placeholder="Ej: Riego sector A" />
+              </Field>
+              <Field label="Campo *">
+                <select className="select" value={progForm.campo_id || ''} onChange={e => pf('campo_id', e.target.value)} required>
+                  <option value="">Seleccionar…</option>
+                  {campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.id_campo} — {c.nombre}</option>)}
+                </select>
+              </Field>
+              <Field label="Días de la semana" full>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {Object.entries(DIAS_LABEL).map(([k, v]) => {
+                    const dias = (progForm.dias_semana || '').split(',').filter(Boolean)
+                    const active = dias.includes(k)
+                    return (
+                      <button key={k} type="button"
+                        onClick={() => {
+                          const next = active ? dias.filter(d => d !== k) : [...dias, k]
+                          pf('dias_semana', next.sort().join(','))
+                        }}
+                        style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: `1px solid ${active ? '#166534' : '#d1d5db'}`, background: active ? '#dcfce7' : '#fff', color: active ? '#166534' : '#6b7280', cursor: 'pointer' }}>
+                        {v}
+                      </button>
+                    )
+                  })}
+                </div>
+              </Field>
+              <Field label="Hora inicio">
+                <input className="input" type="time" value={progForm.hora_inicio || '06:00'} onChange={e => pf('hora_inicio', e.target.value)} />
+              </Field>
+              <Field label="Duración (min)">
+                <input className="input" type="number" min="0" value={progForm.duracion_minutos || ''} onChange={e => pf('duracion_minutos', e.target.value)} />
+              </Field>
+              <Field label="Volumen (litros)">
+                <input className="input" type="number" step="0.1" min="0" value={progForm.volumen_litros || ''} onChange={e => pf('volumen_litros', e.target.value)} />
+              </Field>
+              <Field label="Fertiriego">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={progForm.fertiriego || false} onChange={e => pf('fertiriego', e.target.checked)} />
+                  <span style={{ fontSize: 13 }}>Incluye fertirrigación</span>
+                </label>
+              </Field>
+              <Field label="Notas" full>
+                <input className="input" value={progForm.notas || ''} onChange={e => pf('notas', e.target.value)} />
+              </Field>
+              <div style={{ gridColumn: '1/-1', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn-secondary" onClick={() => { setShowProgForm(false); setEditProg(null) }}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={progSaving} style={{ background: '#14532d' }}>
+                  {progSaving ? 'Guardando...' : isProgEdit ? 'Actualizar' : 'Crear Programa'}
+                </button>
+              </div>
+            </form>
+          </Modal>
+        )}
 
         {/* Monthly summary */}
         {Object.keys(monthSummary).length > 0 && (
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-            {Object.entries(monthSummary).map(([cid, s]) => (
+            {Object.entries(monthSummary).map(([cid, s]: any) => (
               <div key={cid} style={{ background: '#eff6ff', borderRadius: 8, padding: '8px 14px', border: '1px solid #93c5fd', fontSize: 12 }}>
                 <strong style={{ color: '#1e40af' }}>{cid}</strong>: {s.count} riegos · {fmtN(s.volume_l / 1000, 1)}m³ · {fmtN(s.volume_mm)} mm
               </div>
@@ -475,8 +764,9 @@ export default function Riego() {
           </div>
         )}
 
-        {showEventoForm && (
-          <Modal title="Registrar Evento de Riego" onClose={() => setShowEventoForm(false)} width={620}>
+        {/* Evento form modal */}
+        {(showEventoForm || isEdit) && (
+          <Modal title={isEdit ? 'Editar Evento' : 'Registrar Evento de Riego'} onClose={() => { setShowEventoForm(false); setEditEvento(null) }} width={620}>
             <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <Field label="Campo *">
                 <select className="select" value={form.campo_id} onChange={e => f('campo_id', e.target.value)} required>
@@ -526,9 +816,9 @@ export default function Riego() {
                 <input className="input" value={form.notes} onChange={e => f('notes', e.target.value)} />
               </Field>
               <div style={{ gridColumn: '1/-1', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-secondary" onClick={() => setShowEventoForm(false)}>Cancelar</button>
+                <button type="button" className="btn-secondary" onClick={() => { setShowEventoForm(false); setEditEvento(null) }}>Cancelar</button>
                 <button type="submit" className="btn-primary" disabled={saving} style={{ background: '#14532d' }}>
-                  <Droplets size={14} /> {saving ? 'Guardando...' : 'Registrar Riego'}
+                  <Droplets size={14} /> {saving ? 'Guardando...' : isEdit ? 'Actualizar' : 'Registrar Riego'}
                 </button>
               </div>
             </form>
@@ -548,7 +838,7 @@ export default function Riego() {
                 <th style={th}>Lámina (mm)</th>
                 <th style={th}>Fertiriego</th>
                 <th style={th}>Fuente</th>
-                <th style={th}>Notas</th>
+                <th style={th}></th>
               </tr>
             </thead>
             <tbody>
@@ -570,7 +860,12 @@ export default function Riego() {
                     ) : '—'}
                   </td>
                   <td style={td}>{e.source}</td>
-                  <td style={{ ...td, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.notes || '—'}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <IconBtn icon={Edit2} color="#3b82f6" title="Editar" onClick={() => { setEditEvento(e); setShowEventoForm(false) }} />
+                      <IconBtn icon={Trash2} color="#dc2626" title="Eliminar" onClick={() => handleDeleteEv(e.id)} />
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -593,7 +888,7 @@ export default function Riego() {
         })
         toast.success(`Balance calculado: ${r.data.rows_calculated} días`)
         loadBalance()
-      } catch (err) { toast.error(err.response?.data?.detail || 'Error calculando balance') }
+      } catch (err: any) { toast.error(err.response?.data?.detail || 'Error calculando balance') }
       setCalculating(false)
     }
 
@@ -684,8 +979,8 @@ export default function Riego() {
 
   // ── Config panel ──────────────────────────────────────────────────────────
   const ConfigPanel = () => {
-    const [editCampo, setEditCampo] = useState(null)
-    const [cfgForm, setCfgForm] = useState({})
+    const [editCampo, setEditCampo] = useState<string | null>(null)
+    const [cfgForm, setCfgForm] = useState<any>({})
     const [saving, setSaving] = useState(false)
 
     function startEdit(cfg) {
@@ -710,7 +1005,7 @@ export default function Riego() {
         toast.success('Configuración guardada')
         setEditCampo(null)
         loadConfigs()
-      } catch (err) { toast.error(err.response?.data?.detail || 'Error guardando') }
+      } catch (err: any) { toast.error(err.response?.data?.detail || 'Error guardando') }
       setSaving(false)
     }
 
@@ -792,6 +1087,7 @@ export default function Riego() {
                     {cfg ? 'Editar' : '+ Crear'}
                   </button>
                 </div>
+                {c.etapa && <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Etapa: <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{c.etapa}</span></div>}
                 {cfg ? (
                   <div style={{ color: '#6b7280', lineHeight: 1.6 }}>
                     {cfg.irrigation_type} · {cfg.emitters_per_tree} emisores × {cfg.emitter_flow_lph} L/h<br />
@@ -855,5 +1151,5 @@ export default function Riego() {
 }
 
 // ── Table styles ──
-const th = { padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, letterSpacing: '0.03em' }
-const td = { padding: '8px 12px', textAlign: 'left', color: '#374151' }
+const th: any = { padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, letterSpacing: '0.03em' }
+const td: any = { padding: '8px 12px', textAlign: 'left', color: '#374151' }
