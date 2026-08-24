@@ -235,6 +235,37 @@ function TabCuentas() {
     setExpandidas(new Set(cuentas.filter(c => !c.acepta_movimientos).map(c => c.id)))
   }
 
+  function nextChildCode(parentId: any): string {
+    if (!parentId) return ''
+    const padre = cuentas.find((c: any) => c.id === Number(parentId))
+    if (!padre) return ''
+    const hijos = cuentas.filter((c: any) => c.cuenta_padre_id === Number(parentId))
+    const maxSeq = hijos.reduce((max, h: any) => {
+      const parts = h.codigo.split('.')
+      const last = parseInt(parts[parts.length - 1], 10)
+      return isNaN(last) ? max : Math.max(max, last)
+    }, 0)
+    const next = String(maxSeq + 1).padStart(2, '0')
+    return `${(padre as any).codigo}.${next}`
+  }
+
+  function onNivelChange(nivel: number) {
+    setForm(f => ({ ...f, nivel, cuenta_padre_id: '', codigo: '', acepta_movimientos: nivel >= 3 }))
+  }
+
+  function onPadreChange(parentId: string) {
+    if (!parentId) {
+      setForm(f => ({ ...f, cuenta_padre_id: '', codigo: '' }))
+      return
+    }
+    const padre = cuentas.find((c: any) => c.id === Number(parentId)) as any
+    const codigo = nextChildCode(parentId)
+    const nivel = padre ? padre.nivel + 1 : form.nivel
+    setForm(f => ({ ...f, cuenta_padre_id: parentId, codigo, nivel, tipo: padre?.tipo || f.tipo, naturaleza: padre?.naturaleza || f.naturaleza, grupo: padre?.grupo || f.grupo }))
+  }
+
+  const padresParaNivel = cuentasGrupo.filter((c: any) => c.nivel === form.nivel - 1)
+
   function openNew() {
     setForm({ codigo: '', nombre: '', tipo: 'activo', naturaleza: 'deudora', grupo: '', nivel: 1, cuenta_padre_id: '', partida_id: '', acepta_movimientos: true })
     setModal('new')
@@ -370,11 +401,16 @@ function TabCuentas() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div>
                 <Label>Código *</Label>
-                <input className="input" value={form.codigo} onChange={e => setForm({ ...form, codigo: e.target.value })} required disabled={modal !== 'new'} />
+                <input className="input" value={form.codigo} onChange={e => setForm({ ...form, codigo: e.target.value })} required disabled={modal !== 'new'} readOnly={modal === 'new' && !!form.cuenta_padre_id} style={modal === 'new' && form.cuenta_padre_id ? { background: '#f3f4f6' } : {}} />
               </div>
               <div>
                 <Label>Nivel</Label>
-                <input className="input" type="number" min="1" max="6" value={form.nivel} onChange={e => setForm({ ...form, nivel: Number(e.target.value) })} />
+                <select className="select" value={form.nivel} onChange={e => modal === 'new' ? onNivelChange(Number(e.target.value)) : undefined} disabled={modal !== 'new'}>
+                  <option value={1}>1 — Categoría</option>
+                  <option value={2}>2 — Sub-categoría</option>
+                  <option value={3}>3 — Grupo</option>
+                  <option value={4}>4 — Detalle</option>
+                </select>
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <Label>Nombre *</Label>
@@ -400,9 +436,9 @@ function TabCuentas() {
               </div>
               <div>
                 <Label>Cuenta Padre</Label>
-                <select className="select" value={form.cuenta_padre_id} onChange={e => setForm({ ...form, cuenta_padre_id: e.target.value })}>
-                  <option value="">— Ninguna (raíz) —</option>
-                  {cuentasGrupo.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                <select className="select" value={form.cuenta_padre_id} onChange={e => modal === 'new' ? onPadreChange(e.target.value) : setForm({ ...form, cuenta_padre_id: e.target.value })}>
+                  <option value="">{form.nivel <= 1 ? '— Ninguna (raíz) —' : '— Seleccionar cuenta padre —'}</option>
+                  {(modal === 'new' && form.nivel > 1 ? padresParaNivel : cuentasGrupo).map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
                 </select>
               </div>
               <div>
