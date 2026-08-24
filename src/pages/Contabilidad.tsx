@@ -239,18 +239,20 @@ function TabCuentas() {
     if (!parentId) return ''
     const padre = cuentas.find((c: any) => c.id === Number(parentId))
     if (!padre) return ''
+    const childNivel = (padre as any).nivel + 1
     const hijos = cuentas.filter((c: any) => c.cuenta_padre_id === Number(parentId))
     const maxSeq = hijos.reduce((max, h: any) => {
       const parts = h.codigo.split('.')
       const last = parseInt(parts[parts.length - 1], 10)
       return isNaN(last) ? max : Math.max(max, last)
     }, 0)
-    const next = String(maxSeq + 1).padStart(2, '0')
+    const pad = childNivel <= 2 ? 1 : 2
+    const next = String(maxSeq + 1).padStart(pad, '0')
     return `${(padre as any).codigo}.${next}`
   }
 
   function onNivelChange(nivel: number) {
-    setForm(f => ({ ...f, nivel, cuenta_padre_id: '', codigo: '', acepta_movimientos: nivel >= 3 }))
+    setForm(f => ({ ...f, nivel, cuenta_padre_id: '', codigo: '', acepta_movimientos: nivel === 4 }))
   }
 
   function onPadreChange(parentId: string) {
@@ -267,7 +269,7 @@ function TabCuentas() {
   const padresParaNivel = cuentasGrupo.filter((c: any) => c.nivel === form.nivel - 1)
 
   function openNew() {
-    setForm({ codigo: '', nombre: '', tipo: 'activo', naturaleza: 'deudora', grupo: '', nivel: 1, cuenta_padre_id: '', partida_id: '', acepta_movimientos: true })
+    setForm({ codigo: '', nombre: '', tipo: 'activo', naturaleza: 'deudora', grupo: '', nivel: 1, cuenta_padre_id: '', partida_id: '', acepta_movimientos: false })
     setModal('new')
   }
 
@@ -279,7 +281,8 @@ function TabCuentas() {
   async function save(e) {
     e.preventDefault()
     if (!form.codigo || !form.nombre) return toast.error('Código y nombre son obligatorios')
-    const payload = { ...form, cuenta_padre_id: form.cuenta_padre_id ? Number(form.cuenta_padre_id) : null, partida_id: form.partida_id ? Number(form.partida_id) : null }
+    if (form.nivel > 1 && !form.cuenta_padre_id) return toast.error('Debe seleccionar una cuenta padre para nivel ' + form.nivel)
+    const payload = { ...form, acepta_movimientos: form.nivel === 4, cuenta_padre_id: form.cuenta_padre_id ? Number(form.cuenta_padre_id) : null, partida_id: form.partida_id ? Number(form.partida_id) : null }
     try {
       if (modal === 'new') {
         await api.post('/contabilidad/cuentas', payload)
@@ -418,7 +421,7 @@ function TabCuentas() {
               </div>
               <div>
                 <Label>Tipo</Label>
-                <select className="select" value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })}>
+                <select className="select" value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })} disabled={modal === 'new' && !!form.cuenta_padre_id}>
                   <option value="activo">Activo</option>
                   <option value="pasivo">Pasivo</option>
                   <option value="patrimonio">Patrimonio</option>
@@ -429,7 +432,7 @@ function TabCuentas() {
               </div>
               <div>
                 <Label>Naturaleza</Label>
-                <select className="select" value={form.naturaleza} onChange={e => setForm({ ...form, naturaleza: e.target.value })}>
+                <select className="select" value={form.naturaleza} onChange={e => setForm({ ...form, naturaleza: e.target.value })} disabled={modal === 'new' && !!form.cuenta_padre_id}>
                   <option value="deudora">Deudora</option>
                   <option value="acreedora">Acreedora</option>
                 </select>
@@ -438,7 +441,7 @@ function TabCuentas() {
                 <Label>Cuenta Padre</Label>
                 <select className="select" value={form.cuenta_padre_id} onChange={e => modal === 'new' ? onPadreChange(e.target.value) : setForm({ ...form, cuenta_padre_id: e.target.value })}>
                   <option value="">{form.nivel <= 1 ? '— Ninguna (raíz) —' : '— Seleccionar cuenta padre —'}</option>
-                  {(modal === 'new' && form.nivel > 1 ? padresParaNivel : cuentasGrupo).map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                  {padresParaNivel.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
                 </select>
               </div>
               <div>
@@ -456,8 +459,8 @@ function TabCuentas() {
                 </select>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="checkbox" id="acepta_mov" checked={form.acepta_movimientos} onChange={e => setForm({ ...form, acepta_movimientos: e.target.checked })} />
-                <label htmlFor="acepta_mov" style={{ fontSize: 13 }}>Acepta movimientos (cuenta de detalle)</label>
+                <input type="checkbox" id="acepta_mov" checked={form.nivel === 4} disabled />
+                <label htmlFor="acepta_mov" style={{ fontSize: 13, color: '#6b7280' }}>Acepta movimientos (solo nivel 4)</label>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
