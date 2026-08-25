@@ -4,7 +4,8 @@ import toast from 'react-hot-toast'
 import {
   PiggyBank, Plus, Trash2, X, RefreshCw, Save, Download, Sliders,
   Table2, Gauge, CheckCircle2, AlertTriangle, AlertOctagon, ArrowRightLeft,
-  Copy, Search, ChevronDown, ChevronRight, Check, FileCheck2
+  Copy, Search, ChevronDown, ChevronRight, Check, FileCheck2, History,
+  ChevronsDown, ChevronsRight, TrendingUp, Undo2
 } from 'lucide-react'
 
 /* ────────────────────────────── helpers ────────────────────────────── */
@@ -81,17 +82,22 @@ export default function Presupuesto() {
 
   const [edits, setEdits] = useState<Record<number, Record<string, any>>>({})
   const [saving, setSaving] = useState(false)
-  const [campoFiltro, setCampoFiltro] = useState('')
   const [busqueda, setBusqueda] = useState('')
+  const [campoFiltro, setCampoFiltro] = useState('')
+  const [unFiltro, setUnFiltro] = useState('')
+  const [depFiltro, setDepFiltro] = useState('')
 
   const [showLine, setShowLine] = useState(false)
   const [showDist, setShowDist] = useState<any>(null)
   const [showTransfer, setShowTransfer] = useState(false)
   const [showCopy, setShowCopy] = useState(false)
+  const [showHistorial, setShowHistorial] = useState(false)
   const [nueva, setNueva] = useState<any>(null)
   const [transfer, setTransfer] = useState<any>({})
   const [copyData, setCopyData] = useState<any>({ anio_origen: anio - 1, factor: 1.0 })
+  const [historial, setHistorial] = useState<any[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const [allExpanded, setAllExpanded] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -118,11 +124,13 @@ export default function Presupuesto() {
     try {
       let url = `/contabilidad/presupuesto-vs-real?anio=${anio}`
       if (campoFiltro) url += `&campo_id=${campoFiltro}`
+      if (unFiltro) url += `&unidad_negocio_id=${unFiltro}`
+      if (depFiltro) url += `&departamento_id=${depFiltro}`
       const r = await api.get(url)
       setVsReal(r.data)
     } catch { toast.error('Error cargando control presupuestario') }
     finally { setLoading(false) }
-  }, [anio, campoFiltro])
+  }, [anio, campoFiltro, unFiltro, depFiltro])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (tab === 'control') loadControl() }, [tab, loadControl])
@@ -133,6 +141,7 @@ export default function Presupuesto() {
   }
   const rowTotal = (row: any) => MK.reduce((s, mk) => s + cellVal(row, mk), 0)
   const dirty = Object.keys(edits).length > 0
+  const dirtyCount = Object.keys(edits).length
 
   const setCell = (id: number, mk: string, v: string) => {
     setEdits(prev => ({ ...prev, [id]: { ...prev[id], [mk]: parseFloat(v) || 0 } }))
@@ -140,30 +149,28 @@ export default function Presupuesto() {
   const setDesc = (id: number, v: string) => {
     setEdits(prev => ({ ...prev, [id]: { ...prev[id], _descripcion: v } }))
   }
+  const descartarCambios = () => { setEdits({}); toast.success('Cambios descartados') }
 
   async function guardarCambios() {
     const ids = Object.keys(edits).map(Number)
     if (!ids.length) return
     setSaving(true)
-    let ok = 0
-    for (const id of ids) {
+    const batchItems = ids.map(id => {
       const row = items.find((r: any) => r.id === id)
-      if (!row) continue
+      if (!row) return null
       const e = edits[id] || {}
-      const payload: any = {
-        anio: row.anio, cuenta_id: row.cuenta_id, campo_id: row.campo_id || null,
-        descripcion: '_descripcion' in e ? e._descripcion : (row.descripcion || ''),
-        unidad_negocio_id: row.unidad_negocio_id || null,
-        departamento_id: row.departamento_id || null,
-        almacen_id: row.almacen_id || null,
-        version: row.version || 'original',
-        estado: row.estado || 'borrador',
-      }
-      MK.forEach(mk => { payload[mk] = cellVal(row, mk) })
-      try { await api.put(`/contabilidad/presupuestos/${id}`, payload); ok++ } catch { /* sigue */ }
+      const item: any = { id }
+      MK.forEach(mk => { if (mk in e) item[mk] = e[mk] })
+      if ('_descripcion' in e) item.descripcion = e._descripcion
+      return item
+    }).filter(Boolean)
+    try {
+      const r = await api.put('/contabilidad/presupuestos/batch', batchItems)
+      toast.success(`${r.data.actualizados} línea(s) guardada(s)`)
+    } catch {
+      toast.error('Error al guardar')
     }
     setSaving(false)
-    toast.success(`${ok} línea(s) guardada(s)`)
     load()
   }
 
@@ -228,6 +235,14 @@ export default function Presupuesto() {
     } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al copiar') }
   }
 
+  async function cargarHistorial() {
+    try {
+      const r = await api.get(`/contabilidad/presupuestos/transferencias?anio=${anio}`)
+      setHistorial(r.data)
+      setShowHistorial(true)
+    } catch { toast.error('Error cargando historial') }
+  }
+
   async function aprobarTodo() {
     if (!confirm(`¿Aprobar todas las líneas en borrador para ${anio}?`)) return
     try {
@@ -266,6 +281,15 @@ export default function Presupuesto() {
     a.download = `presupuesto_${tab}_${anio}.csv`; a.click()
   }
 
+  function toggleAllGroups() {
+    const next = !allExpanded
+    setAllExpanded(next)
+    const keys = groupedItems.map(([k]) => k)
+    const map: Record<string, boolean> = {}
+    keys.forEach(k => { map[k] = next })
+    setExpandedGroups(map)
+  }
+
   const cols = periodo === 'mes'
     ? MESES.map((m, i) => ({ label: m, idx: [i] }))
     : periodo === 'trim'
@@ -282,6 +306,8 @@ export default function Presupuesto() {
       if (!match) return false
     }
     if (campoFiltro && p.campo_id !== campoFiltro) return false
+    if (unFiltro && String(p.unidad_negocio_id) !== unFiltro) return false
+    if (depFiltro && String(p.departamento_id) !== depFiltro) return false
     return true
   })
 
@@ -307,6 +333,10 @@ export default function Presupuesto() {
 
   const countBorrador = items.filter(p => (p.estado || 'borrador') === 'borrador').length
   const countAprobado = items.filter(p => p.estado === 'aprobado').length
+
+  const mesActual = new Date().getMonth() + 1
+  const forecast = tab === 'control' && totalReal > 0 && mesActual > 1
+    ? Math.round((totalReal / mesActual) * 12) : null
 
   const estado = (pct: number) => pct > 100
     ? { label: 'Excedido', color: '#dc2626', bg: '#fef2f2', Icon: AlertOctagon }
@@ -340,7 +370,7 @@ export default function Presupuesto() {
         <PaneGroup title="Pivote">
           <div style={{ display: 'flex', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden' }}>
             {(['mes', 'trim', 'anio'] as const).map(pv => (
-              <button key={pv} onClick={() => setPeriodo(pv)} style={{ padding: '6px 12px', fontSize: 12, border: 'none', cursor: 'pointer', textTransform: 'capitalize', background: periodo === pv ? '#166534' : '#fff', color: periodo === pv ? '#fff' : '#374151' }}>
+              <button key={pv} onClick={() => setPeriodo(pv)} style={{ padding: '6px 12px', fontSize: 12, border: 'none', cursor: 'pointer', background: periodo === pv ? '#166534' : '#fff', color: periodo === pv ? '#fff' : '#374151' }}>
                 {pv === 'mes' ? 'Mes' : pv === 'trim' ? 'Trim' : 'Año'}
               </button>
             ))}
@@ -349,20 +379,32 @@ export default function Presupuesto() {
         <PaneGroup title="Filtros">
           <div style={{ position: 'relative' }}>
             <Search size={13} style={{ position: 'absolute', left: 8, top: 9, color: '#9ca3af' }} />
-            <input className="input" placeholder="Buscar cuenta…" value={busqueda} onChange={e => setBusqueda(e.target.value)}
-              style={{ width: 160, height: 32, paddingLeft: 28, fontSize: 12 }} />
+            <input className="input" placeholder="Buscar…" value={busqueda} onChange={e => setBusqueda(e.target.value)}
+              style={{ width: 130, height: 32, paddingLeft: 28, fontSize: 12 }} />
           </div>
-          <select className="select" style={{ width: 140, height: 32 }} value={campoFiltro} onChange={e => setCampoFiltro(e.target.value)}>
+          <select className="select" style={{ width: 120, height: 32 }} value={campoFiltro} onChange={e => setCampoFiltro(e.target.value)}>
             <option value="">Todo campo</option>
             {campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}
+          </select>
+          <select className="select" style={{ width: 110, height: 32 }} value={unFiltro} onChange={e => setUnFiltro(e.target.value)}>
+            <option value="">Toda UN</option>
+            {dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+          </select>
+          <select className="select" style={{ width: 110, height: 32 }} value={depFiltro} onChange={e => setDepFiltro(e.target.value)}>
+            <option value="">Todo depto</option>
+            {dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
           </select>
         </PaneGroup>
         <PaneGroup title="Acciones">
           {tab === 'registro' && <>
             <button className="btn-primary" style={{ height: 32 }} onClick={() => { setNueva({ clave: 'uniforme' }); setShowLine(true) }}><Plus size={14} /> Nueva</button>
-            <button className="btn-primary" style={{ height: 32, opacity: dirty ? 1 : .5, pointerEvents: dirty ? 'auto' : 'none', background: '#0369a1' }} onClick={guardarCambios} disabled={saving}><Save size={14} /> {saving ? '…' : 'Guardar'}</button>
+            <button className="btn-primary" style={{ height: 32, opacity: dirty ? 1 : .4, pointerEvents: dirty ? 'auto' : 'none', background: '#0369a1' }} onClick={guardarCambios} disabled={saving}>
+              <Save size={14} /> {saving ? '…' : `Guardar${dirtyCount > 0 ? ` (${dirtyCount})` : ''}`}
+            </button>
+            {dirty && <button className="btn-secondary" style={{ height: 32 }} title="Descartar cambios" onClick={descartarCambios}><Undo2 size={14} /></button>}
             <button className="btn-secondary" style={{ height: 32 }} title="Transferir entre líneas" onClick={() => setShowTransfer(true)}><ArrowRightLeft size={14} /></button>
             <button className="btn-secondary" style={{ height: 32 }} title="Copiar de año anterior" onClick={() => { setCopyData({ anio_origen: anio - 1, factor: 1.0 }); setShowCopy(true) }}><Copy size={14} /></button>
+            <button className="btn-secondary" style={{ height: 32 }} title="Historial de transferencias" onClick={cargarHistorial}><History size={14} /></button>
             {countBorrador > 0 && (
               <button className="btn-secondary" style={{ height: 32, color: '#166534' }} title="Aprobar todos los borradores" onClick={aprobarTodo}><FileCheck2 size={14} /> Aprobar ({countBorrador})</button>
             )}
@@ -373,12 +415,15 @@ export default function Presupuesto() {
       </div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
         <Kpi label={`Presupuesto ${anio}`} value={`RD$ ${fmt0(totalPres)}`} color="#0369a1" />
         {tab === 'control' && <>
           <Kpi label="Real ejecutado" value={`RD$ ${fmt0(totalReal)}`} color="#16a34a" />
           <Kpi label="Disponible" value={`RD$ ${fmt0(disponible)}`} color={disponible < 0 ? '#dc2626' : '#374151'} />
           <Kpi label="% Consumido" value={`${pctGlobal}%`} color={estado(pctGlobal).color} />
+          {forecast !== null && (
+            <Kpi label="Proyección fin de año" value={`RD$ ${fmt0(forecast)}`} color={forecast > totalPres ? '#dc2626' : '#0369a1'} icon={TrendingUp} />
+          )}
         </>}
         {tab === 'registro' && <>
           <Kpi label="Líneas" value={String(filteredItems.length)} color="#374151" />
@@ -396,7 +441,12 @@ export default function Presupuesto() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 900 }}>
               <thead>
                 <tr style={{ background: '#f3f4f6' }}>
-                  <th style={thL}>Cuenta</th>
+                  <th style={thL}>
+                    <button onClick={toggleAllGroups} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginRight: 6, color: '#6b7280', verticalAlign: 'text-bottom' }}>
+                      {allExpanded ? <ChevronsDown size={13} /> : <ChevronsRight size={13} />}
+                    </button>
+                    Cuenta
+                  </th>
                   <th style={{ ...thL, width: 120 }}>Descripción</th>
                   <th style={{ ...thL, width: 100 }}>Dimensiones</th>
                   <th style={{ ...thL, width: 72 }}>Estado</th>
@@ -522,12 +572,15 @@ export default function Presupuesto() {
                     const meses = r.meses || []
                     return (
                       <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
-                        <td style={{ ...tdL, whiteSpace: 'nowrap' }}><span style={{ color: '#6b7280', marginRight: 6, fontFamily: 'monospace', fontSize: 11 }}>{r.cuenta_codigo}</span>{r.cuenta_nombre}</td>
+                        <td style={{ ...tdL, whiteSpace: 'nowrap' }}>
+                          <span style={{ color: '#6b7280', marginRight: 6, fontFamily: 'monospace', fontSize: 11 }}>{r.cuenta_codigo}</span>{r.cuenta_nombre}
+                          {r.campo_id && <span style={{ fontSize: 9, background: '#f3f4f6', color: '#6b7280', padding: '1px 4px', borderRadius: 3, marginLeft: 6 }}>{r.campo_id}</span>}
+                        </td>
                         {periodo === 'mes' ? meses.map((m: any, mi: number) => {
                           const mPct = m.presupuesto ? (m.real / m.presupuesto * 100) : 0
                           const mColor = mPct > 100 ? '#dc2626' : mPct >= 85 ? '#d97706' : '#374151'
                           return (
-                            <td key={mi} style={{ ...tdR, fontSize: 10, position: 'relative' }}>
+                            <td key={mi} style={{ ...tdR, fontSize: 10 }}>
                               <div style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt0(m.real)}</div>
                               <div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt0(m.presupuesto)}</div>
                               {m.presupuesto > 0 && (
@@ -630,6 +683,7 @@ export default function Presupuesto() {
                 </select>
                 <span style={{ fontSize: 11, color: '#6b7280' }}>se reparte en los 12 meses</span>
               </div>
+              <DistPreview total={parseFloat(nueva.total) || 0} clave={nueva.clave || 'uniforme'} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn-secondary" onClick={() => setShowLine(false)}>Cancelar</button>
@@ -732,6 +786,42 @@ export default function Presupuesto() {
           </form>
         </Modal>
       )}
+
+      {/* Modal historial de transferencias */}
+      {showHistorial && (
+        <Modal title="Historial de transferencias" subtitle={`Ejercicio ${anio}`} onClose={() => setShowHistorial(false)} width={700}>
+          {historial.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Sin transferencias registradas para {anio}</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: '#f3f4f6' }}>
+                    <th style={thL}>Fecha</th>
+                    <th style={thL}>Origen</th>
+                    <th style={thL}>Destino</th>
+                    <th style={thR}>Mes</th>
+                    <th style={thR}>Monto</th>
+                    <th style={thL}>Motivo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historial.map((t: any) => (
+                    <tr key={t.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                      <td style={tdL}>{t.fecha}</td>
+                      <td style={{ ...tdL, fontSize: 11 }}>{t.origen}</td>
+                      <td style={{ ...tdL, fontSize: 11 }}>{t.destino}</td>
+                      <td style={tdR}>{t.mes}</td>
+                      <td style={{ ...tdR, fontWeight: 600 }}>{fmt(t.monto)}</td>
+                      <td style={{ ...tdL, color: '#6b7280' }}>{t.motivo || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   )
 }
@@ -744,10 +834,12 @@ function RibBtn({ active, onClick, Icon, label }: any) {
     </button>
   )
 }
-function Kpi({ label, value, color }: any) {
+function Kpi({ label, value, color, icon: Icon }: any) {
   return (
     <div className="card" style={{ padding: '12px 16px', margin: 0 }}>
-      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {Icon && <Icon size={11} />}{label}
+      </div>
       <div style={{ fontSize: 19, fontWeight: 700, color }}>{value}</div>
     </div>
   )
@@ -765,8 +857,8 @@ function DistPreview({ total, clave }: { total: number; clave: string }) {
   const vals = distribuir(total, clave)
   const max = Math.max(...vals)
   return (
-    <div style={{ marginBottom: 16, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: 10 }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase' }}>Vista previa de distribución</div>
+    <div style={{ marginTop: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase' }}>Vista previa</div>
       <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 50 }}>
         {vals.map((v, i) => (
           <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
@@ -774,6 +866,10 @@ function DistPreview({ total, clave }: { total: number; clave: string }) {
             <span style={{ fontSize: 8, color: '#9ca3af' }}>{MESES[i]}</span>
           </div>
         ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10, color: '#6b7280' }}>
+        <span>Min: {fmt(Math.min(...vals))}</span>
+        <span>Max: {fmt(Math.max(...vals))}</span>
       </div>
     </div>
   )
