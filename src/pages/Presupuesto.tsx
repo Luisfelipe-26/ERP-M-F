@@ -2,10 +2,11 @@ import { useEffect, useState, useCallback } from 'react'
 import api from '../api'
 import toast from 'react-hot-toast'
 import {
-  PiggyBank, Plus, Trash2, X, RefreshCw, Save, Download, Sliders,
-  Table2, Gauge, CheckCircle2, AlertTriangle, AlertOctagon, ArrowRightLeft,
-  Copy, Search, ChevronDown, ChevronRight, Check, FileCheck2, History,
-  ChevronsDown, ChevronsRight, TrendingUp, Undo2
+  PiggyBank, Plus, Trash2, X, RefreshCw, Save, Download,
+  Table2, Gauge, CheckCircle2, AlertTriangle, AlertOctagon,
+  Copy, Search, ChevronDown, ChevronRight,
+  ChevronsDown, ChevronsRight, TrendingUp, Undo2, Settings, FileText,
+  XCircle
 } from 'lucide-react'
 
 /* ────────────────────────────── helpers ────────────────────────────── */
@@ -15,28 +16,36 @@ const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'O
 const MK = ['monto_ene', 'monto_feb', 'monto_mar', 'monto_abr', 'monto_may', 'monto_jun', 'monto_jul', 'monto_ago', 'monto_sep', 'monto_oct', 'monto_nov', 'monto_dic']
 const TRIMS = [{ label: 'T1', m: [0, 1, 2] }, { label: 'T2', m: [3, 4, 5] }, { label: 'T3', m: [6, 7, 8] }, { label: 'T4', m: [9, 10, 11] }]
 
-const CLAVES: Record<string, { label: string; w: number[] }> = {
-  uniforme: { label: 'Uniforme', w: Array(12).fill(1) },
-  estacional: { label: 'Estacional (cosecha)', w: [0.5, 0.5, 0.7, 0.9, 1.2, 1.4, 1.6, 1.6, 1.3, 1.0, 0.9, 0.8] },
-  frontal: { label: 'Frontal (H1)', w: [1.6, 1.6, 1.5, 1.3, 1.1, 0.9, 0.7, 0.6, 0.5, 0.5, 0.6, 0.6] },
-  final: { label: 'Final (H2)', w: [0.5, 0.5, 0.6, 0.7, 0.8, 0.9, 1.1, 1.3, 1.5, 1.6, 1.6, 1.4] },
+const DIST_KEYS: Record<string, { label: string; months: number[] }> = {
+  mensual:   { label: 'Mensual',    months: [0,1,2,3,4,5,6,7,8,9,10,11] },
+  bimensual: { label: 'Bimensual',  months: [0,2,4,6,8,10] },
+  trimestral:{ label: 'Trimestral', months: [0,3,6,9] },
+  semestral: { label: 'Semestral',  months: [0,6] },
+  anual:     { label: 'Anual',      months: [0] },
 }
 
 function distribuir(total: number, clave: string): number[] {
-  const w = CLAVES[clave]?.w || CLAVES.uniforme.w
-  const sumW = w.reduce((a, b) => a + b, 0)
-  const vals = w.map(x => Math.round((total * x / sumW) * 100) / 100)
-  const ajuste = Math.round((total - vals.reduce((a, b) => a + b, 0)) * 100) / 100
-  vals[11] = Math.round((vals[11] + ajuste) * 100) / 100
+  const dk = DIST_KEYS[clave] || DIST_KEYS.mensual
+  const n = dk.months.length
+  const perPeriod = Math.round((total / n) * 100) / 100
+  const vals = Array(12).fill(0)
+  dk.months.forEach((m, i) => {
+    vals[m] = i === n - 1 ? Math.round((total - perPeriod * (n - 1)) * 100) / 100 : perPeriod
+  })
   return vals
 }
 
+const TIPO_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  original:      { label: 'Original',      color: '#1e40af', bg: '#dbeafe' },
+  adicion:       { label: 'Adición',       color: '#166534', bg: '#dcfce7' },
+  transferencia: { label: 'Transferencia', color: '#9333ea', bg: '#f3e8ff' },
+  revision:      { label: 'Revisión',      color: '#c2410c', bg: '#fff7ed' },
+}
 const ESTADO_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  borrador: { bg: '#fef3c7', color: '#92400e', label: 'Borrador' },
-  aprobado: { bg: '#d1fae5', color: '#065f46', label: 'Aprobado' },
+  borrador:  { bg: '#fef3c7', color: '#92400e', label: 'Borrador' },
+  aprobado:  { bg: '#d1fae5', color: '#065f46', label: 'Aprobado' },
   rechazado: { bg: '#fee2e2', color: '#991b1b', label: 'Rechazado' },
 }
-
 const CLASE_LABELS: Record<string, string> = {
   '1': 'Activos', '2': 'Pasivos', '3': 'Patrimonio',
   '4': 'Ingresos', '5': 'Costos', '6': 'Gastos',
@@ -59,7 +68,6 @@ const Modal = ({ title, subtitle = '', onClose, children, width = 640 }: any) =>
 const Label = ({ children }: any) => (
   <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>{children}</label>
 )
-
 const PaneGroup = ({ title, children }: any) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0 14px', borderRight: '1px solid #e5e7eb' }}>
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>{children}</div>
@@ -69,53 +77,71 @@ const PaneGroup = ({ title, children }: any) => (
 
 /* ────────────────────────────── page ────────────────────────────── */
 export default function Presupuesto() {
-  const [tab, setTab] = useState<'registro' | 'control'>('registro')
+  const [tab, setTab] = useState<'registros' | 'saldos' | 'control'>('registros')
   const [periodo, setPeriodo] = useState<'mes' | 'trim' | 'anio'>('mes')
   const [anio, setAnio] = useState(new Date().getFullYear())
   const [loading, setLoading] = useState(true)
 
+  const [registros, setRegistros] = useState<any[]>([])
   const [items, setItems] = useState<any[]>([])
   const [vsReal, setVsReal] = useState<any[]>([])
   const [cuentas, setCuentas] = useState<any[]>([])
   const [campos, setCampos] = useState<any[]>([])
-  const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
+  const [dims, setDims] = useState<{ unidades: any[]; deptos: any[] }>({ unidades: [], deptos: [] })
+  const [config, setConfig] = useState<any>({ umbral_alerta: 85, umbral_bloqueo: 100, control_habilitado: true, distribucion_default: 'mensual', requiere_aprobacion: true })
 
-  const [edits, setEdits] = useState<Record<number, Record<string, any>>>({})
-  const [saving, setSaving] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [campoFiltro, setCampoFiltro] = useState('')
   const [unFiltro, setUnFiltro] = useState('')
   const [depFiltro, setDepFiltro] = useState('')
+  const [tipoFiltro, setTipoFiltro] = useState('')
 
-  const [showLine, setShowLine] = useState(false)
-  const [showDist, setShowDist] = useState<any>(null)
-  const [showTransfer, setShowTransfer] = useState(false)
+  const [showNuevoRegistro, setShowNuevoRegistro] = useState(false)
+  const [showDetalleRegistro, setShowDetalleRegistro] = useState<any>(null)
+  const [showConfig, setShowConfig] = useState(false)
   const [showCopy, setShowCopy] = useState(false)
-  const [showHistorial, setShowHistorial] = useState(false)
-  const [nueva, setNueva] = useState<any>(null)
-  const [transfer, setTransfer] = useState<any>({})
+  const [nuevoReg, setNuevoReg] = useState<any>(null)
   const [copyData, setCopyData] = useState<any>({ anio_origen: anio - 1, factor: 1.0 })
-  const [historial, setHistorial] = useState<any[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [allExpanded, setAllExpanded] = useState(true)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const [edits, setEdits] = useState<Record<number, Record<string, any>>>({})
+  const [saving, setSaving] = useState(false)
+
+  const loadBase = useCallback(async () => {
     try {
-      const [p, c, f, un, dep, alm] = await Promise.all([
-        api.get(`/contabilidad/presupuestos?anio=${anio}`),
+      const [c, f, un, dep, cfg] = await Promise.all([
         api.get('/contabilidad/cuentas'),
         api.get('/campos'),
         api.get('/contabilidad/unidades-negocio'),
         api.get('/contabilidad/departamentos'),
-        api.get('/contabilidad/almacenes'),
+        api.get('/contabilidad/config-presupuesto'),
       ])
-      setItems(p.data)
-      setEdits({})
       setCuentas(c.data.filter((x: any) => x.acepta_movimientos))
       setCampos(f.data)
-      setDims({ unidades: un.data, deptos: dep.data, almacenes: alm.data })
-    } catch { toast.error('Error al cargar presupuestos') }
+      setDims({ unidades: un.data, deptos: dep.data })
+      setConfig(cfg.data)
+    } catch { /* silent */ }
+  }, [])
+
+  const loadRegistros = useCallback(async () => {
+    setLoading(true)
+    try {
+      let url = `/contabilidad/registros-presupuestarios?anio=${anio}`
+      if (tipoFiltro) url += `&tipo=${tipoFiltro}`
+      const r = await api.get(url)
+      setRegistros(r.data)
+    } catch { toast.error('Error al cargar registros') }
+    finally { setLoading(false) }
+  }, [anio, tipoFiltro])
+
+  const loadSaldos = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await api.get(`/contabilidad/presupuestos?anio=${anio}`)
+      setItems(r.data)
+      setEdits({})
+    } catch { toast.error('Error al cargar saldos') }
     finally { setLoading(false) }
   }, [anio])
 
@@ -128,12 +154,16 @@ export default function Presupuesto() {
       if (depFiltro) url += `&departamento_id=${depFiltro}`
       const r = await api.get(url)
       setVsReal(r.data)
-    } catch { toast.error('Error cargando control presupuestario') }
+    } catch { toast.error('Error cargando control') }
     finally { setLoading(false) }
   }, [anio, campoFiltro, unFiltro, depFiltro])
 
-  useEffect(() => { load() }, [load])
-  useEffect(() => { if (tab === 'control') loadControl() }, [tab, loadControl])
+  useEffect(() => { loadBase() }, [loadBase])
+  useEffect(() => {
+    if (tab === 'registros') loadRegistros()
+    else if (tab === 'saldos') loadSaldos()
+    else loadControl()
+  }, [tab, loadRegistros, loadSaldos, loadControl])
 
   const cellVal = (row: any, mk: string) => {
     const e = edits[row.id]
@@ -142,138 +172,145 @@ export default function Presupuesto() {
   const rowTotal = (row: any) => MK.reduce((s, mk) => s + cellVal(row, mk), 0)
   const dirty = Object.keys(edits).length > 0
   const dirtyCount = Object.keys(edits).length
-
   const setCell = (id: number, mk: string, v: string) => {
     setEdits(prev => ({ ...prev, [id]: { ...prev[id], [mk]: parseFloat(v) || 0 } }))
   }
-  const setDesc = (id: number, v: string) => {
-    setEdits(prev => ({ ...prev, [id]: { ...prev[id], _descripcion: v } }))
-  }
-  const descartarCambios = () => { setEdits({}); toast.success('Cambios descartados') }
 
   async function guardarCambios() {
     const ids = Object.keys(edits).map(Number)
     if (!ids.length) return
     setSaving(true)
     const batchItems = ids.map(id => {
-      const row = items.find((r: any) => r.id === id)
-      if (!row) return null
       const e = edits[id] || {}
       const item: any = { id }
       MK.forEach(mk => { if (mk in e) item[mk] = e[mk] })
-      if ('_descripcion' in e) item.descripcion = e._descripcion
       return item
-    }).filter(Boolean)
+    })
     try {
       const r = await api.put('/contabilidad/presupuestos/batch', batchItems)
       toast.success(`${r.data.actualizados} línea(s) guardada(s)`)
-    } catch {
-      toast.error('Error al guardar')
-    }
+    } catch { toast.error('Error al guardar') }
     setSaving(false)
-    load()
+    loadSaldos()
   }
 
-  async function crearLinea(e: any) {
+  function initNuevoRegistro(tipo: string) {
+    setNuevoReg({
+      tipo, anio, descripcion: '', lineas: [{ cuenta_id: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', total: '', dist: config.distribucion_default || 'mensual', descripcion: '' }]
+    })
+    setShowNuevoRegistro(true)
+  }
+
+  function addLinea() {
+    setNuevoReg((prev: any) => ({
+      ...prev,
+      lineas: [...prev.lineas, { cuenta_id: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', total: '', dist: config.distribucion_default || 'mensual', descripcion: '' }]
+    }))
+  }
+  function removeLinea(idx: number) {
+    setNuevoReg((prev: any) => ({ ...prev, lineas: prev.lineas.filter((_: any, i: number) => i !== idx) }))
+  }
+  function updateLinea(idx: number, field: string, val: any) {
+    setNuevoReg((prev: any) => {
+      const lineas = [...prev.lineas]
+      lineas[idx] = { ...lineas[idx], [field]: val }
+      return { ...prev, lineas }
+    })
+  }
+
+  async function crearRegistro(e: any) {
     e.preventDefault()
-    if (!nueva?.cuenta_id) { toast.error('Seleccione una cuenta'); return }
-    const payload: any = {
-      anio, cuenta_id: Number(nueva.cuenta_id), campo_id: nueva.campo_id || null,
-      descripcion: nueva.descripcion || '',
-      unidad_negocio_id: nueva.unidad_negocio_id ? Number(nueva.unidad_negocio_id) : null,
-      departamento_id: nueva.departamento_id ? Number(nueva.departamento_id) : null,
-      almacen_id: nueva.almacen_id ? Number(nueva.almacen_id) : null,
+    if (!nuevoReg.lineas.length) { toast.error('Agregue al menos una línea'); return }
+    for (const ln of nuevoReg.lineas) {
+      if (!ln.cuenta_id) { toast.error('Todas las líneas requieren cuenta'); return }
     }
-    const vals = nueva.total ? distribuir(parseFloat(nueva.total), nueva.clave || 'uniforme') : Array(12).fill(0)
-    MK.forEach((mk, i) => { payload[mk] = vals[i] })
+    const payload = {
+      tipo: nuevoReg.tipo, anio: nuevoReg.anio, descripcion: nuevoReg.descripcion,
+      lineas: nuevoReg.lineas.map((ln: any) => {
+        const vals = distribuir(parseFloat(ln.total) || 0, ln.dist || 'mensual')
+        const line: any = {
+          cuenta_id: Number(ln.cuenta_id),
+          campo_id: ln.campo_id || null,
+          unidad_negocio_id: ln.unidad_negocio_id ? Number(ln.unidad_negocio_id) : null,
+          departamento_id: ln.departamento_id ? Number(ln.departamento_id) : null,
+          descripcion: ln.descripcion || '',
+        }
+        MK.forEach((mk, i) => { line[mk] = vals[i] })
+        return line
+      }),
+    }
     try {
-      await api.post('/contabilidad/presupuestos', payload)
-      toast.success('Línea creada'); setShowLine(false); setNueva(null); load()
+      const r = await api.post('/contabilidad/registros-presupuestarios', payload)
+      toast.success(`Registro ${r.data.numero} creado`)
+      setShowNuevoRegistro(false); setNuevoReg(null); loadRegistros()
     } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
   }
 
-  async function aplicarDist(e: any) {
+  async function aprobarRegistro(id: number) {
+    if (!confirm('¿Aprobar este registro? Los saldos se actualizarán.')) return
+    try {
+      await api.put(`/contabilidad/registros-presupuestarios/${id}/aprobar`)
+      toast.success('Registro aprobado y saldos actualizados')
+      loadRegistros(); setShowDetalleRegistro(null)
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function rechazarRegistro(id: number) {
+    if (!confirm('¿Rechazar este registro?')) return
+    try {
+      await api.put(`/contabilidad/registros-presupuestarios/${id}/rechazar`)
+      toast.success('Registro rechazado'); loadRegistros(); setShowDetalleRegistro(null)
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function eliminarRegistro(id: number) {
+    if (!confirm('¿Eliminar este registro?')) return
+    try {
+      await api.delete(`/contabilidad/registros-presupuestarios/${id}`)
+      toast.success('Registro eliminado'); loadRegistros(); setShowDetalleRegistro(null)
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function guardarConfig(e: any) {
     e.preventDefault()
-    const row = showDist
-    const vals = distribuir(parseFloat(row._total) || 0, row._clave || 'uniforme')
-    setEdits(prev => ({ ...prev, [row.id]: { ...(prev[row.id] || {}), ...MK.reduce((o: any, mk, i) => { o[mk] = vals[i]; return o }, {}) } }))
-    setShowDist(null)
-    toast.success('Distribución aplicada — recuerde Guardar')
+    try {
+      await api.put('/contabilidad/config-presupuesto', config)
+      toast.success('Configuración guardada'); setShowConfig(false)
+    } catch { toast.error('Error') }
   }
 
   async function del(id: number) {
-    if (!confirm('¿Eliminar esta línea de presupuesto?')) return
-    try { await api.delete(`/contabilidad/presupuestos/${id}`); toast.success('Eliminada'); load() }
+    if (!confirm('¿Eliminar esta línea de saldo?')) return
+    try { await api.delete(`/contabilidad/presupuestos/${id}`); toast.success('Eliminada'); loadSaldos() }
     catch { toast.error('Error') }
-  }
-
-  async function ejecutarTransferencia(e: any) {
-    e.preventDefault()
-    try {
-      await api.post('/contabilidad/presupuestos/transferir', {
-        origen_id: Number(transfer.origen_id),
-        destino_id: Number(transfer.destino_id),
-        mes: Number(transfer.mes),
-        monto: parseFloat(transfer.monto),
-        motivo: transfer.motivo || '',
-      })
-      toast.success('Transferencia realizada')
-      setShowTransfer(false); setTransfer({}); load()
-    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error en transferencia') }
   }
 
   async function ejecutarCopia(e: any) {
     e.preventDefault()
     try {
       const r = await api.post('/contabilidad/presupuestos/copiar-anio', {
-        anio_origen: Number(copyData.anio_origen),
-        anio_destino: anio,
+        anio_origen: Number(copyData.anio_origen), anio_destino: anio,
         factor: parseFloat(copyData.factor) || 1.0,
       })
-      toast.success(`${r.data.creados} líneas copiadas, ${r.data.omitidos} omitidas (ya existían)`)
-      setShowCopy(false); load()
+      toast.success(`${r.data.creados} líneas copiadas, ${r.data.omitidos} omitidas`)
+      setShowCopy(false); loadSaldos()
     } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al copiar') }
   }
 
-  async function cargarHistorial() {
-    try {
-      const r = await api.get(`/contabilidad/presupuestos/transferencias?anio=${anio}`)
-      setHistorial(r.data)
-      setShowHistorial(true)
-    } catch { toast.error('Error cargando historial') }
-  }
-
-  async function aprobarTodo() {
-    if (!confirm(`¿Aprobar todas las líneas en borrador para ${anio}?`)) return
-    try {
-      const r = await api.put(`/contabilidad/presupuestos/aprobar-lote?anio=${anio}`)
-      toast.success(`${r.data.aprobados} línea(s) aprobada(s)`)
-      load()
-    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
-  }
-
-  async function cambiarEstado(id: number, estado: string) {
-    try {
-      await api.put(`/contabilidad/presupuestos/${id}/estado?estado=${estado}`)
-      toast.success(`Estado → ${estado}`)
-      load()
-    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
-  }
-
   function exportCSV() {
-    const src = tab === 'registro' ? filteredItems : vsReal
+    const src = tab === 'saldos' ? filteredSaldos : vsReal
     if (!src.length) { toast.error('Nada que exportar'); return }
     let csv = ''
-    if (tab === 'registro') {
-      csv = ['Codigo,Cuenta,Descripcion,Campo,Estado,' + MESES.join(',') + ',Total']
-        .concat(filteredItems.map(p => [p.cuenta_codigo, `"${p.cuenta_nombre}"`, `"${p.descripcion || ''}"`, `"${p.campo_nombre || ''}"`, p.estado || 'borrador',
+    if (tab === 'saldos') {
+      csv = ['Codigo,Cuenta,Campo,UN,Depto,' + MESES.join(',') + ',Total']
+        .concat(filteredSaldos.map(p => [p.cuenta_codigo, `"${p.cuenta_nombre}"`, `"${p.campo_nombre || ''}"`, `"${p.unidad_negocio_nombre || ''}"`, `"${p.departamento_nombre || ''}"`,
           ...MK.map(mk => cellVal(p, mk)), rowTotal(p)].join(','))).join('\n')
     } else {
-      csv = ['Codigo,Cuenta,Presupuesto,Real,Disponible,Desviacion,% Consumido']
+      csv = ['Codigo,Cuenta,Presupuesto,Real,Disponible,%']
         .concat(vsReal.map(r => {
           const disp = r.total_presupuesto - r.total_real
           const pct = r.total_presupuesto ? (r.total_real / r.total_presupuesto * 100) : 0
-          return [r.cuenta_codigo, `"${r.cuenta_nombre}"`, r.total_presupuesto, r.total_real, disp.toFixed(2), r.total_desviacion, pct.toFixed(1)].join(',')
+          return [r.cuenta_codigo, `"${r.cuenta_nombre}"`, r.total_presupuesto, r.total_real, disp.toFixed(2), pct.toFixed(1)].join(',')
         })).join('\n')
     }
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -282,28 +319,22 @@ export default function Presupuesto() {
   }
 
   function toggleAllGroups() {
-    const next = !allExpanded
-    setAllExpanded(next)
-    const keys = groupedItems.map(([k]) => k)
+    const next = !allExpanded; setAllExpanded(next)
     const map: Record<string, boolean> = {}
-    keys.forEach(k => { map[k] = next })
+    groupedSaldos.forEach(([k]) => { map[k] = next })
     setExpandedGroups(map)
   }
+  const toggleGroup = (key: string) => setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }))
+  const isGroupExpanded = (key: string) => expandedGroups[key] !== false
 
-  const cols = periodo === 'mes'
-    ? MESES.map((m, i) => ({ label: m, idx: [i] }))
-    : periodo === 'trim'
-      ? TRIMS.map(t => ({ label: t.label, idx: t.m }))
-      : [{ label: 'Año', idx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] }]
+  const cols = periodo === 'mes' ? MESES.map((m, i) => ({ label: m, idx: [i] }))
+    : periodo === 'trim' ? TRIMS.map(t => ({ label: t.label, idx: t.m }))
+    : [{ label: 'Año', idx: [0,1,2,3,4,5,6,7,8,9,10,11] }]
 
-  const filteredItems = items.filter(p => {
+  const filteredSaldos = items.filter(p => {
     if (busqueda) {
       const q = busqueda.toLowerCase()
-      const match = (p.cuenta_codigo || '').toLowerCase().includes(q)
-        || (p.cuenta_nombre || '').toLowerCase().includes(q)
-        || (p.descripcion || '').toLowerCase().includes(q)
-        || (p.campo_nombre || '').toLowerCase().includes(q)
-      if (!match) return false
+      if (!(p.cuenta_codigo||'').toLowerCase().includes(q) && !(p.cuenta_nombre||'').toLowerCase().includes(q) && !(p.campo_nombre||'').toLowerCase().includes(q)) return false
     }
     if (campoFiltro && p.campo_id !== campoFiltro) return false
     if (unFiltro && String(p.unidad_negocio_id) !== unFiltro) return false
@@ -311,9 +342,9 @@ export default function Presupuesto() {
     return true
   })
 
-  const groupedItems = (() => {
+  const groupedSaldos = (() => {
     const groups: Record<string, { label: string; items: any[] }> = {}
-    for (const p of filteredItems) {
+    for (const p of filteredSaldos) {
       const cls = (p.cuenta_codigo || '')[0] || '?'
       if (!groups[cls]) groups[cls] = { label: CLASE_LABELS[cls] || `Clase ${cls}`, items: [] }
       groups[cls].items.push(p)
@@ -321,26 +352,25 @@ export default function Presupuesto() {
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
   })()
 
-  const toggleGroup = (key: string) => setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }))
-  const isGroupExpanded = (key: string) => expandedGroups[key] !== false
-
-  const totalPres = tab === 'registro'
-    ? filteredItems.reduce((s, p) => s + rowTotal(p), 0)
-    : vsReal.reduce((s, r) => s + r.total_presupuesto, 0)
+  const totalPres = tab === 'saldos'
+    ? filteredSaldos.reduce((s, p) => s + rowTotal(p), 0)
+    : tab === 'control' ? vsReal.reduce((s, r) => s + r.total_presupuesto, 0) : 0
   const totalReal = vsReal.reduce((s, r) => s + r.total_real, 0)
   const disponible = totalPres - totalReal
   const pctGlobal = totalPres ? Math.round((totalReal / totalPres) * 100) : 0
-
-  const countBorrador = items.filter(p => (p.estado || 'borrador') === 'borrador').length
-  const countAprobado = items.filter(p => p.estado === 'aprobado').length
-
   const mesActual = new Date().getMonth() + 1
-  const forecast = tab === 'control' && totalReal > 0 && mesActual > 1
-    ? Math.round((totalReal / mesActual) * 12) : null
+  const forecast = tab === 'control' && totalReal > 0 && mesActual > 1 ? Math.round((totalReal / mesActual) * 12) : null
 
-  const estado = (pct: number) => pct > 100
+  const regStats = {
+    total: registros.length,
+    borradores: registros.filter(r => r.estado === 'borrador').length,
+    aprobados: registros.filter(r => r.estado === 'aprobado').length,
+    montoTotal: registros.reduce((s: number, r: any) => s + (r.total || 0), 0),
+  }
+
+  const estadoPct = (pct: number) => pct > (config.umbral_bloqueo || 100)
     ? { label: 'Excedido', color: '#dc2626', bg: '#fef2f2', Icon: AlertOctagon }
-    : pct >= 85
+    : pct >= (config.umbral_alerta || 85)
       ? { label: 'Alerta', color: '#d97706', bg: '#fffbeb', Icon: AlertTriangle }
       : { label: 'Dentro', color: '#16a34a', bg: '#f0fdf4', Icon: CheckCircle2 }
 
@@ -351,7 +381,7 @@ export default function Presupuesto() {
           <PiggyBank size={21} style={{ verticalAlign: 'text-bottom', marginRight: 8 }} />
           Presupuesto
         </h1>
-        <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>Registro presupuestario y control contra cifras reales — estilo D365</p>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>Registros presupuestarios, saldos y control — estilo D365</p>
       </div>
 
       {/* Ribbon */}
@@ -363,79 +393,146 @@ export default function Presupuesto() {
         </PaneGroup>
         <PaneGroup title="Vista">
           <div style={{ display: 'flex', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden' }}>
-            <RibBtn active={tab === 'registro'} onClick={() => setTab('registro')} Icon={Table2} label="Registro" />
+            <RibBtn active={tab === 'registros'} onClick={() => setTab('registros')} Icon={FileText} label="Registros" />
+            <RibBtn active={tab === 'saldos'} onClick={() => setTab('saldos')} Icon={Table2} label="Saldos" />
             <RibBtn active={tab === 'control'} onClick={() => setTab('control')} Icon={Gauge} label="Control" />
           </div>
         </PaneGroup>
-        <PaneGroup title="Pivote">
-          <div style={{ display: 'flex', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden' }}>
-            {(['mes', 'trim', 'anio'] as const).map(pv => (
-              <button key={pv} onClick={() => setPeriodo(pv)} style={{ padding: '6px 12px', fontSize: 12, border: 'none', cursor: 'pointer', background: periodo === pv ? '#166534' : '#fff', color: periodo === pv ? '#fff' : '#374151' }}>
-                {pv === 'mes' ? 'Mes' : pv === 'trim' ? 'Trim' : 'Año'}
-              </button>
-            ))}
-          </div>
-        </PaneGroup>
+        {tab !== 'registros' && (
+          <PaneGroup title="Pivote">
+            <div style={{ display: 'flex', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden' }}>
+              {(['mes', 'trim', 'anio'] as const).map(pv => (
+                <button key={pv} onClick={() => setPeriodo(pv)} style={{ padding: '6px 12px', fontSize: 12, border: 'none', cursor: 'pointer', background: periodo === pv ? '#166534' : '#fff', color: periodo === pv ? '#fff' : '#374151' }}>
+                  {pv === 'mes' ? 'Mes' : pv === 'trim' ? 'Trim' : 'Año'}
+                </button>
+              ))}
+            </div>
+          </PaneGroup>
+        )}
         <PaneGroup title="Filtros">
           <div style={{ position: 'relative' }}>
             <Search size={13} style={{ position: 'absolute', left: 8, top: 9, color: '#9ca3af' }} />
-            <input className="input" placeholder="Buscar…" value={busqueda} onChange={e => setBusqueda(e.target.value)}
-              style={{ width: 130, height: 32, paddingLeft: 28, fontSize: 12 }} />
+            <input className="input" placeholder="Buscar…" value={busqueda} onChange={e => setBusqueda(e.target.value)} style={{ width: 130, height: 32, paddingLeft: 28, fontSize: 12 }} />
           </div>
-          <select className="select" style={{ width: 120, height: 32 }} value={campoFiltro} onChange={e => setCampoFiltro(e.target.value)}>
-            <option value="">Todo campo</option>
-            {campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}
-          </select>
-          <select className="select" style={{ width: 110, height: 32 }} value={unFiltro} onChange={e => setUnFiltro(e.target.value)}>
-            <option value="">Toda UN</option>
-            {dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-          </select>
-          <select className="select" style={{ width: 110, height: 32 }} value={depFiltro} onChange={e => setDepFiltro(e.target.value)}>
-            <option value="">Todo depto</option>
-            {dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
-          </select>
+          {tab === 'registros' && (
+            <select className="select" style={{ width: 120, height: 32 }} value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)}>
+              <option value="">Todo tipo</option>
+              {Object.entries(TIPO_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          )}
+          {tab !== 'registros' && <>
+            <select className="select" style={{ width: 110, height: 32 }} value={campoFiltro} onChange={e => setCampoFiltro(e.target.value)}>
+              <option value="">Todo campo</option>
+              {campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}
+            </select>
+            <select className="select" style={{ width: 110, height: 32 }} value={unFiltro} onChange={e => setUnFiltro(e.target.value)}>
+              <option value="">Toda UN</option>
+              {dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+            <select className="select" style={{ width: 110, height: 32 }} value={depFiltro} onChange={e => setDepFiltro(e.target.value)}>
+              <option value="">Todo depto</option>
+              {dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+            </select>
+          </>}
         </PaneGroup>
         <PaneGroup title="Acciones">
-          {tab === 'registro' && <>
-            <button className="btn-primary" style={{ height: 32 }} onClick={() => { setNueva({ clave: 'uniforme' }); setShowLine(true) }}><Plus size={14} /> Nueva</button>
+          {tab === 'registros' && (
+            <div style={{ display: 'flex', gap: 4 }}>
+              {Object.entries(TIPO_LABELS).map(([k, v]) => (
+                <button key={k} className="btn-primary" style={{ height: 32, background: v.color, fontSize: 11 }} onClick={() => initNuevoRegistro(k)}>
+                  <Plus size={13} /> {v.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {tab === 'saldos' && <>
             <button className="btn-primary" style={{ height: 32, opacity: dirty ? 1 : .4, pointerEvents: dirty ? 'auto' : 'none', background: '#0369a1' }} onClick={guardarCambios} disabled={saving}>
               <Save size={14} /> {saving ? '…' : `Guardar${dirtyCount > 0 ? ` (${dirtyCount})` : ''}`}
             </button>
-            {dirty && <button className="btn-secondary" style={{ height: 32 }} title="Descartar cambios" onClick={descartarCambios}><Undo2 size={14} /></button>}
-            <button className="btn-secondary" style={{ height: 32 }} title="Transferir entre líneas" onClick={() => setShowTransfer(true)}><ArrowRightLeft size={14} /></button>
+            {dirty && <button className="btn-secondary" style={{ height: 32 }} onClick={() => { setEdits({}); toast.success('Descartados') }}><Undo2 size={14} /></button>}
             <button className="btn-secondary" style={{ height: 32 }} title="Copiar de año anterior" onClick={() => { setCopyData({ anio_origen: anio - 1, factor: 1.0 }); setShowCopy(true) }}><Copy size={14} /></button>
-            <button className="btn-secondary" style={{ height: 32 }} title="Historial de transferencias" onClick={cargarHistorial}><History size={14} /></button>
-            {countBorrador > 0 && (
-              <button className="btn-secondary" style={{ height: 32, color: '#166534' }} title="Aprobar todos los borradores" onClick={aprobarTodo}><FileCheck2 size={14} /> Aprobar ({countBorrador})</button>
-            )}
           </>}
-          <button className="btn-secondary" style={{ height: 32 }} onClick={() => tab === 'registro' ? load() : loadControl()}><RefreshCw size={14} /></button>
-          <button className="btn-secondary" style={{ height: 32 }} onClick={exportCSV}><Download size={14} /></button>
+          <button className="btn-secondary" style={{ height: 32 }} onClick={() => tab === 'registros' ? loadRegistros() : tab === 'saldos' ? loadSaldos() : loadControl()}><RefreshCw size={14} /></button>
+          {tab !== 'registros' && <button className="btn-secondary" style={{ height: 32 }} onClick={exportCSV}><Download size={14} /></button>}
+          <button className="btn-secondary" style={{ height: 32 }} title="Configuración" onClick={() => setShowConfig(true)}><Settings size={14} /></button>
         </PaneGroup>
       </div>
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
-        <Kpi label={`Presupuesto ${anio}`} value={`RD$ ${fmt0(totalPres)}`} color="#0369a1" />
+        {tab === 'registros' && <>
+          <Kpi label="Registros" value={String(regStats.total)} color="#374151" />
+          <Kpi label="Borradores" value={String(regStats.borradores)} color="#d97706" />
+          <Kpi label="Aprobados" value={String(regStats.aprobados)} color="#16a34a" />
+          <Kpi label="Monto total" value={`RD$ ${fmt0(regStats.montoTotal)}`} color="#0369a1" />
+        </>}
+        {tab === 'saldos' && <>
+          <Kpi label={`Presupuesto ${anio}`} value={`RD$ ${fmt0(totalPres)}`} color="#0369a1" />
+          <Kpi label="Líneas" value={String(filteredSaldos.length)} color="#374151" />
+        </>}
         {tab === 'control' && <>
+          <Kpi label={`Presupuesto ${anio}`} value={`RD$ ${fmt0(totalPres)}`} color="#0369a1" />
           <Kpi label="Real ejecutado" value={`RD$ ${fmt0(totalReal)}`} color="#16a34a" />
           <Kpi label="Disponible" value={`RD$ ${fmt0(disponible)}`} color={disponible < 0 ? '#dc2626' : '#374151'} />
-          <Kpi label="% Consumido" value={`${pctGlobal}%`} color={estado(pctGlobal).color} />
-          {forecast !== null && (
-            <Kpi label="Proyección fin de año" value={`RD$ ${fmt0(forecast)}`} color={forecast > totalPres ? '#dc2626' : '#0369a1'} icon={TrendingUp} />
-          )}
-        </>}
-        {tab === 'registro' && <>
-          <Kpi label="Líneas" value={String(filteredItems.length)} color="#374151" />
-          <Kpi label="Aprobadas" value={String(countAprobado)} color="#16a34a" />
-          <Kpi label="Borradores" value={String(countBorrador)} color="#d97706" />
+          <Kpi label="% Consumido" value={`${pctGlobal}%`} color={estadoPct(pctGlobal).color} />
+          {forecast !== null && <Kpi label="Proyección año" value={`RD$ ${fmt0(forecast)}`} color={forecast > totalPres ? '#dc2626' : '#0369a1'} icon={TrendingUp} />}
         </>}
       </div>
 
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando…</div>
-      ) : tab === 'registro' ? (
-        /* ─────────── REGISTRO ─────────── */
+      ) : tab === 'registros' ? (
+        /* ─── REGISTROS PRESUPUESTARIOS ─── */
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 700 }}>
+              <thead>
+                <tr style={{ background: '#f3f4f6' }}>
+                  <th style={thL}>Número</th>
+                  <th style={thL}>Fecha</th>
+                  <th style={thL}>Tipo</th>
+                  <th style={thL}>Descripción</th>
+                  <th style={thR}>Líneas</th>
+                  <th style={thR}>Monto</th>
+                  <th style={thL}>Estado</th>
+                  <th style={thL}>Usuario</th>
+                  <th style={{ ...thR, width: 60 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {registros.length === 0 ? (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: 34, color: '#9ca3af' }}>
+                    Sin registros presupuestarios para {anio}. Use los botones de tipo para crear uno.
+                  </td></tr>
+                ) : registros.filter(r => {
+                  if (!busqueda) return true
+                  const q = busqueda.toLowerCase()
+                  return (r.numero||'').toLowerCase().includes(q) || (r.descripcion||'').toLowerCase().includes(q)
+                }).map((r: any) => {
+                  const tp = TIPO_LABELS[r.tipo] || TIPO_LABELS.original
+                  const est = ESTADO_BADGE[r.estado] || ESTADO_BADGE.borrador
+                  return (
+                    <tr key={r.id} style={{ borderTop: '1px solid #f3f4f6', cursor: 'pointer' }} onClick={() => setShowDetalleRegistro(r)}>
+                      <td style={{ ...tdL, fontWeight: 600, fontFamily: 'monospace' }}>{r.numero}</td>
+                      <td style={tdL}>{r.fecha}</td>
+                      <td style={tdL}><span style={{ fontSize: 10, fontWeight: 600, color: tp.color, background: tp.bg, padding: '2px 8px', borderRadius: 4 }}>{tp.label}</span></td>
+                      <td style={{ ...tdL, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.descripcion || '—'}</td>
+                      <td style={tdR}>{r.lineas?.length || 0}</td>
+                      <td style={{ ...tdR, fontWeight: 600 }}>{fmt(r.total)}</td>
+                      <td style={tdL}><span style={{ fontSize: 10, fontWeight: 600, color: est.color, background: est.bg, padding: '2px 8px', borderRadius: 4 }}>{est.label}</span></td>
+                      <td style={{ ...tdL, fontSize: 11, color: '#6b7280' }}>{r.usuario_nombre}</td>
+                      <td style={{ padding: '4px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        {r.estado === 'borrador' && <button className="btn-icon" title="Eliminar" onClick={() => eliminarRegistro(r.id)}><Trash2 size={13} /></button>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : tab === 'saldos' ? (
+        /* ─── SALDOS ─── */
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 900 }}>
@@ -447,23 +544,21 @@ export default function Presupuesto() {
                     </button>
                     Cuenta
                   </th>
-                  <th style={{ ...thL, width: 120 }}>Descripción</th>
                   <th style={{ ...thL, width: 100 }}>Dimensiones</th>
-                  <th style={{ ...thL, width: 72 }}>Estado</th>
                   {cols.map(c => <th key={c.label} style={thR}>{c.label}</th>)}
                   <th style={thR}>Total</th>
-                  <th style={{ ...thR, width: 80 }}></th>
+                  <th style={{ ...thR, width: 50 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.length === 0 ? (
-                  <tr><td colSpan={cols.length + 6} style={{ textAlign: 'center', padding: 34, color: '#9ca3af' }}>Sin líneas de presupuesto para {anio}. Use «Nueva» o «Copiar».</td></tr>
-                ) : groupedItems.map(([clsKey, group]) => {
+                {filteredSaldos.length === 0 ? (
+                  <tr><td colSpan={cols.length + 4} style={{ textAlign: 'center', padding: 34, color: '#9ca3af' }}>Sin saldos para {anio}. Apruebe registros presupuestarios para generar saldos.</td></tr>
+                ) : groupedSaldos.map(([clsKey, group]) => {
                   const expanded = isGroupExpanded(clsKey)
                   const groupTotal = group.items.reduce((s: number, p: any) => s + rowTotal(p), 0)
                   return [
                     <tr key={`grp-${clsKey}`} onClick={() => toggleGroup(clsKey)} style={{ background: '#f9fafb', cursor: 'pointer', borderTop: '1px solid #e5e7eb' }}>
-                      <td colSpan={4} style={{ padding: '6px 12px', fontWeight: 700, fontSize: 12, color: '#374151' }}>
+                      <td colSpan={2} style={{ padding: '6px 12px', fontWeight: 700, fontSize: 12, color: '#374151' }}>
                         {expanded ? <ChevronDown size={13} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} /> : <ChevronRight size={13} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />}
                         {group.label} <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6 }}>({group.items.length})</span>
                       </td>
@@ -473,26 +568,14 @@ export default function Presupuesto() {
                     </tr>,
                     ...(expanded ? group.items.map((p: any) => {
                       const isDirty = !!edits[p.id]
-                      const est = ESTADO_BADGE[p.estado || 'borrador'] || ESTADO_BADGE.borrador
                       return (
                         <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6', background: isDirty ? '#eff6ff' : '#fff' }}>
                           <td style={{ ...tdL, whiteSpace: 'nowrap' }}>
                             <span style={{ color: '#6b7280', marginRight: 6, fontFamily: 'monospace', fontSize: 11 }}>{p.cuenta_codigo}</span>{p.cuenta_nombre}
                             {isDirty && <span style={{ marginLeft: 6, fontSize: 9, color: '#0369a1', fontWeight: 700 }}>●</span>}
                           </td>
-                          <td style={tdL}>
-                            <input className="input" value={edits[p.id]?._descripcion ?? p.descripcion ?? ''} onChange={e => setDesc(p.id, e.target.value)}
-                              style={{ width: '100%', fontSize: 11, border: '1px solid transparent', background: 'transparent', padding: '4px 6px', borderRadius: 4 }}
-                              placeholder="—"
-                              onFocus={e => { e.target.style.border = '1px solid #93c5fd'; e.target.style.background = '#fff' }}
-                              onBlur={e => { e.target.style.border = '1px solid transparent'; e.target.style.background = 'transparent' }} />
-                          </td>
                           <td style={tdL}><DimTags p={p} /></td>
-                          <td style={tdL}>
-                            <span style={{ fontSize: 10, fontWeight: 600, color: est.color, background: est.bg, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{est.label}</span>
-                          </td>
                           {cols.map(c => {
-                            const sum = c.idx.reduce((s: number, i: number) => s + cellVal(p, MK[i]), 0)
                             if (periodo === 'mes') {
                               const mk = MK[c.idx[0]]
                               return (
@@ -505,14 +588,10 @@ export default function Presupuesto() {
                                 </td>
                               )
                             }
-                            return <td key={c.label} style={{ ...tdR, color: '#374151' }}>{fmt(sum)}</td>
+                            return <td key={c.label} style={{ ...tdR, color: '#374151' }}>{fmt(c.idx.reduce((s: number, i: number) => s + cellVal(p, MK[i]), 0))}</td>
                           })}
                           <td style={{ ...tdR, fontWeight: 700 }}>{fmt(rowTotal(p))}</td>
-                          <td style={{ padding: '4px 4px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                            <button className="btn-icon" title="Distribuir monto" onClick={() => setShowDist({ ...p, _total: rowTotal(p) || '', _clave: 'uniforme' })}><Sliders size={13} /></button>
-                            {(p.estado || 'borrador') === 'borrador' && (
-                              <button className="btn-icon" title="Aprobar" onClick={() => cambiarEstado(p.id, 'aprobado')}><Check size={13} /></button>
-                            )}
+                          <td style={{ padding: '4px', textAlign: 'center' }}>
                             <button className="btn-icon" title="Eliminar" onClick={() => del(p.id)}><Trash2 size={13} /></button>
                           </td>
                         </tr>
@@ -521,11 +600,11 @@ export default function Presupuesto() {
                   ]
                 }).flat()}
               </tbody>
-              {filteredItems.length > 0 && (
+              {filteredSaldos.length > 0 && (
                 <tfoot>
                   <tr style={{ fontWeight: 700, background: '#f9fafb', borderTop: '2px solid #e5e7eb' }}>
-                    <td colSpan={4} style={tdL}>TOTAL</td>
-                    {cols.map(c => <td key={c.label} style={tdR}>{fmt(filteredItems.reduce((s: number, p: any) => s + c.idx.reduce((a: number, i: number) => a + cellVal(p, MK[i]), 0), 0))}</td>)}
+                    <td colSpan={2} style={tdL}>TOTAL</td>
+                    {cols.map(c => <td key={c.label} style={tdR}>{fmt(filteredSaldos.reduce((s: number, p: any) => s + c.idx.reduce((a: number, i: number) => a + cellVal(p, MK[i]), 0), 0))}</td>)}
                     <td style={tdR}>{fmt(totalPres)}</td>
                     <td></td>
                   </tr>
@@ -535,11 +614,11 @@ export default function Presupuesto() {
           </div>
         </div>
       ) : (
-        /* ─────────── CONTROL PRESUPUESTARIO ─────────── */
+        /* ─── CONTROL ─── */
         <div>
           {vsReal.length > 0 && totalReal === 0 && (
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#92400e' }}>
-              Aún no hay cifras reales contabilizadas para {anio} — el «Real» aparecerá cuando existan asientos en estas cuentas.
+              Aún no hay cifras reales contabilizadas para {anio}.
             </div>
           )}
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
@@ -548,14 +627,10 @@ export default function Presupuesto() {
                 <thead>
                   <tr style={{ background: '#f3f4f6' }}>
                     <th style={thL}>Cuenta</th>
-                    {periodo === 'mes' ? MESES.map(m => (
-                      <th key={m} style={{ ...thR, fontSize: 10 }}>{m}</th>
-                    )) : periodo === 'trim' ? TRIMS.map(t => (
-                      <th key={t.label} style={thR}>{t.label}</th>
-                    )) : (
-                      <th style={thR}>Año</th>
-                    )}
-                    <th style={thR}>Presupuesto</th>
+                    {periodo === 'mes' ? MESES.map(m => <th key={m} style={{ ...thR, fontSize: 10 }}>{m}</th>)
+                      : periodo === 'trim' ? TRIMS.map(t => <th key={t.label} style={thR}>{t.label}</th>)
+                      : <th style={thR}>Año</th>}
+                    <th style={thR}>Presup.</th>
                     <th style={thR}>Real</th>
                     <th style={thR}>Disponible</th>
                     <th style={{ ...thL, width: 170 }}>% Consumido</th>
@@ -568,45 +643,28 @@ export default function Presupuesto() {
                   ) : vsReal.map((r, i) => {
                     const disp = r.total_presupuesto - r.total_real
                     const pct = r.total_presupuesto ? (r.total_real / r.total_presupuesto * 100) : 0
-                    const st = estado(pct)
+                    const st = estadoPct(pct)
                     const meses = r.meses || []
                     return (
                       <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
                         <td style={{ ...tdL, whiteSpace: 'nowrap' }}>
                           <span style={{ color: '#6b7280', marginRight: 6, fontFamily: 'monospace', fontSize: 11 }}>{r.cuenta_codigo}</span>{r.cuenta_nombre}
-                          {r.campo_id && <span style={{ fontSize: 9, background: '#f3f4f6', color: '#6b7280', padding: '1px 4px', borderRadius: 3, marginLeft: 6 }}>{r.campo_id}</span>}
                         </td>
                         {periodo === 'mes' ? meses.map((m: any, mi: number) => {
                           const mPct = m.presupuesto ? (m.real / m.presupuesto * 100) : 0
-                          const mColor = mPct > 100 ? '#dc2626' : mPct >= 85 ? '#d97706' : '#374151'
+                          const mColor = mPct > (config.umbral_bloqueo||100) ? '#dc2626' : mPct >= (config.umbral_alerta||85) ? '#d97706' : '#374151'
                           return (
                             <td key={mi} style={{ ...tdR, fontSize: 10 }}>
                               <div style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt0(m.real)}</div>
                               <div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt0(m.presupuesto)}</div>
-                              {m.presupuesto > 0 && (
-                                <div style={{ height: 2, background: '#f3f4f6', borderRadius: 1, marginTop: 2 }}>
-                                  <div style={{ height: '100%', width: `${Math.min(mPct, 100)}%`, background: mColor, borderRadius: 1 }} />
-                                </div>
-                              )}
+                              {m.presupuesto > 0 && <div style={{ height: 2, background: '#f3f4f6', borderRadius: 1, marginTop: 2 }}><div style={{ height: '100%', width: `${Math.min(mPct, 100)}%`, background: mColor, borderRadius: 1 }} /></div>}
                             </td>
                           )
                         }) : periodo === 'trim' ? TRIMS.map(t => {
                           const tPres = t.m.reduce((s: number, mi: number) => s + (meses[mi]?.presupuesto || 0), 0)
                           const tReal = t.m.reduce((s: number, mi: number) => s + (meses[mi]?.real || 0), 0)
-                          const tPct = tPres ? (tReal / tPres * 100) : 0
-                          const tColor = tPct > 100 ? '#dc2626' : tPct >= 85 ? '#d97706' : '#374151'
-                          return (
-                            <td key={t.label} style={tdR}>
-                              <div style={{ fontVariantNumeric: 'tabular-nums', color: tColor }}>{fmt0(tReal)}</div>
-                              <div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt0(tPres)}</div>
-                            </td>
-                          )
-                        }) : (
-                          <td style={tdR}>
-                            <div style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(r.total_real)}</div>
-                            <div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt(r.total_presupuesto)}</div>
-                          </td>
-                        )}
+                          return <td key={t.label} style={tdR}><div style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt0(tReal)}</div><div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt0(tPres)}</div></td>
+                        }) : <td style={tdR}><div>{fmt(r.total_real)}</div><div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt(r.total_presupuesto)}</div></td>}
                         <td style={tdR}>{fmt(r.total_presupuesto)}</td>
                         <td style={tdR}>{fmt(r.total_real)}</td>
                         <td style={{ ...tdR, color: disp < 0 ? '#dc2626' : '#374151' }}>{fmt(disp)}</td>
@@ -631,19 +689,19 @@ export default function Presupuesto() {
                   <tfoot>
                     <tr style={{ fontWeight: 700, background: '#f9fafb', borderTop: '2px solid #e5e7eb' }}>
                       <td style={tdL}>TOTAL</td>
-                      {periodo === 'mes' ? MESES.map((m, mi) => {
-                        const sumR = vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.real || 0), 0)
-                        const sumP = vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.presupuesto || 0), 0)
-                        return <td key={m} style={{ ...tdR, fontSize: 10 }}><div>{fmt0(sumR)}</div><div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt0(sumP)}</div></td>
+                      {periodo === 'mes' ? MESES.map((_, mi) => {
+                        const sr = vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.real || 0), 0)
+                        const sp = vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.presupuesto || 0), 0)
+                        return <td key={mi} style={{ ...tdR, fontSize: 10 }}><div>{fmt0(sr)}</div><div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt0(sp)}</div></td>
                       }) : periodo === 'trim' ? TRIMS.map(t => {
-                        const tR = t.m.reduce((s: number, mi: number) => s + vsReal.reduce((s2: number, r: any) => s2 + (r.meses?.[mi]?.real || 0), 0), 0)
-                        const tP = t.m.reduce((s: number, mi: number) => s + vsReal.reduce((s2: number, r: any) => s2 + (r.meses?.[mi]?.presupuesto || 0), 0), 0)
-                        return <td key={t.label} style={tdR}><div>{fmt0(tR)}</div><div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt0(tP)}</div></td>
+                        const tr2 = t.m.reduce((s: number, mi: number) => s + vsReal.reduce((s2: number, r: any) => s2 + (r.meses?.[mi]?.real||0),0),0)
+                        const tp = t.m.reduce((s: number, mi: number) => s + vsReal.reduce((s2: number, r: any) => s2 + (r.meses?.[mi]?.presupuesto||0),0),0)
+                        return <td key={t.label} style={tdR}><div>{fmt0(tr2)}</div><div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt0(tp)}</div></td>
                       }) : <td style={tdR}><div>{fmt(totalReal)}</div><div style={{ fontSize: 9, color: '#9ca3af' }}>{fmt(totalPres)}</div></td>}
                       <td style={tdR}>{fmt(totalPres)}</td>
                       <td style={tdR}>{fmt(totalReal)}</td>
                       <td style={{ ...tdR, color: disponible < 0 ? '#dc2626' : '#374151' }}>{fmt(disponible)}</td>
-                      <td colSpan={2} style={{ ...tdL, color: estado(pctGlobal).color, fontWeight: 700 }}>{pctGlobal}% consumido</td>
+                      <td colSpan={2} style={{ ...tdL, color: estadoPct(pctGlobal).color, fontWeight: 700 }}>{pctGlobal}% consumido</td>
                     </tr>
                   </tfoot>
                 )}
@@ -653,113 +711,217 @@ export default function Presupuesto() {
         </div>
       )}
 
-      {/* Modal nueva línea */}
-      {showLine && nueva && (
-        <Modal title="Nueva línea de presupuesto" subtitle={`Ejercicio ${anio}`} onClose={() => setShowLine(false)} width={620}>
-          <form onSubmit={crearLinea}>
-            <div style={{ marginBottom: 14 }}>
-              <Label>Cuenta contable *</Label>
-              <select className="select" required value={nueva.cuenta_id || ''} onChange={e => setNueva({ ...nueva, cuenta_id: e.target.value })}>
-                <option value="">Seleccionar…</option>
-                {cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
-              </select>
-            </div>
+      {/* Modal nuevo registro */}
+      {showNuevoRegistro && nuevoReg && (
+        <Modal title={`Nuevo registro: ${TIPO_LABELS[nuevoReg.tipo]?.label}`} subtitle={`Ejercicio ${nuevoReg.anio}`} onClose={() => setShowNuevoRegistro(false)} width={860}>
+          <form onSubmit={crearRegistro}>
             <div style={{ marginBottom: 14 }}>
               <Label>Descripción</Label>
-              <input className="input" value={nueva.descripcion || ''} onChange={e => setNueva({ ...nueva, descripcion: e.target.value })} placeholder="Nota libre para esta línea" />
+              <input className="input" value={nuevoReg.descripcion} onChange={e => setNuevoReg({ ...nuevoReg, descripcion: e.target.value })} placeholder="Descripción del registro" />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-              <div><Label>Campo (centro de costo)</Label><select className="select" value={nueva.campo_id || ''} onChange={e => setNueva({ ...nueva, campo_id: e.target.value })}><option value="">— General —</option>{campos.map((c: any) => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}</select></div>
-              <div><Label>Unidad de negocio</Label><select className="select" value={nueva.unidad_negocio_id || ''} onChange={e => setNueva({ ...nueva, unidad_negocio_id: e.target.value })}><option value="">— Ninguna —</option>{dims.unidades.map(u => <option key={u.id} value={u.id}>{u.codigo} — {u.nombre}</option>)}</select></div>
-              <div><Label>Departamento</Label><select className="select" value={nueva.departamento_id || ''} onChange={e => setNueva({ ...nueva, departamento_id: e.target.value })}><option value="">— Ninguno —</option>{dims.deptos.map(d => <option key={d.id} value={d.id}>{d.codigo} — {d.nombre}</option>)}</select></div>
-              <div><Label>Almacén</Label><select className="select" value={nueva.almacen_id || ''} onChange={e => setNueva({ ...nueva, almacen_id: e.target.value })}><option value="">— Ninguno —</option>{dims.almacenes.map(a => <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>)}</select></div>
-            </div>
-            <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginBottom: 16 }}>
-              <Label>Monto anual + clave de distribución</Label>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input className="input" type="number" step="0.01" style={{ width: 150 }} placeholder="Monto anual" value={nueva.total || ''} onChange={e => setNueva({ ...nueva, total: e.target.value })} />
-                <select className="select" style={{ width: 200 }} value={nueva.clave} onChange={e => setNueva({ ...nueva, clave: e.target.value })}>
-                  {Object.entries(CLAVES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                </select>
-                <span style={{ fontSize: 11, color: '#6b7280' }}>se reparte en los 12 meses</span>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+              <div style={{ background: '#f3f4f6', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: 12 }}>Líneas ({nuevoReg.lineas.length})</span>
+                <button type="button" className="btn-secondary" style={{ height: 28, fontSize: 11 }} onClick={addLinea}><Plus size={12} /> Agregar línea</button>
               </div>
-              <DistPreview total={parseFloat(nueva.total) || 0} clave={nueva.clave || 'uniforme'} />
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 700 }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb' }}>
+                      <th style={{ ...thL, width: 200 }}>Cuenta *</th>
+                      <th style={{ ...thL, width: 110 }}>Campo</th>
+                      <th style={{ ...thL, width: 110 }}>UN</th>
+                      <th style={{ ...thL, width: 110 }}>Depto</th>
+                      <th style={{ ...thR, width: 110 }}>Monto anual</th>
+                      <th style={{ ...thL, width: 110 }}>Distribución</th>
+                      <th style={{ ...thL, width: 120 }}>Nota</th>
+                      <th style={{ width: 30 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nuevoReg.lineas.map((ln: any, idx: number) => (
+                      <tr key={idx} style={{ borderTop: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '4px 6px' }}>
+                          <select className="select" style={{ width: '100%', fontSize: 11 }} required value={ln.cuenta_id} onChange={e => updateLinea(idx, 'cuenta_id', e.target.value)}>
+                            <option value="">Seleccionar…</option>
+                            {cuentas.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: '4px 4px' }}>
+                          <select className="select" style={{ width: '100%', fontSize: 11 }} value={ln.campo_id} onChange={e => updateLinea(idx, 'campo_id', e.target.value)}>
+                            <option value="">—</option>
+                            {campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: '4px 4px' }}>
+                          <select className="select" style={{ width: '100%', fontSize: 11 }} value={ln.unidad_negocio_id} onChange={e => updateLinea(idx, 'unidad_negocio_id', e.target.value)}>
+                            <option value="">—</option>
+                            {dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: '4px 4px' }}>
+                          <select className="select" style={{ width: '100%', fontSize: 11 }} value={ln.departamento_id} onChange={e => updateLinea(idx, 'departamento_id', e.target.value)}>
+                            <option value="">—</option>
+                            {dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: '4px 4px' }}>
+                          <input className="input" type="number" step="0.01" style={{ width: '100%', fontSize: 11, textAlign: 'right' }} value={ln.total} onChange={e => updateLinea(idx, 'total', e.target.value)} placeholder="0.00" />
+                        </td>
+                        <td style={{ padding: '4px 4px' }}>
+                          <select className="select" style={{ width: '100%', fontSize: 11 }} value={ln.dist} onChange={e => updateLinea(idx, 'dist', e.target.value)}>
+                            {Object.entries(DIST_KEYS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: '4px 4px' }}>
+                          <input className="input" style={{ width: '100%', fontSize: 11 }} value={ln.descripcion} onChange={e => updateLinea(idx, 'descripcion', e.target.value)} placeholder="—" />
+                        </td>
+                        <td style={{ padding: '4px 2px', textAlign: 'center' }}>
+                          {nuevoReg.lineas.length > 1 && <button type="button" className="btn-icon" onClick={() => removeLinea(idx)}><X size={13} /></button>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {nuevoReg.lineas.some((ln: any) => parseFloat(ln.total) > 0) && (
+                <div style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>
+                  <DistPreviewMulti lineas={nuevoReg.lineas} />
+                </div>
+              )}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowLine(false)}>Cancelar</button>
-              <button type="submit" className="btn-primary">Crear línea</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, color: '#6b7280' }}>
+                Total: <strong>RD$ {fmt(nuevoReg.lineas.reduce((s: number, ln: any) => s + (parseFloat(ln.total) || 0), 0))}</strong>
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowNuevoRegistro(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Crear registro</button>
+              </div>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* Modal distribuir */}
-      {showDist && (
-        <Modal title="Distribuir monto anual" subtitle={`${showDist.cuenta_codigo} — ${showDist.cuenta_nombre}`} onClose={() => setShowDist(null)} width={460}>
-          <form onSubmit={aplicarDist}>
-            <div style={{ marginBottom: 14 }}>
-              <Label>Monto anual</Label>
-              <input className="input" type="number" step="0.01" value={showDist._total} onChange={e => setShowDist({ ...showDist, _total: e.target.value })} />
+      {/* Modal detalle registro */}
+      {showDetalleRegistro && (
+        <Modal title={`Registro ${showDetalleRegistro.numero}`} subtitle={`${TIPO_LABELS[showDetalleRegistro.tipo]?.label} — ${showDetalleRegistro.fecha}`} onClose={() => setShowDetalleRegistro(null)} width={860}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div><Label>Tipo</Label><span style={{ fontSize: 12, fontWeight: 600, color: TIPO_LABELS[showDetalleRegistro.tipo]?.color }}>{TIPO_LABELS[showDetalleRegistro.tipo]?.label}</span></div>
+              <div><Label>Estado</Label><span style={{ fontSize: 12, fontWeight: 600, color: ESTADO_BADGE[showDetalleRegistro.estado]?.color }}>{ESTADO_BADGE[showDetalleRegistro.estado]?.label}</span></div>
+              <div><Label>Año</Label><span style={{ fontSize: 12 }}>{showDetalleRegistro.anio}</span></div>
+              <div><Label>Usuario</Label><span style={{ fontSize: 12 }}>{showDetalleRegistro.usuario_nombre}</span></div>
+              {showDetalleRegistro.descripcion && <div style={{ flex: '1 1 100%' }}><Label>Descripción</Label><span style={{ fontSize: 12 }}>{showDetalleRegistro.descripcion}</span></div>}
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <Label>Clave de distribución</Label>
-              <select className="select" value={showDist._clave} onChange={e => setShowDist({ ...showDist, _clave: e.target.value })}>
-                {Object.entries(CLAVES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
+          </div>
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 700 }}>
+                <thead>
+                  <tr style={{ background: '#f3f4f6' }}>
+                    <th style={thL}>Cuenta</th>
+                    <th style={thL}>Dimensiones</th>
+                    {MESES.map(m => <th key={m} style={{ ...thR, fontSize: 10 }}>{m}</th>)}
+                    <th style={thR}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(showDetalleRegistro.lineas || []).map((ln: any) => (
+                    <tr key={ln.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                      <td style={{ ...tdL, whiteSpace: 'nowrap' }}>
+                        <span style={{ color: '#6b7280', fontFamily: 'monospace', fontSize: 11, marginRight: 4 }}>{ln.cuenta_codigo}</span>{ln.cuenta_nombre}
+                      </td>
+                      <td style={tdL}>
+                        {[ln.campo_nombre, ln.unidad_negocio_nombre, ln.departamento_nombre].filter(Boolean).length > 0
+                          ? [ln.campo_nombre, ln.unidad_negocio_nombre, ln.departamento_nombre].filter(Boolean).map((t: string, i: number) => (
+                            <span key={i} style={{ fontSize: 9, background: '#f3f4f6', color: '#4b5563', padding: '1px 4px', borderRadius: 3, marginRight: 3 }}>{t}</span>
+                          ))
+                          : <span style={{ color: '#d1d5db' }}>—</span>}
+                      </td>
+                      {MK.map(mk => <td key={mk} style={{ ...tdR, fontSize: 11 }}>{fmt(ln[mk])}</td>)}
+                      <td style={{ ...tdR, fontWeight: 700 }}>{fmt(ln.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ fontWeight: 700, borderTop: '2px solid #e5e7eb', background: '#f9fafb' }}>
+                    <td colSpan={2} style={tdL}>TOTAL</td>
+                    {MK.map(mk => <td key={mk} style={{ ...tdR, fontSize: 11 }}>{fmt((showDetalleRegistro.lineas||[]).reduce((s: number, ln: any) => s + Number(ln[mk] || 0), 0))}</td>)}
+                    <td style={tdR}>{fmt(showDetalleRegistro.total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
-            <DistPreview total={parseFloat(showDist._total) || 0} clave={showDist._clave || 'uniforme'} />
+          </div>
+          {showDetalleRegistro.estado === 'borrador' && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowDist(null)}>Cancelar</button>
-              <button type="submit" className="btn-primary">Aplicar</button>
+              <button className="btn-secondary" style={{ color: '#dc2626' }} onClick={() => eliminarRegistro(showDetalleRegistro.id)}>
+                <Trash2 size={14} /> Eliminar
+              </button>
+              <button className="btn-secondary" style={{ color: '#991b1b' }} onClick={() => rechazarRegistro(showDetalleRegistro.id)}>
+                <XCircle size={14} /> Rechazar
+              </button>
+              <button className="btn-primary" style={{ background: '#166534' }} onClick={() => aprobarRegistro(showDetalleRegistro.id)}>
+                <CheckCircle2 size={14} /> Aprobar y contabilizar
+              </button>
             </div>
-          </form>
+          )}
         </Modal>
       )}
 
-      {/* Modal transferencia */}
-      {showTransfer && (
-        <Modal title="Transferencia presupuestaria" subtitle="Mover presupuesto de una línea a otra" onClose={() => setShowTransfer(false)} width={540}>
-          <form onSubmit={ejecutarTransferencia}>
-            <div style={{ marginBottom: 14 }}>
-              <Label>Línea origen *</Label>
-              <select className="select" required value={transfer.origen_id || ''} onChange={e => setTransfer({ ...transfer, origen_id: e.target.value })}>
-                <option value="">Seleccionar…</option>
-                {items.map(p => <option key={p.id} value={p.id}>{p.cuenta_codigo} — {p.cuenta_nombre} (Total: {fmt(p.total_anual || MK.reduce((s: number, mk: string) => s + Number(p[mk] || 0), 0))})</option>)}
-              </select>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <Label>Línea destino *</Label>
-              <select className="select" required value={transfer.destino_id || ''} onChange={e => setTransfer({ ...transfer, destino_id: e.target.value })}>
-                <option value="">Seleccionar…</option>
-                {items.filter(p => String(p.id) !== String(transfer.origen_id)).map(p => <option key={p.id} value={p.id}>{p.cuenta_codigo} — {p.cuenta_nombre}</option>)}
-              </select>
-            </div>
+      {/* Modal configuración */}
+      {showConfig && (
+        <Modal title="Configuración del presupuesto" onClose={() => setShowConfig(false)} width={480}>
+          <form onSubmit={guardarConfig}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
               <div>
-                <Label>Mes *</Label>
-                <select className="select" required value={transfer.mes || ''} onChange={e => setTransfer({ ...transfer, mes: e.target.value })}>
-                  <option value="">Seleccionar…</option>
-                  {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
+                <Label>Umbral de alerta (%)</Label>
+                <input className="input" type="number" min={0} max={100} value={config.umbral_alerta} onChange={e => setConfig({ ...config, umbral_alerta: Number(e.target.value) })} />
+                <p style={{ margin: '4px 0 0', fontSize: 10, color: '#6b7280' }}>% consumo para advertencia amarilla</p>
               </div>
               <div>
-                <Label>Monto a transferir *</Label>
-                <input className="input" type="number" step="0.01" required value={transfer.monto || ''} onChange={e => setTransfer({ ...transfer, monto: e.target.value })} placeholder="0.00" />
+                <Label>Umbral de bloqueo (%)</Label>
+                <input className="input" type="number" min={0} max={200} value={config.umbral_bloqueo} onChange={e => setConfig({ ...config, umbral_bloqueo: Number(e.target.value) })} />
+                <p style={{ margin: '4px 0 0', fontSize: 10, color: '#6b7280' }}>% consumo para estado «Excedido»</p>
               </div>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <Label>Motivo</Label>
-              <input className="input" value={transfer.motivo || ''} onChange={e => setTransfer({ ...transfer, motivo: e.target.value })} placeholder="Razón de la transferencia" />
+            <div style={{ marginBottom: 14 }}>
+              <Label>Distribución por defecto</Label>
+              <select className="select" value={config.distribucion_default} onChange={e => setConfig({ ...config, distribucion_default: e.target.value })}>
+                {Object.entries(DIST_KEYS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                <input type="checkbox" checked={config.control_habilitado} onChange={e => setConfig({ ...config, control_habilitado: e.target.checked })} />
+                Control presupuestario habilitado
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                <input type="checkbox" checked={config.requiere_aprobacion} onChange={e => setConfig({ ...config, requiere_aprobacion: e.target.checked })} />
+                Requiere aprobación
+              </label>
+            </div>
+            <div style={{ background: '#f3f4f6', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6 }}>Tipos de transacción disponibles</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {Object.entries(TIPO_LABELS).map(([k, v]) => (
+                  <span key={k} style={{ fontSize: 11, fontWeight: 600, color: v.color, background: v.bg, padding: '4px 10px', borderRadius: 6 }}>{v.label}</span>
+                ))}
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: 10, color: '#6b7280' }}>
+                Original = presupuesto base | Adición = incremento | Transferencia = mover entre cuentas | Revisión = reemplazo
+              </p>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowTransfer(false)}>Cancelar</button>
-              <button type="submit" className="btn-primary"><ArrowRightLeft size={14} /> Transferir</button>
+              <button type="button" className="btn-secondary" onClick={() => setShowConfig(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary">Guardar</button>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* Modal copiar de año */}
+      {/* Modal copiar año */}
       {showCopy && (
         <Modal title="Copiar presupuesto de otro año" subtitle={`Destino: ${anio}`} onClose={() => setShowCopy(false)} width={440}>
           <form onSubmit={ejecutarCopia}>
@@ -772,12 +934,7 @@ export default function Presupuesto() {
             <div style={{ marginBottom: 14 }}>
               <Label>Factor de ajuste</Label>
               <input className="input" type="number" step="0.01" value={copyData.factor} onChange={e => setCopyData({ ...copyData, factor: e.target.value })} />
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: '#6b7280' }}>
-                1.0 = copia exacta, 1.05 = +5%, 0.90 = -10%. Se aplica a todos los montos mensuales.
-              </p>
-            </div>
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, padding: 10, marginBottom: 16, fontSize: 12, color: '#1e40af' }}>
-              Las líneas que ya existan en {anio} para la misma cuenta/campo no se duplican.
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: '#6b7280' }}>1.0 = copia exacta, 1.05 = +5%, 0.90 = -10%</p>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn-secondary" onClick={() => setShowCopy(false)}>Cancelar</button>
@@ -786,47 +943,11 @@ export default function Presupuesto() {
           </form>
         </Modal>
       )}
-
-      {/* Modal historial de transferencias */}
-      {showHistorial && (
-        <Modal title="Historial de transferencias" subtitle={`Ejercicio ${anio}`} onClose={() => setShowHistorial(false)} width={700}>
-          {historial.length === 0 ? (
-            <p style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Sin transferencias registradas para {anio}</p>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: '#f3f4f6' }}>
-                    <th style={thL}>Fecha</th>
-                    <th style={thL}>Origen</th>
-                    <th style={thL}>Destino</th>
-                    <th style={thR}>Mes</th>
-                    <th style={thR}>Monto</th>
-                    <th style={thL}>Motivo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historial.map((t: any) => (
-                    <tr key={t.id} style={{ borderTop: '1px solid #f3f4f6' }}>
-                      <td style={tdL}>{t.fecha}</td>
-                      <td style={{ ...tdL, fontSize: 11 }}>{t.origen}</td>
-                      <td style={{ ...tdL, fontSize: 11 }}>{t.destino}</td>
-                      <td style={tdR}>{t.mes}</td>
-                      <td style={{ ...tdR, fontWeight: 600 }}>{fmt(t.monto)}</td>
-                      <td style={{ ...tdL, color: '#6b7280' }}>{t.motivo || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Modal>
-      )}
     </div>
   )
 }
 
-/* ────────────────────────────── sub-componentes ────────────────────────────── */
+/* ── Sub-componentes ── */
 function RibBtn({ active, onClick, Icon, label }: any) {
   return (
     <button onClick={onClick} style={{ padding: '6px 14px', fontSize: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, background: active ? '#166534' : '#fff', color: active ? '#fff' : '#374151' }}>
@@ -837,39 +958,38 @@ function RibBtn({ active, onClick, Icon, label }: any) {
 function Kpi({ label, value, color, icon: Icon }: any) {
   return (
     <div className="card" style={{ padding: '12px 16px', margin: 0 }}>
-      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-        {Icon && <Icon size={11} />}{label}
-      </div>
+      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>{Icon && <Icon size={11} />}{label}</div>
       <div style={{ fontSize: 19, fontWeight: 700, color }}>{value}</div>
     </div>
   )
 }
 function DimTags({ p }: any) {
-  const tags = [p.campo_nombre, p.unidad_negocio_nombre, p.departamento_nombre, p.almacen_nombre].filter(Boolean)
+  const tags = [p.campo_nombre, p.unidad_negocio_nombre, p.departamento_nombre].filter(Boolean)
   if (!tags.length) return <span style={{ color: '#d1d5db' }}>—</span>
-  return <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-    {tags.map((t: string, i: number) => <span key={i} style={{ fontSize: 9, background: '#f3f4f6', color: '#4b5563', padding: '1px 5px', borderRadius: 3 }}>{t}</span>)}
-  </div>
+  return <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>{tags.map((t: string, i: number) => <span key={i} style={{ fontSize: 9, background: '#f3f4f6', color: '#4b5563', padding: '1px 5px', borderRadius: 3 }}>{t}</span>)}</div>
 }
-
-function DistPreview({ total, clave }: { total: number; clave: string }) {
-  if (!total) return null
-  const vals = distribuir(total, clave)
-  const max = Math.max(...vals)
+function DistPreviewMulti({ lineas }: { lineas: any[] }) {
+  const totals = Array(12).fill(0)
+  for (const ln of lineas) {
+    const vals = distribuir(parseFloat(ln.total) || 0, ln.dist || 'mensual')
+    vals.forEach((v, i) => { totals[i] += v })
+  }
+  const max = Math.max(...totals)
+  if (!max) return null
   return (
-    <div style={{ marginTop: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: 10 }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase' }}>Vista previa</div>
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase' }}>Vista previa de distribución</div>
       <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 50 }}>
-        {vals.map((v, i) => (
+        {totals.map((v, i) => (
           <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <div style={{ width: '100%', background: '#166534', borderRadius: 2, height: max ? (v / max * 36) : 0, minHeight: v > 0 ? 2 : 0, transition: 'height .2s' }} />
             <span style={{ fontSize: 8, color: '#9ca3af' }}>{MESES[i]}</span>
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10, color: '#6b7280' }}>
-        <span>Min: {fmt(Math.min(...vals))}</span>
-        <span>Max: {fmt(Math.max(...vals))}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 10, color: '#6b7280' }}>
+        <span>Min: {fmt(Math.min(...totals))}</span>
+        <span>Max: {fmt(Math.max(...totals))}</span>
       </div>
     </div>
   )
