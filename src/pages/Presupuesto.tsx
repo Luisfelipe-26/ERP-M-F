@@ -108,6 +108,7 @@ export default function Presupuesto() {
   const [unFiltro, setUnFiltro] = useState('')
   const [depFiltro, setDepFiltro] = useState('')
   const [tipoFiltro, setTipoFiltro] = useState('')
+  const [showTipoDropdown, setShowTipoDropdown] = useState(false)
 
   const [showNuevoRegistro, setShowNuevoRegistro] = useState(false)
   const [showDetalleRegistro, setShowDetalleRegistro] = useState<any>(null)
@@ -277,7 +278,22 @@ export default function Presupuesto() {
   const pctGlobal = totalPres ? Math.round((totalReal/totalPres)*100) : 0
   const mesActual = new Date().getMonth()+1
   const forecast = tab==='control' && totalReal>0 && mesActual>1 ? Math.round((totalReal/mesActual)*12) : null
-  const regStats = { total:registros.length, borradores:registros.filter(r=>r.estado==='borrador').length, aprobados:registros.filter(r=>r.estado==='aprobado').length, monto:registros.reduce((s:number,r:any)=>s+(r.total||0),0) }
+  const filteredRegistros = useMemo(() => registros.filter(r => {
+    if (busqueda) { const q = busqueda.toLowerCase(); if (!(r.numero||'').toLowerCase().includes(q) && !(r.descripcion||'').toLowerCase().includes(q)) return false }
+    if (campoFiltro || unFiltro || depFiltro) {
+      const lineas = r.lineas || []
+      const match = lineas.some((ln: any) => {
+        if (campoFiltro && ln.campo_id !== campoFiltro) return false
+        if (unFiltro && String(ln.unidad_negocio_id) !== unFiltro) return false
+        if (depFiltro && String(ln.departamento_id) !== depFiltro) return false
+        return true
+      })
+      if (!match) return false
+    }
+    return true
+  }), [registros, busqueda, campoFiltro, unFiltro, depFiltro])
+
+  const regStats = { total:filteredRegistros.length, borradores:filteredRegistros.filter(r=>r.estado==='borrador').length, aprobados:filteredRegistros.filter(r=>r.estado==='aprobado').length, monto:filteredRegistros.reduce((s:number,r:any)=>s+(r.total||0),0) }
 
   const estadoPct = (pct: number) => pct > (config.umbral_bloqueo||100)
     ? { label:'Excedido', color:'#dc2626', bg:'#fef2f2', Icon:AlertOctagon }
@@ -352,16 +368,39 @@ export default function Presupuesto() {
                 {Object.entries(TIPO_LABELS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             )}
-            {tab !== 'registros' && <>
-              <select className="select" style={{ width: 110, height: 32 }} value={campoFiltro} onChange={e => setCampoFiltro(e.target.value)}><option value="">Todo campo</option>{campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select>
-              <select className="select" style={{ width: 110, height: 32 }} value={unFiltro} onChange={e => setUnFiltro(e.target.value)}><option value="">Toda UN</option>{dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
-              <select className="select" style={{ width: 110, height: 32 }} value={depFiltro} onChange={e => setDepFiltro(e.target.value)}><option value="">Todo depto</option>{dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}</select>
-            </>}
+            <select className="select" style={{ width: 110, height: 32 }} value={campoFiltro} onChange={e => setCampoFiltro(e.target.value)}><option value="">Todo campo</option>{campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select>
+            <select className="select" style={{ width: 110, height: 32 }} value={unFiltro} onChange={e => setUnFiltro(e.target.value)}><option value="">Toda UN</option>{dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
+            <select className="select" style={{ width: 110, height: 32 }} value={depFiltro} onChange={e => setDepFiltro(e.target.value)}><option value="">Todo depto</option>{dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}</select>
           </PaneGroup>
           <PaneGroup title="Acciones">
-            {tab === 'registros' && Object.entries(TIPO_LABELS).map(([k,v]) => (
-              <button key={k} className="btn-primary" style={{ height: 32, background: v.color, fontSize: 11 }} onClick={() => initNuevoRegistro(k)}><Plus size={13} /> {v.label}</button>
-            ))}
+            {tab === 'registros' && (
+              <div style={{ position: 'relative' }}>
+                <button className="btn-primary" style={{ height: 32, background: '#166534', fontSize: 12 }} onClick={() => setShowTipoDropdown(!showTipoDropdown)}>
+                  <Plus size={13} /> Nuevo registro <ChevronDown size={12} />
+                </button>
+                {showTipoDropdown && <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowTipoDropdown(false)} />
+                  <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', zIndex: 100, minWidth: 200, overflow: 'hidden' }}>
+                    {Object.entries(TIPO_LABELS).map(([k, v]) => (
+                      <button key={k} onClick={() => { initNuevoRegistro(k); setShowTipoDropdown(false) }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#334155', textAlign: 'left', transition: 'background .1s' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                        <span style={{ fontSize: 16 }}>{v.icon}</span>
+                        <div>
+                          <div style={{ fontWeight: 600, color: v.color }}>{v.label}</div>
+                          <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                            {k === 'original' && 'Presupuesto base del ejercicio'}
+                            {k === 'adicion' && 'Incremento de fondos'}
+                            {k === 'transferencia' && 'Reasignar entre cuentas'}
+                            {k === 'revision' && 'Ajustar montos vigentes'}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>}
+              </div>
+            )}
             {tab === 'saldos' && <>
               <button className="btn-primary" style={{ height: 32, opacity: dirty?1:.4, pointerEvents: dirty?'auto':'none', background: '#0369a1' }} onClick={guardarCambios} disabled={saving}><Save size={14} /> {saving?'…':`Guardar${dirtyCount>0?` (${dirtyCount})`:''}`}</button>
               {dirty && <button className="btn-secondary" style={{ height: 32 }} onClick={() => { setEdits({}); toast.success('Descartados') }}><Undo2 size={14} /></button>}
@@ -409,11 +448,11 @@ export default function Presupuesto() {
                 <th style={thL}>Estado</th><th style={thL}>Usuario</th><th style={{...thR,width:50}}></th>
               </tr></thead>
               <tbody>
-                {registros.length === 0 ? (
+                {filteredRegistros.length === 0 ? (
                   <tr><td colSpan={9} style={{ textAlign: 'center', padding: 50, color: '#94a3b8' }}>
                     <FileText size={36} style={{ marginBottom: 8, opacity: .3 }} /><br/>Sin registros para {anio}
                   </td></tr>
-                ) : registros.filter(r => !busqueda || (r.numero||'').toLowerCase().includes(busqueda.toLowerCase()) || (r.descripcion||'').toLowerCase().includes(busqueda.toLowerCase())).map((r: any) => {
+                ) : filteredRegistros.map((r: any) => {
                   const tp = TIPO_LABELS[r.tipo]||TIPO_LABELS.original, est = ESTADO_BADGE[r.estado]||ESTADO_BADGE.borrador
                   return (
                     <tr key={r.id} style={{ cursor: 'pointer', transition: 'background .1s' }} onClick={() => setShowDetalleRegistro(r)}
