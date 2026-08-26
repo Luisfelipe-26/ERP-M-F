@@ -595,6 +595,13 @@ function TabAsientos() {
           <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => { setFiltroEstado(''); setFiltroOrigen(''); setFiltroDiario(''); setFiltroDesde(''); setFiltroHasta(''); setSearchTerm(''); setPage(0) }}><X size={12} /> Limpiar</button>
         )}
         <div style={{ flex: 1 }} />
+        {data.items.length > 0 && <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 10px' }} onClick={() => {
+          const q = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+          let csv = 'Número,Fecha,Descripción,Diario,Origen,Debe,Haber,Estado,Creado por\n'
+          data.items.forEach((a: any) => { csv += `${q(a.numero)},${q(a.fecha)},${q(a.descripcion)},${q(a.diario_codigo || '')},${q(a.origen || a.tipo)},${a.total_debe},${a.total_haber},${q(a.estado)},${q(a.creado_por || '')}\n` })
+          const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+          const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'asientos.csv'; a.click(); URL.revokeObjectURL(url)
+        }}><Download size={12} /> CSV</button>}
         <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
         <button className="btn-primary" onClick={() => setModalNew(true)}><Plus size={14} /> Nuevo Asiento</button>
       </div>
@@ -646,6 +653,14 @@ function TabAsientos() {
                 </td>
               </tr>
             ))}
+            {data.items.length > 0 && (
+              <tr style={{ fontWeight: 700, background: '#f9fafb', borderTop: '2px solid #e5e7eb' }}>
+                <td colSpan={5} style={{ textAlign: 'right', fontSize: 11 }}>Totales página:</td>
+                <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(data.items.reduce((s: number, a: any) => s + (a.total_debe || 0), 0))}</td>
+                <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(data.items.reduce((s: number, a: any) => s + (a.total_haber || 0), 0))}</td>
+                <td colSpan={2}></td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
