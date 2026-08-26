@@ -115,6 +115,13 @@ function TabDashboard() {
 
   return (
     <div>
+      {data.periodo_actual && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center', fontSize: 12, color: '#6b7280' }}>
+          <span>Período: <strong style={{ color: '#111827' }}>{data.periodo_actual}</strong></span>
+          <Badge color={data.periodo_estado === 'abierto' ? 'green' : 'red'}>{data.periodo_estado}</Badge>
+          {data.asientos_borrador > 0 && <span style={{ color: '#ca8a04' }}>{data.asientos_borrador} asiento{data.asientos_borrador !== 1 ? 's' : ''} en borrador</span>}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <KPI label="Saldo Bancos" value={data.saldo_bancos} color="#166534" />
         <KPI label="Cuentas por Cobrar" value={data.total_cxc} sub={data.cxc_vencidas > 0 ? `RD$ ${fmt(data.cxc_vencidas)} vencidas (${data.num_cxc} doc.)` : `${data.num_cxc} documentos`} color="#1e40af" warn={data.cxc_vencidas > 0} />
@@ -359,6 +366,13 @@ function TabCuentas() {
         <button className="btn-secondary" onClick={expandAll} title="Expandir todo"><ChevronDown size={14} /></button>
         <button className="btn-secondary" onClick={() => setExpandidas(new Set())} title="Colapsar todo"><ChevronRight size={14} /></button>
         <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
+        {cuentas.length > 0 && <button className="btn-secondary" onClick={() => {
+          const q = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+          let csv = 'Código,Nombre,Tipo,Naturaleza,Nivel,Acepta Movimientos,Partida\n'
+          cuentas.forEach((c: any) => { csv += `${q(c.codigo)},${q(c.nombre)},${q(c.tipo)},${q(c.naturaleza)},${c.nivel},${c.acepta_movimientos ? 'Sí' : 'No'},${q(c.partida_nombre || '')}\n` })
+          const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+          const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'plan_de_cuentas.csv'; a.click(); URL.revokeObjectURL(url)
+        }} title="Exportar plan de cuentas a CSV"><Download size={14} /> CSV</button>}
         {cuentas.length > 0 && <button className="btn-secondary" onClick={cargarCatalogo} title="Cargar catálogo estándar (idempotente)"><Download size={14} /> Catálogo</button>}
         <button className="btn-primary" onClick={openNew}><Plus size={14} /> Nueva Cuenta</button>
       </div>
