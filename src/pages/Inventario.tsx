@@ -153,7 +153,7 @@ const ModalGR = ({ producto, articulos, onClose, onDone }) => {
   const prodSeleccionado = producto || (articulos || []).find(p => p.id_prod === form.producto_id) || null
 
   useEffect(() => {
-    api.get('/inventario/ordenes-compra-lista').then(r => setOcs(r.data)).catch(() => {})
+    api.get('/inventario/ordenes-compra-lista').then(r => setOcs(r.data)).catch(() => toast.error('Error al cargar órdenes de compra'))
   }, [])
 
   async function submit(e) {
@@ -267,7 +267,7 @@ const ModalGI = ({ producto, onClose, onDone }) => {
   const [ots, setOts] = useState([])
 
   useEffect(() => {
-    api.get('/inventario/ordenes-trabajo-lista').then(r => setOts(r.data)).catch(() => {})
+    api.get('/inventario/ordenes-trabajo-lista').then(r => setOts(r.data)).catch(() => toast.error('Error al cargar órdenes de trabajo'))
   }, [])
 
   async function submit(e) {
@@ -497,7 +497,7 @@ const ModalArticulo = ({ item, onClose, onDone }) => {
 
   useEffect(() => {
     if (!editing) {
-      api.get('/inventario/articulos/next-id').then(r => setForm(p => ({ ...p, id_prod: r.data.next_id }))).catch(() => {})
+      api.get('/inventario/articulos/next-id').then(r => setForm(p => ({ ...p, id_prod: r.data.next_id }))).catch(() => toast.error('Error al obtener ID de artículo'))
     }
   }, [])
 

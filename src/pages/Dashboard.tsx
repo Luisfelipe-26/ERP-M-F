@@ -154,8 +154,8 @@ export default function Dashboard() {
       setCampoStatus(cs.data)
       setCostosCampo(cc.data.filter(x => x.costo_total > 0).sort((a, b) => b.costo_total - a.costo_total).slice(0, 12))
       setCostosAct(ca.data.filter(x => x.costo_total > 0).sort((a, b) => b.costo_total - a.costo_total).slice(0, 8))
-      api.get('/contabilidad/dashboard-financiero').then(r => setFinDash(r.data)).catch(() => {})
-      api.get('/dashboard/produccion').then(r => setProduccion(r.data)).catch(() => {})
+      api.get('/contabilidad/dashboard-financiero').then(r => setFinDash(r.data)).catch(() => toast.error('Error al cargar datos financieros'))
+      api.get('/dashboard/produccion').then(r => setProduccion(r.data)).catch(() => toast.error('Error al cargar producción'))
       // Fetch live weather from Open-Meteo (non-blocking)
       axios.get('https://api.open-meteo.com/v1/forecast', {
         params: {
@@ -175,7 +175,7 @@ export default function Dashboard() {
           wind_speed_kmh: c.wind_speed_10m,
           daily_rain_mm: r.data.daily?.precipitation_sum?.[0] ?? 0,
         })
-      }).catch(() => {})
+      }).catch(() => toast.error('Error al cargar clima'))
     } catch {
       setError('Error al cargar datos del dashboard.')
     } finally {

@@ -61,7 +61,7 @@ function ModalCuentaBancaria({ cuenta, onClose, onDone }) {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    api.get('/contabilidad/cuentas').then(r => setCuentasGL(r.data.filter(c => c.acepta_movimientos && c.tipo === 'activo'))).catch(() => {})
+    api.get('/contabilidad/cuentas').then(r => setCuentasGL(r.data.filter(c => c.acepta_movimientos && c.tipo === 'activo'))).catch(() => toast.error('Error al cargar cuentas'))
   }, [])
 
   const set = (k, v) => setForm({ ...form, [k]: v })
@@ -142,7 +142,7 @@ function ModalNuevaCxP({ onClose, onDone }) {
   })
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { api.get('/proveedores').then(r => setProveedores(r.data)).catch(() => {}) }, [])
+  useEffect(() => { api.get('/proveedores').then(r => setProveedores(r.data)).catch(() => toast.error('Error al cargar proveedores')) }, [])
 
   const set = (k, v) => setForm({ ...form, [k]: v })
   const subtotal = Number(form.subtotal) || 0
@@ -253,7 +253,7 @@ function ModalPago({ cxp, onClose, onDone }) {
   })
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { api.get('/cuentas-bancarias').then(r => setCuentasBanc(r.data)).catch(() => {}) }, [])
+  useEffect(() => { api.get('/cuentas-bancarias').then(r => setCuentasBanc(r.data)).catch(() => toast.error('Error al cargar datos')) }, [])
   const set = (k, v) => setForm({ ...form, [k]: v })
 
   async function submit(e) {
@@ -332,7 +332,7 @@ function ModalNuevaCxC({ onClose, onDone }) {
     Promise.all([
       api.get('/clientes'),
       api.get('/campos'),
-    ]).then(([c, ca]) => { setClientesLista(c.data); setCampos(ca.data) }).catch(() => {})
+    ]).then(([c, ca]) => { setClientesLista(c.data); setCampos(ca.data) }).catch(() => toast.error('Error al cargar datos'))
   }, [])
 
   const set = (k, v) => setForm({ ...form, [k]: v })
@@ -464,7 +464,7 @@ function ModalCobro({ cxc, onClose, onDone }) {
   })
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { api.get('/cuentas-bancarias').then(r => setCuentasBanc(r.data)).catch(() => {}) }, [])
+  useEffect(() => { api.get('/cuentas-bancarias').then(r => setCuentasBanc(r.data)).catch(() => toast.error('Error al cargar datos')) }, [])
   const set = (k, v) => setForm({ ...form, [k]: v })
 
   async function submit(e) {

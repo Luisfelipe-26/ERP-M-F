@@ -672,7 +672,7 @@ function ModalNewTrap({ campos, catalogo, onClose, onDone }) {
 function ModalTrapDetail({ trap, onClose }) {
   const [readings, setReadings] = useState([])
   useEffect(() => {
-    api.get(`/sanidad/trampas/${trap.id}/lecturas`).then(r => setReadings(r.data)).catch(() => {})
+    api.get(`/sanidad/trampas/${trap.id}/lecturas`).then(r => setReadings(r.data)).catch(() => toast.error('Error al cargar lecturas'))
   }, [trap.id])
 
   const ts = TRAP_STATUS_COLORS[trap.status] || { bg: '#f3f4f6', color: '#374151' }

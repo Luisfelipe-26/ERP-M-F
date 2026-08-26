@@ -200,7 +200,7 @@ function TabCuentas() {
     try {
       const { data } = await api.get('/contabilidad/cuentas?activo=true')
       setCuentas(data)
-      api.get('/contabilidad/partidas').then(r => setPartidas(r.data)).catch(() => {})
+      api.get('/contabilidad/partidas').then(r => setPartidas(r.data)).catch(() => toast.error('Error al cargar partidas'))
     }
     catch { toast.error('Error al cargar cuentas') }
     finally { setLoading(false) }
@@ -510,8 +510,8 @@ function TabAsientos() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => {})
-    api.get('/contabilidad/diarios').then(r => setDiarios(r.data)).catch(() => {})
+    api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => toast.error('Error al cargar datos'))
+    api.get('/contabilidad/diarios').then(r => setDiarios(r.data)).catch(() => toast.error('Error al cargar datos'))
   }, [])
 
   async function contabilizar(numero) {
@@ -642,7 +642,7 @@ function ModalNuevoAsiento({ cuentas, diarios: diariosParent = [], onClose, onDo
     Promise.all([
       api.get('/campos'), api.get('/contabilidad/unidades-negocio'),
       api.get('/contabilidad/departamentos'), api.get('/contabilidad/almacenes'),
-    ]).then(([c, u, d, a]) => setDims({ campos: c.data, unidades: u.data, deptos: d.data, almacenes: a.data })).catch(() => {})
+    ]).then(([c, u, d, a]) => setDims({ campos: c.data, unidades: u.data, deptos: d.data, almacenes: a.data })).catch(() => toast.error('Error al cargar datos'))
   }, [])
 
   function addLinea() { setLineas([...lineas, { cuenta_id: '', debe: '', haber: '', descripcion_linea: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', almacen_id: '' }]) }
@@ -933,11 +933,11 @@ function TabReportes() {
   const [showDimFilters, setShowDimFilters] = useState(false)
 
   useEffect(() => {
-    api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => {})
-    api.get('/campos').then(r => setCampos(r.data)).catch(() => {})
-    api.get('/contabilidad/dimensiones/unidades-negocio').then(r => setUnidades(r.data)).catch(() => {})
-    api.get('/contabilidad/dimensiones/departamentos').then(r => setDeptos(r.data)).catch(() => {})
-    api.get('/contabilidad/dimensiones/almacenes').then(r => setAlmacenes(r.data)).catch(() => {})
+    api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => toast.error('Error al cargar datos'))
+    api.get('/campos').then(r => setCampos(r.data)).catch(() => toast.error('Error al cargar datos'))
+    api.get('/contabilidad/dimensiones/unidades-negocio').then(r => setUnidades(r.data)).catch(() => toast.error('Error al cargar datos'))
+    api.get('/contabilidad/dimensiones/departamentos').then(r => setDeptos(r.data)).catch(() => toast.error('Error al cargar datos'))
+    api.get('/contabilidad/dimensiones/almacenes').then(r => setAlmacenes(r.data)).catch(() => toast.error('Error al cargar datos'))
   }, [])
 
   function dimParams() {
@@ -2237,7 +2237,7 @@ function TabDiarios() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => {})
+    api.get('/contabilidad/cuentas').then(r => setCuentas(r.data.filter(c => c.acepta_movimientos))).catch(() => toast.error('Error al cargar datos'))
   }, [])
 
   async function guardar(e) {

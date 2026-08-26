@@ -135,7 +135,7 @@ export default function Riego() {
     api.get('/campos').then(r => {
       const c = Array.isArray(r.data) ? r.data : r.data.campos || []
       setCampos(c)
-    }).catch(() => {})
+    }).catch(() => toast.error('Error al cargar datos de riego'))
   }, [])
 
   // ── Tab data loaders ──

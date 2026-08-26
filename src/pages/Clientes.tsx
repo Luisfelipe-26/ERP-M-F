@@ -56,7 +56,7 @@ function ModalCliente({ cliente, onClose, onDone }) {
   const [cuentasGL, setCuentasGL] = useState([])
 
   useEffect(() => {
-    api.get('/contabilidad/cuentas').then(r => setCuentasGL(r.data.filter(c => c.acepta_movimientos && c.tipo === 'activo'))).catch(() => {})
+    api.get('/contabilidad/cuentas').then(r => setCuentasGL(r.data.filter(c => c.acepta_movimientos && c.tipo === 'activo'))).catch(() => toast.error('Error al cargar cuentas contables'))
   }, [])
 
   const set = (k, v) => setForm({ ...form, [k]: v })
