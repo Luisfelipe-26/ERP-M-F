@@ -596,6 +596,127 @@ export default function Presupuesto() {
               <AlertTriangle size={16} /> Aún no hay cifras reales contabilizadas para {anio}.
             </div>
           )}
+          {vsReal.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 16 }}>
+              {/* Barras: Presupuesto vs Real por mes */}
+              <div style={{ ...S.card, padding: '20px 24px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 16 }}>Presupuesto vs Real por mes</div>
+                {(() => {
+                  const mData = MESES.map((m, mi) => ({
+                    label: m,
+                    pres: vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.presupuesto || 0), 0),
+                    real: vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.real || 0), 0),
+                  }))
+                  const maxVal = Math.max(...mData.map(d => Math.max(d.pres, d.real)), 1)
+                  const W = 100, barH = 140
+                  return (
+                    <svg viewBox={`0 0 ${W} ${barH + 18}`} style={{ width: '100%', height: 180, display: 'block' }}>
+                      {mData.map((d, i) => {
+                        const gw = W / 12, bw = gw * 0.35, x = i * gw + gw * 0.12
+                        const hp = (d.pres / maxVal) * barH, hr = (d.real / maxVal) * barH
+                        const pct = d.pres ? (d.real / d.pres) * 100 : 0
+                        const barColor = pct >= (config.umbral_bloqueo || 100) ? '#dc2626' : pct >= (config.umbral_alerta || 85) ? '#d97706' : '#22c55e'
+                        return (
+                          <g key={i}>
+                            <rect x={x} y={barH - hp} width={bw} height={hp} rx={1.5} fill="#e2e8f0" />
+                            <rect x={x + bw + 0.4} y={barH - hr} width={bw} height={hr} rx={1.5} fill={barColor} />
+                            <text x={x + bw} y={barH + 10} textAnchor="middle" fontSize={3.5} fill="#94a3b8" fontWeight={500}>{d.label}</text>
+                          </g>
+                        )
+                      })}
+                    </svg>
+                  )
+                })()}
+                <div style={{ display: 'flex', gap: 16, justifyContent: 'center', fontSize: 11, color: '#64748b' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#e2e8f0', display: 'inline-block' }} /> Presupuesto</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#22c55e', display: 'inline-block' }} /> Real</span>
+                </div>
+              </div>
+              {/* Dona: distribución por clase */}
+              <div style={{ ...S.card, padding: '20px 24px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 16 }}>Distribución por clase</div>
+                {(() => {
+                  const clases: Record<string, { label: string; pres: number; real: number; color: string }> = {}
+                  const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+                  vsReal.forEach((r: any) => {
+                    const c = (r.cuenta_codigo || '')[0] || '?'
+                    if (!clases[c]) clases[c] = { label: CLASE_LABELS[c] || `Clase ${c}`, pres: 0, real: 0, color: COLORS[Object.keys(clases).length % COLORS.length] }
+                    clases[c].pres += r.total_presupuesto
+                    clases[c].real += r.total_real
+                  })
+                  const entries = Object.values(clases).filter(c => c.pres > 0).sort((a, b) => b.pres - a.pres)
+                  const total = entries.reduce((s, c) => s + c.pres, 0) || 1
+                  const cx = 50, cy = 45, r1 = 32, r2 = 20
+                  let angle = -90
+                  const arcs = entries.map(c => {
+                    const pct = c.pres / total
+                    const a1 = (angle * Math.PI) / 180
+                    angle += pct * 360
+                    const a2 = (angle * Math.PI) / 180
+                    const large = pct > 0.5 ? 1 : 0
+                    const x1o = cx + r1 * Math.cos(a1), y1o = cy + r1 * Math.sin(a1)
+                    const x2o = cx + r1 * Math.cos(a2), y2o = cy + r1 * Math.sin(a2)
+                    const x1i = cx + r2 * Math.cos(a2), y1i = cy + r2 * Math.sin(a2)
+                    const x2i = cx + r2 * Math.cos(a1), y2i = cy + r2 * Math.sin(a1)
+                    return { ...c, pct, d: `M${x1o},${y1o} A${r1},${r1} 0 ${large} 1 ${x2o},${y2o} L${x1i},${y1i} A${r2},${r2} 0 ${large} 0 ${x2i},${y2i} Z` }
+                  })
+                  return (<>
+                    <svg viewBox="0 0 100 90" style={{ width: '100%', maxWidth: 200, height: 160, display: 'block', margin: '0 auto' }}>
+                      {arcs.map((a, i) => <path key={i} d={a.d} fill={a.color} stroke="#fff" strokeWidth={0.5} />)}
+                      <text x={cx} y={cy - 2} textAnchor="middle" fontSize={7} fontWeight={700} fill="#0f172a">{pctGlobal}%</text>
+                      <text x={cx} y={cy + 6} textAnchor="middle" fontSize={3.5} fill="#94a3b8">consumido</text>
+                    </svg>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                      {entries.map((c, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 2, background: c.color, flexShrink: 0 }} />
+                          <span style={{ flex: 1, color: '#475569' }}>{c.label}</span>
+                          <span style={{ fontWeight: 600, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{(c.pct * 100).toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>)
+                })()}
+              </div>
+            </div>
+          )}
+          {vsReal.length > 0 && (
+            <div style={{ ...S.card, padding: '20px 24px', marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 16 }}>Tendencia acumulada</div>
+              {(() => {
+                const W = 100, H = 50
+                let cumPres = 0, cumReal = 0
+                const points = MESES.map((_, mi) => {
+                  cumPres += vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.presupuesto || 0), 0)
+                  cumReal += vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.real || 0), 0)
+                  return { pres: cumPres, real: cumReal }
+                })
+                const maxV = Math.max(...points.map(p => Math.max(p.pres, p.real)), 1)
+                const px = (i: number) => (i / 11) * (W - 6) + 3
+                const py = (v: number) => H - 4 - ((v / maxV) * (H - 8))
+                const presLine = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(i)},${py(p.pres)}`).join(' ')
+                const realLine = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(i)},${py(p.real)}`).join(' ')
+                const realArea = `${realLine} L${px(11)},${H - 4} L${px(0)},${H - 4} Z`
+                return (
+                  <svg viewBox={`0 0 ${W} ${H + 10}`} style={{ width: '100%', height: 120, display: 'block' }}>
+                    <path d={realArea} fill="#22c55e" opacity={0.12} />
+                    <path d={presLine} fill="none" stroke="#94a3b8" strokeWidth={0.7} strokeDasharray="2 1.5" />
+                    <path d={realLine} fill="none" stroke="#22c55e" strokeWidth={1} />
+                    {points.map((p, i) => (
+                      <g key={i}>
+                        <circle cx={px(i)} cy={py(p.real)} r={1.2} fill="#22c55e" />
+                        <text x={px(i)} y={H + 6} textAnchor="middle" fontSize={3} fill="#94a3b8">{MESES[i]}</text>
+                      </g>
+                    ))}
+                  </svg>
+                )
+              })()}
+              <div style={{ display: 'flex', gap: 16, justifyContent: 'center', fontSize: 11, color: '#64748b' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 14, height: 2, background: '#94a3b8', display: 'inline-block', borderTop: '1px dashed #94a3b8' }} /> Presupuesto acum.</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 14, height: 2, background: '#22c55e', display: 'inline-block' }} /> Real acum.</span>
+              </div>
+            </div>
+          )}
           <div style={{ ...S.card, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
