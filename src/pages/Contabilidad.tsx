@@ -29,7 +29,7 @@ const Label = ({ children }) => (
   <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>{children}</label>
 )
 
-const Badge = ({ color, children }) => {
+const Badge = ({ color, children, style = {} }: { color: any; children: any; style?: React.CSSProperties }) => {
   const colors = {
     green: { bg: '#dcfce7', fg: '#166534' },
     red: { bg: '#fee2e2', fg: '#991b1b' },
@@ -38,7 +38,7 @@ const Badge = ({ color, children }) => {
     gray: { bg: '#f3f4f6', fg: '#374151' },
   }
   const c = colors[color] || colors.gray
-  return <span style={{ background: c.bg, color: c.fg, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{children}</span>
+  return <span style={{ background: c.bg, color: c.fg, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, ...style }}>{children}</span>
 }
 
 const fmt = (n) => Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -917,28 +917,38 @@ function TabPeriodos() {
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <table>
-          <thead><tr><th>Período</th><th>Inicio</th><th>Fin</th><th>Estado</th><th>Cerrado por</th><th></th></tr></thead>
+          <thead><tr><th>Período</th><th>Inicio</th><th>Fin</th><th style={{ textAlign: 'center' }}>Asientos</th><th>Estado</th><th>Cerrado por</th><th></th></tr></thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
             ) : periodos.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No hay períodos para {anio}. Genérelos.</td></tr>
-            ) : periodos.map(p => (
-              <tr key={p.id}>
-                <td style={{ fontWeight: 600 }}>{p.nombre}</td>
-                <td style={{ fontSize: 12 }}>{p.fecha_inicio}</td>
-                <td style={{ fontSize: 12 }}>{p.fecha_fin}</td>
-                <td><Badge color={p.estado === 'abierto' ? 'green' : 'red'}>{p.estado}</Badge></td>
-                <td style={{ fontSize: 12, color: '#6b7280' }}>{p.cerrado_por || '—'}</td>
-                <td>
-                  {p.estado === 'abierto' ? (
-                    <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => cerrar(p.id)}><Lock size={12} /> Cerrar</button>
-                  ) : (
-                    <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => reabrir(p.id)}><Unlock size={12} /> Reabrir</button>
-                  )}
-                </td>
-              </tr>
-            ))}
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No hay períodos para {anio}. Genérelos.</td></tr>
+            ) : periodos.map(p => {
+              const hoy = new Date()
+              const esCurrent = p.anio === hoy.getFullYear() && p.mes === (hoy.getMonth() + 1)
+              return (
+                <tr key={p.id} style={esCurrent ? { background: '#f0fdf4' } : undefined}>
+                  <td style={{ fontWeight: 600 }}>
+                    {p.nombre}
+                    {esCurrent && <span style={{ marginLeft: 6, fontSize: 9, color: '#166534', background: '#dcfce7', padding: '1px 6px', borderRadius: 8, fontWeight: 700 }}>ACTUAL</span>}
+                  </td>
+                  <td style={{ fontSize: 12 }}>{p.fecha_inicio}</td>
+                  <td style={{ fontSize: 12 }}>{p.fecha_fin}</td>
+                  <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 12 }}>
+                    {p.asientos_count > 0 ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>{p.asientos_count}</span> : <span style={{ color: '#d1d5db' }}>0</span>}
+                  </td>
+                  <td><Badge color={p.estado === 'abierto' ? 'green' : 'red'}>{p.estado}</Badge></td>
+                  <td style={{ fontSize: 12, color: '#6b7280' }}>{p.cerrado_por || '—'}</td>
+                  <td>
+                    {p.estado === 'abierto' ? (
+                      <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => cerrar(p.id)}><Lock size={12} /> Cerrar</button>
+                    ) : (
+                      <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => reabrir(p.id)}><Unlock size={12} /> Reabrir</button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -1702,13 +1712,34 @@ function TabRecurrentes() {
         <button className="btn-primary" onClick={() => { setEditing({ ...blank }); setShowModal(true) }}><Plus size={14} /> Nuevo</button>
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
-        {items.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af' }}>Sin asientos recurrentes</div> : items.map((ar: any) => (
-          <div key={ar.id} className="card" style={{ margin: 0, padding: '12px 16px' }}>
+        {items.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af' }}>Sin asientos recurrentes</div> : items.map((ar: any) => {
+          const totalDebe = (ar.lineas || []).reduce((s: number, l: any) => s + (l.debe || 0), 0)
+          const totalHaber = (ar.lineas || []).reduce((s: number, l: any) => s + (l.haber || 0), 0)
+          const balanced = Math.abs(totalDebe - totalHaber) < 0.01
+          function nextExec() {
+            const hoy = new Date()
+            let d = ar.dia_ejecucion || 1
+            if (d > 28) d = 28
+            if (ar.frecuencia === 'mensual') {
+              const next = new Date(hoy.getFullYear(), hoy.getMonth(), d)
+              if (next <= hoy) next.setMonth(next.getMonth() + 1)
+              return next.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' })
+            }
+            return `Día ${d}`
+          }
+          return (
+          <div key={ar.id} className="card" style={{ margin: 0, padding: '12px 16px', borderLeft: balanced ? '3px solid #22c55e' : '3px solid #ef4444' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{ar.nombre}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>{ar.nombre}</span>
+                  {!balanced && <Badge color="red">Descuadrado</Badge>}
+                </div>
                 <div style={{ fontSize: 11, color: '#6b7280' }}>{ar.descripcion_asiento || '—'} · <Badge color="blue">{ar.frecuencia}</Badge> · Día {ar.dia_ejecucion} · RD$ {fmt(ar.total)}</div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Ejecutado {ar.veces_ejecutado}x {ar.ultima_ejecucion ? `· Última: ${ar.ultima_ejecucion}` : ''}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                  Ejecutado {ar.veces_ejecutado}x {ar.ultima_ejecucion ? `· Última: ${ar.ultima_ejecucion}` : ''}
+                  <span style={{ marginLeft: 8, color: '#2563eb' }}>Próxima: {nextExec()}</span>
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
                 <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => ejecutar(ar.id, ar.nombre)}>Ejecutar</button>
@@ -1727,7 +1758,7 @@ function TabRecurrentes() {
               ))}
             </div>
           </div>
-        ))}
+        )})}
       </div>
       {showModal && editing && (
         <Modal title={editing.id ? 'Editar Recurrente' : 'Nuevo Asiento Recurrente'} onClose={() => setShowModal(false)} width={700}>
@@ -1928,29 +1959,49 @@ function TabConciliacion() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, alignItems: 'center' }}>
         <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Conciliación de saldos bancarios con libros contables</p>
-        <button className="btn-primary" onClick={openNew}><Plus size={14} /> Nueva Conciliación</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {items.length > 0 && <button className="btn-secondary" style={{ fontSize: 11, padding: '5px 10px' }} onClick={() => {
+            const q = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+            let csv = 'Banco,Período,Saldo Extracto,Saldo Libro,Diferencia,Estado,Partidas\n'
+            items.forEach((c: any) => { csv += `${q(c.banco)},${q(c.periodo)},${c.saldo_extracto},${c.saldo_libro},${c.diferencia},${q(c.estado)},${c.partidas}\n` })
+            const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+            const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'conciliaciones.csv'; a.click(); URL.revokeObjectURL(url)
+          }}><Download size={12} /> CSV</button>}
+          <button className="btn-primary" onClick={openNew}><Plus size={14} /> Nueva Conciliación</button>
+        </div>
       </div>
-      <table style={{ fontSize: 12 }}>
-        <thead><tr><th>Banco</th><th>Período</th><th style={{ textAlign: 'right' }}>Saldo Extracto</th><th style={{ textAlign: 'right' }}>Saldo Libro</th><th style={{ textAlign: 'right' }}>Diferencia</th><th>Estado</th><th>Partidas</th><th></th></tr></thead>
-        <tbody>
-          {items.length === 0 ? (
-            <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9ca3af', padding: 30 }}>Sin conciliaciones</td></tr>
-          ) : items.map((c: any) => (
-            <tr key={c.id}>
-              <td>{c.banco}</td>
-              <td>{c.periodo}</td>
-              <td style={{ textAlign: 'right' }}>RD$ {fmt(c.saldo_extracto)}</td>
-              <td style={{ textAlign: 'right' }}>RD$ {fmt(c.saldo_libro)}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700, color: Math.abs(c.diferencia) > 0.01 ? '#dc2626' : '#166534' }}>RD$ {fmt(c.diferencia)}</td>
-              <td><Badge color={c.estado === 'conciliada' ? 'green' : 'yellow'}>{c.estado}</Badge></td>
-              <td style={{ textAlign: 'center' }}>{c.partidas}</td>
-              <td><button className="btn-icon" onClick={() => viewDetail(c.id)}><Eye size={14} /></button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ fontSize: 12 }}>
+          <thead><tr><th>Banco</th><th>Período</th><th style={{ textAlign: 'right' }}>Saldo Extracto</th><th style={{ textAlign: 'right' }}>Saldo Libro</th><th style={{ textAlign: 'right' }}>Diferencia</th><th>Estado</th><th style={{ textAlign: 'center' }}>Partidas</th><th></th></tr></thead>
+          <tbody>
+            {items.length === 0 ? (
+              <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9ca3af', padding: 30 }}>Sin conciliaciones</td></tr>
+            ) : items.map((c: any) => (
+              <tr key={c.id}>
+                <td>{c.banco}</td>
+                <td>{c.periodo}</td>
+                <td style={{ textAlign: 'right' }}>RD$ {fmt(c.saldo_extracto)}</td>
+                <td style={{ textAlign: 'right' }}>RD$ {fmt(c.saldo_libro)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: Math.abs(c.diferencia) > 0.01 ? '#dc2626' : '#166534' }}>RD$ {fmt(c.diferencia)}</td>
+                <td><Badge color={c.estado === 'conciliada' ? 'green' : 'yellow'}>{c.estado}</Badge></td>
+                <td style={{ textAlign: 'center' }}>{c.partidas}</td>
+                <td>
+                  <div style={{ display: 'flex', gap: 2 }}>
+                    <button className="btn-icon" onClick={() => viewDetail(c.id)}><Eye size={14} /></button>
+                    {c.estado !== 'conciliada' && <button className="btn-icon" style={{ color: '#dc2626' }} onClick={async () => {
+                      if (!confirm('¿Eliminar esta conciliación?')) return
+                      try { await api.delete(`/contabilidad/conciliaciones/${c.id}`); toast.success('Eliminada'); load() }
+                      catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+                    }}><Trash2 size={13} /></button>}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {showModal && editing && (
         <Modal title={editing.id ? 'Editar Conciliación' : 'Nueva Conciliación'} onClose={() => setShowModal(false)} width={700}>
@@ -2399,15 +2450,16 @@ function TabDiarios() {
               <th>Nombre</th>
               <th>Tipo</th>
               <th>Cuenta Default</th>
+              <th style={{ textAlign: 'center' }}>Asientos</th>
               <th>Estado</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
             ) : diarios.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin diarios</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin diarios</td></tr>
             ) : diarios.map(d => (
               <tr key={d.id}>
                 <td style={{ fontWeight: 700, fontFamily: 'monospace' }}>{d.codigo}</td>
@@ -2415,6 +2467,9 @@ function TabDiarios() {
                 <td style={{ fontSize: 12, color: '#6b7280' }}>{d.tipo || '—'}</td>
                 <td style={{ fontSize: 12 }}>
                   {d.cuenta_default_id ? cuentas.find(c => c.id === d.cuenta_default_id)?.codigo || d.cuenta_default_id : '—'}
+                </td>
+                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 12 }}>
+                  {d.asientos_count > 0 ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>{d.asientos_count}</span> : <span style={{ color: '#d1d5db' }}>0</span>}
                 </td>
                 <td><Badge color={d.activo ? 'green' : 'red'}>{d.activo ? 'Activo' : 'Inactivo'}</Badge></td>
                 <td>
