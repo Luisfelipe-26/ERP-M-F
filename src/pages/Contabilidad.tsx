@@ -484,6 +484,7 @@ function TabAsientos() {
   const [filtroHasta, setFiltroHasta] = useState('')
   const [filtroOrigen, setFiltroOrigen] = useState('')
   const [filtroDiario, setFiltroDiario] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [page, setPage] = useState(0)
   const pageSize = 25
   const [modalNew, setModalNew] = useState(false)
@@ -500,13 +501,14 @@ function TabAsientos() {
       if (filtroDiario) params.set('diario_id', filtroDiario)
       if (filtroDesde) params.set('desde', filtroDesde)
       if (filtroHasta) params.set('hasta', filtroHasta)
+      if (searchTerm.trim()) params.set('search', searchTerm.trim())
       params.set('limit', String(pageSize))
       params.set('skip', String(page * pageSize))
       const { data: d } = await api.get(`/contabilidad/asientos?${params}`)
       setData(d)
     } catch { toast.error('Error al cargar asientos') }
     finally { setLoading(false) }
-  }, [filtroEstado, filtroOrigen, filtroDiario, filtroDesde, filtroHasta, page])
+  }, [filtroEstado, filtroOrigen, filtroDiario, filtroDesde, filtroHasta, searchTerm, page])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -529,6 +531,10 @@ function TabAsientos() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative' }}>
+          <Search size={14} style={{ position: 'absolute', left: 8, top: 9, color: '#9ca3af' }} />
+          <input className="input" placeholder="Buscar asiento..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(0) }} style={{ paddingLeft: 28, width: 180 }} />
+        </div>
         <select className="select" style={{ width: 150 }} value={filtroEstado} onChange={e => { setFiltroEstado(e.target.value); setPage(0) }}>
           <option value="">Todos los estados</option>
           <option value="borrador">Borrador</option>
@@ -550,8 +556,8 @@ function TabAsientos() {
         </select>
         <input className="input" type="date" style={{ width: 140 }} value={filtroDesde} onChange={e => { setFiltroDesde(e.target.value); setPage(0) }} title="Desde" />
         <input className="input" type="date" style={{ width: 140 }} value={filtroHasta} onChange={e => { setFiltroHasta(e.target.value); setPage(0) }} title="Hasta" />
-        {(filtroEstado || filtroOrigen || filtroDiario || filtroDesde || filtroHasta) && (
-          <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => { setFiltroEstado(''); setFiltroOrigen(''); setFiltroDiario(''); setFiltroDesde(''); setFiltroHasta(''); setPage(0) }}><X size={12} /> Limpiar</button>
+        {(filtroEstado || filtroOrigen || filtroDiario || filtroDesde || filtroHasta || searchTerm) && (
+          <button className="btn-secondary" style={{ fontSize: 11 }} onClick={() => { setFiltroEstado(''); setFiltroOrigen(''); setFiltroDiario(''); setFiltroDesde(''); setFiltroHasta(''); setSearchTerm(''); setPage(0) }}><X size={12} /> Limpiar</button>
         )}
         <div style={{ flex: 1 }} />
         <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
@@ -778,8 +784,9 @@ function ModalNuevoAsiento({ cuentas, diarios: diariosParent = [], onClose, onDo
 }
 
 function ModalVerAsiento({ asiento, onClose }) {
+  const hasDims = (asiento.lineas || []).some((l: any) => l.campo_nombre || l.unidad_negocio_nombre || l.departamento_nombre || l.almacen_nombre)
   return (
-    <Modal title={`Asiento ${asiento.numero}`} subtitle={`${asiento.fecha} — ${asiento.descripcion || ''}`} onClose={onClose} width={750}>
+    <Modal title={`Asiento ${asiento.numero}`} subtitle={`${asiento.fecha} — ${asiento.descripcion || ''}`} onClose={onClose} width={hasDims ? 900 : 750}>
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 14px' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Estado</div>
@@ -793,37 +800,52 @@ function ModalVerAsiento({ asiento, onClose }) {
           <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Origen</div>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{asiento.origen || '—'}</div>
         </div>
+        {asiento.diario_codigo && (
+          <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 14px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Diario</div>
+            <Badge color="blue">{asiento.diario_codigo}</Badge>
+          </div>
+        )}
         <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 14px' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Creado por</div>
           <div style={{ fontSize: 14, fontWeight: 600 }}>{asiento.creado_por || '—'}</div>
         </div>
       </div>
-      <table style={{ fontSize: 12, width: '100%' }}>
-        <thead>
-          <tr>
-            <th style={{ fontSize: 11 }}>Cuenta</th>
-            <th style={{ fontSize: 11 }}>Descripción</th>
-            <th style={{ fontSize: 11, textAlign: 'right' }}>Debe</th>
-            <th style={{ fontSize: 11, textAlign: 'right' }}>Haber</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(asiento.lineas || []).map((l, i) => (
-            <tr key={i}>
-              <td style={{ fontFamily: 'monospace' }}>{l.cuenta_codigo} — {l.cuenta_nombre}</td>
-              <td style={{ color: '#6b7280' }}>{l.descripcion_linea || ''}</td>
-              <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: l.debe > 0 ? 600 : 400 }}>{fmt(l.debe)}</td>
-              <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: l.haber > 0 ? 600 : 400 }}>{fmt(l.haber)}</td>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ fontSize: 12, width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ fontSize: 11 }}>Cuenta</th>
+              <th style={{ fontSize: 11 }}>Descripción</th>
+              {hasDims && <th style={{ fontSize: 11 }}>Dimensiones</th>}
+              <th style={{ fontSize: 11, textAlign: 'right' }}>Debe</th>
+              <th style={{ fontSize: 11, textAlign: 'right' }}>Haber</th>
             </tr>
-          ))}
-          <tr style={{ fontWeight: 700, borderTop: '2px solid #e5e7eb' }}>
-            <td colSpan={2} style={{ textAlign: 'right' }}>Totales:</td>
-            <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(asiento.total_debe)}</td>
-            <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(asiento.total_haber)}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          </thead>
+          <tbody>
+            {(asiento.lineas || []).map((l, i) => (
+              <tr key={i}>
+                <td style={{ fontFamily: 'monospace' }}>{l.cuenta_codigo} — {l.cuenta_nombre}</td>
+                <td style={{ color: '#6b7280' }}>{l.descripcion_linea || ''}</td>
+                {hasDims && (
+                  <td style={{ fontSize: 11, color: '#6b7280' }}>
+                    {[l.campo_nombre, l.unidad_negocio_nombre, l.departamento_nombre, l.almacen_nombre].filter(Boolean).join(' / ') || '—'}
+                  </td>
+                )}
+                <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: l.debe > 0 ? 600 : 400 }}>{fmt(l.debe)}</td>
+                <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: l.haber > 0 ? 600 : 400 }}>{fmt(l.haber)}</td>
+              </tr>
+            ))}
+            <tr style={{ fontWeight: 700, borderTop: '2px solid #e5e7eb' }}>
+              <td colSpan={hasDims ? 3 : 2} style={{ textAlign: 'right' }}>Totales:</td>
+              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(asiento.total_debe)}</td>
+              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(asiento.total_haber)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+        <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => window.print()}><Download size={12} /> Imprimir</button>
         <button className="btn-secondary" onClick={onClose}>Cerrar</button>
       </div>
     </Modal>
@@ -1300,6 +1322,20 @@ function TabAntiguedad() {
 
   function toggleGroup(name: string) { setExpanded(prev => ({ ...prev, [name]: !prev[name] })) }
 
+  function exportarCSV() {
+    if (!data || !data.detalle || data.detalle.length === 0) return
+    const q = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const label = tipo === 'cxp' ? 'Proveedor' : 'Cliente'
+    let csv = `Número,${label},Fecha,Vencimiento,Total,Saldo,Días,Rango,Estado\n`
+    data.detalle.forEach((r: any) => {
+      csv += `${q(r.numero)},${q(tipo === 'cxp' ? r.proveedor : r.cliente)},${q(r.fecha_factura || r.fecha)},${q(r.fecha_vencimiento || '')},${r.total},${r.saldo},${r.dias},${q(BUCKET_LABELS[r.bucket] + 'd')},${q(r.estado)}\n`
+    })
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `antiguedad_${tipo}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div>
       {/* Controls */}
@@ -1317,6 +1353,7 @@ function TabAntiguedad() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           <button className={vista === 'detalle' ? 'btn-primary' : 'btn-secondary'} onClick={() => setVista('detalle')} style={{ fontSize: 11, padding: '4px 10px' }}>Detalle</button>
           <button className={vista === 'agrupado' ? 'btn-primary' : 'btn-secondary'} onClick={() => setVista('agrupado')} style={{ fontSize: 11, padding: '4px 10px' }}>Agrupado</button>
+          {data && data.detalle?.length > 0 && <button className="btn-secondary" onClick={exportarCSV} style={{ fontSize: 11, padding: '4px 8px' }}><Download size={12} /> CSV</button>}
           <button className="btn-secondary" onClick={load} style={{ padding: '4px 8px' }}><RefreshCw size={14} /></button>
         </div>
       </div>
@@ -1565,7 +1602,17 @@ function TabFlujoEfectivo() {
             <span>Saldo Efectivo Actual (Bancos)</span>
             <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{fmt(data.saldo_efectivo_actual)}</span>
           </div>
-          <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn-secondary" onClick={() => {
+              const q = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+              let csv = 'Sección,Código,Cuenta,Monto\n'
+              const flat = (items: any[], seccion: string) => { items.forEach((it: any) => { csv += `${q(seccion)},${q(it.codigo)},${q(it.nombre)},${it.monto}\n` }) }
+              flat(data.operaciones.items, 'Operación'); flat(data.inversion.items, 'Inversión'); flat(data.financiamiento.items, 'Financiamiento')
+              csv += `${q('TOTAL')},,Variación Neta,${data.variacion_neta}\n`
+              csv += `${q('SALDO')},,Efectivo Actual,${data.saldo_efectivo_actual}\n`
+              const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+              const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `flujo_efectivo_${anio}-${String(mes).padStart(2, '0')}.csv`; a.click(); URL.revokeObjectURL(url)
+            }} style={{ fontSize: 11 }}><Download size={12} /> Exportar CSV</button>
             <button className="btn-secondary" onClick={() => window.print()} style={{ fontSize: 11 }}><Download size={12} /> Imprimir / PDF</button>
           </div>
         </div>
@@ -1747,7 +1794,19 @@ function TabDGII() {
           {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
         <button className="btn-primary" onClick={generar} disabled={loading}>{loading ? 'Generando...' : 'Generar'}</button>
-        {data && <button className="btn-secondary" onClick={exportarTXT}><Download size={14} /> Exportar TXT</button>}
+        {data && <button className="btn-secondary" onClick={exportarTXT}><Download size={14} /> TXT (DGII)</button>}
+        {data && <button className="btn-secondary" onClick={() => {
+          const q = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+          let csv = formato === '606'
+            ? 'RNC/Cédula,Proveedor,NCF,Fecha,Monto,ITBIS,Ret. ISR,Total\n'
+            : 'RNC/Cédula,Cliente,NCF,Fecha,Monto,ITBIS,Total\n'
+          data.registros.forEach((r: any) => {
+            if (formato === '606') csv += `${q(r.rnc_cedula)},${q(r.proveedor)},${q(r.ncf)},${q(r.fecha_comprobante)},${r.monto_facturado},${r.itbis_facturado},${r.isr_retenido},${r.total}\n`
+            else csv += `${q(r.rnc_cedula)},${q(r.cliente)},${q(r.ncf)},${q(r.fecha_comprobante)},${r.monto_facturado},${r.itbis_facturado},${r.total}\n`
+          })
+          const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+          const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `dgii_${formato}_${data.periodo}.csv`; a.click(); URL.revokeObjectURL(url)
+        }}><Download size={14} /> CSV</button>}
       </div>
 
       {data && (
