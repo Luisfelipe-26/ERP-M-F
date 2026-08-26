@@ -6,7 +6,7 @@ import {
   Table2, Gauge, CheckCircle2, AlertTriangle, AlertOctagon,
   Copy, Search, ChevronDown, ChevronRight,
   ChevronsDown, ChevronsRight, TrendingUp, Undo2, Settings, FileText,
-  XCircle, BarChart3, Percent, Shield, Clock, Hash
+  XCircle, BarChart3, Percent, Shield, Clock, Hash, Layers
 } from 'lucide-react'
 
 /* ═══════════════════════════════ constants ═══════════════════════════════ */
@@ -100,7 +100,7 @@ export default function Presupuesto() {
   const [cuentas, setCuentas] = useState<any[]>([])
   const [campos, setCampos] = useState<any[]>([])
   const [dims, setDims] = useState<{ unidades: any[]; deptos: any[] }>({ unidades: [], deptos: [] })
-  const [config, setConfig] = useState<any>({ umbral_alerta: 85, umbral_bloqueo: 100, control_habilitado: true, distribucion_default: 'mensual', requiere_aprobacion: true })
+  const [config, setConfig] = useState<any>({ umbral_alerta: 85, umbral_bloqueo: 100, control_habilitado: true, distribucion_default: 'mensual', requiere_aprobacion: true, dim_campo: true, dim_unidad_negocio: true, dim_departamento: true })
   const [configDirty, setConfigDirty] = useState(false)
 
   const [busqueda, setBusqueda] = useState('')
@@ -368,9 +368,9 @@ export default function Presupuesto() {
                 {Object.entries(TIPO_LABELS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             )}
-            <select className="select" style={{ width: 110, height: 32 }} value={campoFiltro} onChange={e => setCampoFiltro(e.target.value)}><option value="">Todo campo</option>{campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select>
-            <select className="select" style={{ width: 110, height: 32 }} value={unFiltro} onChange={e => setUnFiltro(e.target.value)}><option value="">Toda UN</option>{dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
-            <select className="select" style={{ width: 110, height: 32 }} value={depFiltro} onChange={e => setDepFiltro(e.target.value)}><option value="">Todo depto</option>{dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}</select>
+            {config.dim_campo !== false && <select className="select" style={{ width: 110, height: 32 }} value={campoFiltro} onChange={e => setCampoFiltro(e.target.value)}><option value="">Todo campo</option>{campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select>}
+            {config.dim_unidad_negocio !== false && <select className="select" style={{ width: 110, height: 32 }} value={unFiltro} onChange={e => setUnFiltro(e.target.value)}><option value="">Toda UN</option>{dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>}
+            {config.dim_departamento !== false && <select className="select" style={{ width: 110, height: 32 }} value={depFiltro} onChange={e => setDepFiltro(e.target.value)}><option value="">Todo depto</option>{dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}</select>}
           </PaneGroup>
           <PaneGroup title="Acciones">
             {tab === 'registros' && (
@@ -694,6 +694,34 @@ export default function Presupuesto() {
             </div>
           </div>
 
+          {/* Dimensiones financieras */}
+          <div style={{ ...S.card, padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Layers size={16} color="#0369a1" /></div>
+              <div><div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Dimensiones financieras</div><div style={{ fontSize: 11, color: '#94a3b8' }}>Selecciona cuáles dimensiones se usan en presupuesto</div></div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {([
+                { key: 'dim_campo', label: 'Centro de Costo (Campo)', desc: 'Permite asignar presupuesto por campo/parcela', count: campos.length },
+                { key: 'dim_unidad_negocio', label: 'Unidad de Negocio', desc: 'Segmenta el presupuesto por unidad de negocio', count: dims.unidades.length },
+                { key: 'dim_departamento', label: 'Departamento', desc: 'Clasifica el presupuesto por departamento', count: dims.deptos.length },
+              ] as const).map(dim => {
+                const active = config[dim.key] !== false
+                return (
+                  <label key={dim.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: active ? '#f0f9ff' : '#f8fafc', borderRadius: 8, border: `2px solid ${active ? '#0369a1' : '#e2e8f0'}`, cursor: 'pointer', transition: 'all .15s' }}>
+                    <input type="checkbox" checked={active} onChange={e => updateConfig(dim.key, e.target.checked)} style={{ width: 18, height: 18, accentColor: '#0369a1' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: active ? '#0369a1' : '#334155' }}>{dim.label}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{dim.desc}</div>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: '#64748b', background: '#e2e8f0', padding: '3px 8px', borderRadius: 4 }}>{dim.count} registros</span>
+                  </label>
+                )
+              })}
+            </div>
+            <p style={{ margin: '14px 0 0', fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>Las dimensiones deshabilitadas no aparecerán en los filtros ni en el formulario de nuevos registros presupuestarios.</p>
+          </div>
+
           {/* Tipos de transacción */}
           <div style={{ ...S.card, padding: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
@@ -778,7 +806,7 @@ export default function Presupuesto() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead><tr style={{ background: '#f8fafc' }}>
-                    <th style={{...thL,width:200}}>Cuenta *</th><th style={{...thL,width:110}}>Campo</th><th style={{...thL,width:100}}>UN</th><th style={{...thL,width:100}}>Depto</th>
+                    <th style={{...thL,width:200}}>Cuenta *</th>{config.dim_campo !== false && <th style={{...thL,width:110}}>Campo</th>}{config.dim_unidad_negocio !== false && <th style={{...thL,width:100}}>UN</th>}{config.dim_departamento !== false && <th style={{...thL,width:100}}>Depto</th>}
                     <th style={{...thR,width:110}}>Monto anual</th><th style={{...thL,width:110}}>Distribución</th><th style={{...thL,width:110}}>Nota</th><th style={{width:30}}></th>
                   </tr></thead>
                   <tbody>
@@ -789,9 +817,9 @@ export default function Presupuesto() {
                             <option value="">Seleccionar…</option>{cuentas.map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
                           </select>
                         </td>
-                        <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.campo_id} onChange={e=>updateLinea(idx,'campo_id',e.target.value)}><option value="">—</option>{campos.map(c=><option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select></td>
-                        <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.unidad_negocio_id} onChange={e=>updateLinea(idx,'unidad_negocio_id',e.target.value)}><option value="">—</option>{dims.unidades.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}</select></td>
-                        <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.departamento_id} onChange={e=>updateLinea(idx,'departamento_id',e.target.value)}><option value="">—</option>{dims.deptos.map(d=><option key={d.id} value={d.id}>{d.nombre}</option>)}</select></td>
+                        {config.dim_campo !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.campo_id} onChange={e=>updateLinea(idx,'campo_id',e.target.value)}><option value="">—</option>{campos.map(c=><option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select></td>}
+                        {config.dim_unidad_negocio !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.unidad_negocio_id} onChange={e=>updateLinea(idx,'unidad_negocio_id',e.target.value)}><option value="">—</option>{dims.unidades.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}</select></td>}
+                        {config.dim_departamento !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.departamento_id} onChange={e=>updateLinea(idx,'departamento_id',e.target.value)}><option value="">—</option>{dims.deptos.map(d=><option key={d.id} value={d.id}>{d.nombre}</option>)}</select></td>}
                         <td style={{padding:'6px 4px'}}><input className="input" type="number" step="0.01" style={{width:'100%',fontSize:11,textAlign:'right'}} value={ln.total} onChange={e=>updateLinea(idx,'total',e.target.value)} placeholder="0.00" /></td>
                         <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.dist} onChange={e=>updateLinea(idx,'dist',e.target.value)}>{Object.entries(DIST_KEYS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></td>
                         <td style={{padding:'6px 4px'}}><input className="input" style={{width:'100%',fontSize:11}} value={ln.descripcion} onChange={e=>updateLinea(idx,'descripcion',e.target.value)} placeholder="—" /></td>
