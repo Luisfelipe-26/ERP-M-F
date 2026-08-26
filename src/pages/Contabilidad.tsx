@@ -186,6 +186,27 @@ function TabDashboard() {
           </div>
         </div>
       </div>
+
+      {data.actividad_reciente && data.actividad_reciente.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700 }}>Actividad Reciente</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {data.actividad_reciente.map((a: any, i: number) => {
+              const accionColor: Record<string, string> = { CREAR: '#166534', MODIFICAR: '#1e40af', ELIMINAR: '#dc2626', ESTADO: '#ca8a04' }
+              return (
+                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 4px', borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
+                  <span style={{ fontSize: 10, color: '#9ca3af', minWidth: 100, fontFamily: 'monospace' }}>{a.fecha}</span>
+                  <Badge color={a.accion === 'CREAR' ? 'green' : a.accion === 'ELIMINAR' ? 'red' : a.accion === 'ESTADO' ? 'yellow' : 'blue'}>{a.accion}</Badge>
+                  <span style={{ fontWeight: 600, color: '#374151' }}>{a.entidad}</span>
+                  <span style={{ fontFamily: 'monospace', color: '#6b7280', fontSize: 11 }}>{a.entidad_id}</span>
+                  <span style={{ flex: 1, color: '#6b7280', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.detalle}</span>
+                  <span style={{ fontSize: 10, color: '#9ca3af' }}>{a.usuario}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
