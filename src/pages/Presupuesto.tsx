@@ -6,7 +6,7 @@ import {
   Table2, Gauge, CheckCircle2, AlertTriangle, AlertOctagon,
   Copy, Search, ChevronDown, ChevronRight,
   ChevronsDown, ChevronsRight, TrendingUp, Undo2, Settings, FileText,
-  XCircle, BarChart3, Percent, Shield, Clock, Hash, Layers
+  XCircle, BarChart3, Percent, Shield, Clock, Hash, Layers, Pencil, Filter
 } from 'lucide-react'
 
 /* ═══════════════════════════════ constants ═══════════════════════════════ */
@@ -112,12 +112,19 @@ export default function Presupuesto() {
 
   const [showNuevoRegistro, setShowNuevoRegistro] = useState(false)
   const [showDetalleRegistro, setShowDetalleRegistro] = useState<any>(null)
+  const [editingRegistro, setEditingRegistro] = useState<any>(null)
   const [showCopy, setShowCopy] = useState(false)
   const [nuevoReg, setNuevoReg] = useState<any>(null)
+  const [claseFilter, setClaseFilter] = useState('')
   const [copyData, setCopyData] = useState<any>({ anio_origen: anio - 1, factor: 1.0 })
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [allExpanded, setAllExpanded] = useState(true)
   const [edits, setEdits] = useState<Record<number, Record<string, any>>>({})
+
+  const filteredCuentas = useMemo(() => {
+    if (!claseFilter) return cuentas
+    return cuentas.filter((c: any) => (c.codigo || '')[0] === claseFilter)
+  }, [cuentas, claseFilter])
   const [saving, setSaving] = useState(false)
 
   /* ── loaders ── */
@@ -230,6 +237,41 @@ export default function Presupuesto() {
     try { await api.delete(`/contabilidad/registros-presupuestarios/${id}`); toast.success('Eliminado'); loadRegistros(); setShowDetalleRegistro(null) }
     catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
   }
+  function initEditRegistro(reg: any) {
+    setEditingRegistro({
+      id: reg.id, tipo: reg.tipo, anio: reg.anio, descripcion: reg.descripcion || '',
+      lineas: (reg.lineas || []).map((ln: any) => ({
+        cuenta_id: String(ln.cuenta_id), campo_id: ln.campo_id || '',
+        unidad_negocio_id: ln.unidad_negocio_id ? String(ln.unidad_negocio_id) : '',
+        departamento_id: ln.departamento_id ? String(ln.departamento_id) : '',
+        total: String(MK.reduce((s: number, mk: string) => s + Number(ln[mk] || 0), 0)),
+        dist: config.distribucion_default || 'mensual', descripcion: ln.descripcion || '',
+      })),
+    })
+  }
+  function updateEditLinea(idx: number, field: string, val: any) {
+    setEditingRegistro((p: any) => { const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }; return { ...p, lineas: l } })
+  }
+  function addEditLinea() { setEditingRegistro((p: any) => ({ ...p, lineas: [...p.lineas, emptyLinea()] })) }
+  function removeEditLinea(idx: number) { setEditingRegistro((p: any) => ({ ...p, lineas: p.lineas.filter((_: any, i: number) => i !== idx) })) }
+  async function guardarEdicionRegistro(e: any) {
+    e.preventDefault()
+    for (const ln of editingRegistro.lineas) { if (!ln.cuenta_id) { toast.error('Todas las líneas requieren cuenta'); return } }
+    const payload = {
+      tipo: editingRegistro.tipo, anio: editingRegistro.anio, descripcion: editingRegistro.descripcion,
+      lineas: editingRegistro.lineas.map((ln: any) => {
+        const vals = distribuir(parseFloat(ln.total) || 0, ln.dist || 'mensual')
+        const line: any = { cuenta_id: Number(ln.cuenta_id), campo_id: ln.campo_id || null, unidad_negocio_id: ln.unidad_negocio_id ? Number(ln.unidad_negocio_id) : null, departamento_id: ln.departamento_id ? Number(ln.departamento_id) : null, descripcion: ln.descripcion || '' }
+        MK.forEach((mk, i) => { line[mk] = vals[i] }); return line
+      }),
+    }
+    try {
+      await api.put(`/contabilidad/registros-presupuestarios/${editingRegistro.id}`, payload)
+      toast.success('Registro actualizado')
+      setEditingRegistro(null); setShowDetalleRegistro(null); loadRegistros()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al guardar') }
+  }
+
   async function guardarConfig() {
     try { await api.put('/contabilidad/config-presupuesto', config); toast.success('Configuración guardada'); setConfigDirty(false) }
     catch { toast.error('Error') }
@@ -800,7 +842,13 @@ export default function Presupuesto() {
             </div>
             <div style={{ ...S.card, overflow: 'hidden', marginBottom: 20 }}>
               <div style={{ background: '#f8fafc', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0' }}>
-                <span style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>Líneas ({nuevoReg.lineas.length})</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>Líneas ({nuevoReg.lineas.length})</span>
+                  <select className="select" style={{ height: 28, fontSize: 11, width: 130 }} value={claseFilter} onChange={e => setClaseFilter(e.target.value)}>
+                    <option value="">Todas las cuentas</option>
+                    {Object.entries(CLASE_LABELS).map(([k,v]) => <option key={k} value={k}>{k} — {v}</option>)}
+                  </select>
+                </div>
                 <button type="button" className="btn-secondary" style={{ height: 30, fontSize: 11 }} onClick={addLinea}><Plus size={12} /> Agregar</button>
               </div>
               <div style={{ overflowX: 'auto' }}>
@@ -814,7 +862,7 @@ export default function Presupuesto() {
                       <tr key={idx}>
                         <td style={{padding:'6px'}}>
                           <select className="select" style={{width:'100%',fontSize:11}} required value={ln.cuenta_id} onChange={e=>updateLinea(idx,'cuenta_id',e.target.value)}>
-                            <option value="">Seleccionar…</option>{cuentas.map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                            <option value="">Seleccionar…</option>{filteredCuentas.map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
                           </select>
                         </td>
                         {config.dim_campo !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.campo_id} onChange={e=>updateLinea(idx,'campo_id',e.target.value)}><option value="">—</option>{campos.map(c=><option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select></td>}
@@ -847,7 +895,60 @@ export default function Presupuesto() {
       )}
 
       {showDetalleRegistro && (
-        <Modal title={`Registro ${showDetalleRegistro.numero}`} subtitle={`${TIPO_LABELS[showDetalleRegistro.tipo]?.label} — ${showDetalleRegistro.fecha}`} onClose={() => setShowDetalleRegistro(null)} width={900}>
+        <Modal title={`Registro ${showDetalleRegistro.numero}`} subtitle={`${TIPO_LABELS[showDetalleRegistro.tipo]?.label} — ${showDetalleRegistro.fecha}`} onClose={() => { setShowDetalleRegistro(null); setEditingRegistro(null) }} width={900}>
+          {editingRegistro ? (
+            <form onSubmit={guardarEdicionRegistro}>
+              <div style={{ marginBottom: 16 }}>
+                <Label>Descripción</Label>
+                <input className="input" value={editingRegistro.descripcion} onChange={e => setEditingRegistro({...editingRegistro, descripcion: e.target.value})} placeholder="Descripción del registro presupuestario" />
+              </div>
+              <div style={{ ...S.card, overflow: 'hidden', marginBottom: 20 }}>
+                <div style={{ background: '#f8fafc', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>Líneas ({editingRegistro.lineas.length})</span>
+                    <select className="select" style={{ height: 28, fontSize: 11, width: 130 }} value={claseFilter} onChange={e => setClaseFilter(e.target.value)}>
+                      <option value="">Todas las cuentas</option>
+                      {Object.entries(CLASE_LABELS).map(([k,v]) => <option key={k} value={k}>{k} — {v}</option>)}
+                    </select>
+                  </div>
+                  <button type="button" className="btn-secondary" style={{ height: 30, fontSize: 11 }} onClick={addEditLinea}><Plus size={12} /> Agregar</button>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead><tr style={{ background: '#f8fafc' }}>
+                      <th style={{...thL,width:200}}>Cuenta *</th>{config.dim_campo !== false && <th style={{...thL,width:110}}>Campo</th>}{config.dim_unidad_negocio !== false && <th style={{...thL,width:100}}>UN</th>}{config.dim_departamento !== false && <th style={{...thL,width:100}}>Depto</th>}
+                      <th style={{...thR,width:110}}>Monto anual</th><th style={{...thL,width:110}}>Distribución</th><th style={{...thL,width:110}}>Nota</th><th style={{width:30}}></th>
+                    </tr></thead>
+                    <tbody>
+                      {editingRegistro.lineas.map((ln:any,idx:number) => (
+                        <tr key={idx}>
+                          <td style={{padding:'6px'}}>
+                            <select className="select" style={{width:'100%',fontSize:11}} required value={ln.cuenta_id} onChange={e=>updateEditLinea(idx,'cuenta_id',e.target.value)}>
+                              <option value="">Seleccionar…</option>{filteredCuentas.map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                            </select>
+                          </td>
+                          {config.dim_campo !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.campo_id} onChange={e=>updateEditLinea(idx,'campo_id',e.target.value)}><option value="">—</option>{campos.map(c=><option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select></td>}
+                          {config.dim_unidad_negocio !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.unidad_negocio_id} onChange={e=>updateEditLinea(idx,'unidad_negocio_id',e.target.value)}><option value="">—</option>{dims.unidades.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}</select></td>}
+                          {config.dim_departamento !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.departamento_id} onChange={e=>updateEditLinea(idx,'departamento_id',e.target.value)}><option value="">—</option>{dims.deptos.map(d=><option key={d.id} value={d.id}>{d.nombre}</option>)}</select></td>}
+                          <td style={{padding:'6px 4px'}}><input className="input" type="number" step="0.01" style={{width:'100%',fontSize:11,textAlign:'right'}} value={ln.total} onChange={e=>updateEditLinea(idx,'total',e.target.value)} placeholder="0.00" /></td>
+                          <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.dist} onChange={e=>updateEditLinea(idx,'dist',e.target.value)}>{Object.entries(DIST_KEYS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></td>
+                          <td style={{padding:'6px 4px'}}><input className="input" style={{width:'100%',fontSize:11}} value={ln.descripcion} onChange={e=>updateEditLinea(idx,'descripcion',e.target.value)} placeholder="—" /></td>
+                          <td style={{padding:'6px 2px',textAlign:'center'}}>{editingRegistro.lineas.length>1 && <button type="button" className="btn-icon" onClick={()=>removeEditLinea(idx)}><X size={13} /></button>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: '#64748b' }}>Total: <strong style={{ color: '#0f172a' }}>RD$ {fmt(editingRegistro.lineas.reduce((s:number,ln:any)=>s+(parseFloat(ln.total)||0),0))}</strong></span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className="btn-secondary" onClick={() => setEditingRegistro(null)}>Cancelar</button>
+                  <button type="submit" className="btn-primary" style={{ background: '#0369a1' }}><Save size={14} /> Guardar cambios</button>
+                </div>
+              </div>
+            </form>
+          ) : (<>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
             {[
               { label: 'Tipo', value: <Badge color={TIPO_LABELS[showDetalleRegistro.tipo]?.color} bg={TIPO_LABELS[showDetalleRegistro.tipo]?.bg}>{TIPO_LABELS[showDetalleRegistro.tipo]?.icon} {TIPO_LABELS[showDetalleRegistro.tipo]?.label}</Badge> },
@@ -894,10 +995,12 @@ export default function Presupuesto() {
           {showDetalleRegistro.estado==='borrador' && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button className="btn-secondary" style={{ color: '#dc2626' }} onClick={() => eliminarRegistro(showDetalleRegistro.id)}><Trash2 size={14} /> Eliminar</button>
+              <button className="btn-secondary" onClick={() => initEditRegistro(showDetalleRegistro)}><Pencil size={14} /> Editar</button>
               <button className="btn-secondary" style={{ color: '#991b1b' }} onClick={() => rechazarRegistro(showDetalleRegistro.id)}><XCircle size={14} /> Rechazar</button>
               <button className="btn-primary" style={{ background: '#166534', height: 38 }} onClick={() => aprobarRegistro(showDetalleRegistro.id)}><CheckCircle2 size={14} /> Aprobar y contabilizar</button>
             </div>
           )}
+          </>)}
         </Modal>
       )}
 
