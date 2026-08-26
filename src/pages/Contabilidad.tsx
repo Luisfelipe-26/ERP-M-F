@@ -972,6 +972,43 @@ function TabReportes() {
   const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
   const hasDimFilter = !!(campoId || unId || deptoId || almId)
 
+  function exportarCSV() {
+    if (!data) return
+    let csv = ''
+    const sep = ','
+    const q = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    if (reporte === 'balance-comprobacion') {
+      csv = 'Código,Cuenta,Sumas Debe,Sumas Haber,Saldo Deudor,Saldo Acreedor\n'
+      data.forEach((r: any) => { csv += `${q(r.codigo)},${q(r.nombre)},${r.sumas_debe},${r.sumas_haber},${r.saldo_deudor},${r.saldo_acreedor}\n` })
+    } else if (reporte === 'balance-general') {
+      csv = 'Sección,Código,Cuenta,Saldo\n'
+      const flat = (nodes: any[], seccion: string) => {
+        nodes?.forEach((n: any) => {
+          n.cuentas?.forEach((c: any) => { csv += `${q(seccion)},${q(c.codigo)},${q(c.nombre)},${c.saldo}\n` })
+          if (n.hijos) flat(n.hijos, seccion)
+        })
+      }
+      flat(data.activos, 'Activos'); flat(data.pasivos, 'Pasivos'); flat(data.patrimonio, 'Patrimonio')
+    } else if (reporte === 'estado-resultados') {
+      csv = 'Sección,Código,Cuenta,Monto\n'
+      const flat = (nodes: any[], seccion: string) => {
+        nodes?.forEach((n: any) => {
+          n.cuentas?.forEach((c: any) => { csv += `${q(seccion)},${q(c.codigo)},${q(c.nombre)},${c.monto}\n` })
+          if (n.hijos) flat(n.hijos, seccion)
+        })
+      }
+      flat(data.ingresos, 'Ingresos'); flat(data.costos, 'Costos'); flat(data.gastos, 'Gastos')
+    } else if (reporte === 'libro-mayor') {
+      csv = 'Fecha,Asiento,Descripción,Debe,Haber,Saldo\n'
+      data.items?.forEach((m: any) => { csv += `${q(m.fecha)},${q(m.asiento_numero)},${q(m.descripcion)},${m.debe},${m.haber},${m.saldo}\n` })
+    }
+    const bom = '﻿'
+    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `${reporte}_${anio}-${String(mes).padStart(2, '0')}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1006,6 +1043,7 @@ function TabReportes() {
         <button className="btn-primary" onClick={generar} disabled={loading || (reporte === 'libro-mayor' && !cuentaLM)}>
           {loading ? 'Generando...' : 'Generar'}
         </button>
+        {data && <button className="btn-secondary" onClick={exportarCSV} style={{ fontSize: 12 }}><Download size={13} /> Exportar CSV</button>}
         {data && <button className="btn-secondary" onClick={() => window.print()} style={{ fontSize: 12 }}><Download size={13} /> Imprimir / PDF</button>}
       </div>
 
@@ -1186,8 +1224,15 @@ function ReporteEstadoResultados({ data }) {
 
 function ReporteLibroMayor({ data }) {
   if (!data || !data.items || data.items.length === 0) return <p style={{ color: '#9ca3af', textAlign: 'center', padding: 40 }}>Sin movimientos para esta cuenta</p>
+  const totD = data.items.reduce((s: number, r: any) => s + r.debe, 0)
+  const totH = data.items.reduce((s: number, r: any) => s + r.haber, 0)
+  const saldoFinal = data.items[data.items.length - 1]?.saldo ?? 0
   return (
     <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+      <div style={{ display: 'flex', gap: 16, padding: '12px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', fontSize: 12 }}>
+        <span style={{ color: '#6b7280' }}>Cuenta: <strong style={{ color: '#0f172a' }}>{data.items[0]?.cuenta_codigo} — {data.items[0]?.cuenta_nombre}</strong></span>
+        <span style={{ marginLeft: 'auto', color: '#6b7280' }}>Saldo: <strong style={{ color: saldoFinal < 0 ? '#991b1b' : '#166534', fontFamily: 'monospace' }}>{fmt(saldoFinal)}</strong></span>
+      </div>
       <table style={{ fontSize: 12 }}>
         <thead>
           <tr>
@@ -1207,9 +1252,15 @@ function ReporteLibroMayor({ data }) {
               <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: r.saldo < 0 ? '#991b1b' : '#166534' }}>{fmt(r.saldo)}</td>
             </tr>
           ))}
+          <tr style={{ fontWeight: 700, borderTop: '2px solid #374151', background: '#f9fafb' }}>
+            <td colSpan={3}>Totales</td>
+            <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(totD)}</td>
+            <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(totH)}</td>
+            <td style={{ textAlign: 'right', fontFamily: 'monospace', color: saldoFinal < 0 ? '#991b1b' : '#166534' }}>{fmt(saldoFinal)}</td>
+          </tr>
         </tbody>
       </table>
-      <p style={{ fontSize: 11, color: '#9ca3af', padding: '8px 12px' }}>{data.total} movimiento{data.total !== 1 ? 's' : ''}</p>
+      <p style={{ fontSize: 11, color: '#9ca3af', padding: '8px 12px' }}>{data.total} movimiento{data.total !== 1 ? 's' : ''}{data.total > data.items.length ? ` (mostrando ${data.items.length})` : ''}</p>
     </div>
   )
 }
