@@ -4,14 +4,13 @@ import toast from 'react-hot-toast'
 import {
   Plus, Search, Download, RefreshCw, AlertTriangle, TrendingUp, TrendingDown,
   Package, DollarSign, Edit2, Trash2, BarChart2, ArrowDownCircle, ArrowUpCircle,
-  ClipboardList, ChevronRight, X, Eye, Clock
+  ClipboardList, X, Eye, Clock
 } from 'lucide-react'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = n => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
 const fmtN = (n, dec = 2) => Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-DO') : '—'
-const fmtDT = d => d ? new Date(d).toLocaleString('es-DO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
 
 const TIPOS_PROD = ['FERTILIZANTE','FUNGICIDAS','INSECTICIDAS','HERBICIDA','BIOESTIMULANTE','PBZ','REGULADOR HORMONAL','OTRO']
 const MOTIVOS_GI = ['Consumo OT','Merma','Vencimiento','Devolucion Proveedor','Muestra','Uso No Productivo','Otro']
@@ -396,10 +395,7 @@ const ModalAjuste = ({ producto, articulos, almacenes, onClose, onDone }) => {
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {!producto && (
           <Field label="Artículo *">
-            <select className="select" value={form.producto_id} onChange={e => { f('producto_id', e.target.value); f('cantidad_contada', '') }} required>
-              <option value="">Seleccionar artículo...</option>
-              {(articulos || []).map(p => <option key={p.id_prod} value={p.id_prod}>{p.producto} ({fmtN(p.stock_actual)} {p.unidad})</option>)}
-            </select>
+            <SearchSelect items={articulos || []} value={form.producto_id} onChange={id => { f('producto_id', id); f('cantidad_contada', '') }} />
           </Field>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -518,7 +514,7 @@ const ModalKardex = ({ producto, onClose }) => {
 }
 
 // ─── Modal Artículo (crear/editar) ────────────────────────────────────────────
-const emptyProd = { id_prod:'', producto:'', tipo:'', unidad:'L', costo_unitario:'', stock_actual:0, stock_minimo:0, stock_maximo:'', proveedor:'', concentracion:'' }
+const emptyProd = { id_prod:'', producto:'', tipo:'', unidad:'L', costo_unitario:'', stock_actual:0, stock_minimo:0, stock_maximo:'', proveedor:'', concentracion:'', es_inventariable:true }
 
 const ModalArticulo = ({ item, onClose, onDone }) => {
   const [form, setForm] = useState(item ? { ...item } : emptyProd)
@@ -589,6 +585,12 @@ const ModalArticulo = ({ item, onClose, onDone }) => {
         </Field>
         <Field label="Proveedor Preferido">
           <input className="input" value={form.proveedor || ''} onChange={e => f('proveedor', e.target.value)} />
+        </Field>
+        <Field label="Inventariable">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input type="checkbox" checked={form.es_inventariable !== false} onChange={e => f('es_inventariable', e.target.checked)} />
+            Producto con control de inventario
+          </label>
         </Field>
         <div style={{ gridColumn: '1/-1', display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
           <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
@@ -678,24 +680,26 @@ export default function Inventario() {
     api.get('/inventario/alertas-vencimiento').then(r => setAlertasVenc(r.data)).catch(() => {})
   }
 
+  const csvEsc = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`
+
   function exportCSV() {
     let csv = '', filename = ''
     if (tab === 'articulos') {
       csv = 'ID,Artículo,Tipo,Unidad,Stock,Mínimo,C.Promedio,Valor Inv.\n'
       articulosFiltrados.forEach(p => {
-        csv += `${p.id_prod},"${p.producto}",${p.tipo || ''},${p.unidad},${p.stock_actual},${p.stock_minimo},${p.costo_promedio},${p.valor_inventario}\n`
+        csv += `${p.id_prod},${csvEsc(p.producto)},${p.tipo || ''},${p.unidad},${p.stock_actual},${p.stock_minimo},${p.costo_promedio},${p.valor_inventario}\n`
       })
       filename = `articulos_${new Date().toISOString().slice(0, 10)}.csv`
     } else if (tab === 'movimientos') {
       csv = 'N° Doc,Fecha,Tipo Doc,Artículo,Motivo,Cantidad,Tipo,Costo Unit.,Saldo\n'
       movimientos.forEach(m => {
-        csv += `${m.num_documento},${m.fecha?.slice(0, 10) || ''},${m.tipo_doc},"${m.producto_nombre || m.producto_id}",${m.motivo || ''},${m.cantidad},${m.tipo},${m.costo_unitario || ''},${m.stock_post ?? ''}\n`
+        csv += `${m.num_documento},${m.fecha?.slice(0, 10) || ''},${m.tipo_doc},${csvEsc(m.producto_nombre || m.producto_id)},${csvEsc(m.motivo)},${m.cantidad},${m.tipo},${m.costo_unitario || ''},${m.stock_post ?? ''}\n`
       })
       filename = `movimientos_${new Date().toISOString().slice(0, 10)}.csv`
     } else if (tab === 'valoracion' && valoracion) {
       csv = 'ID,Artículo,Tipo,Unidad,Stock,C.Promedio,Valor\n'
       valoracion.items.forEach(p => {
-        csv += `${p.id_prod},"${p.producto}",${p.tipo},${p.unidad},${p.stock},${p.costo_promedio},${p.valor}\n`
+        csv += `${p.id_prod},${csvEsc(p.producto)},${p.tipo},${p.unidad},${p.stock},${p.costo_promedio},${p.valor}\n`
       })
       filename = `valoracion_${new Date().toISOString().slice(0, 10)}.csv`
     }
@@ -796,8 +800,26 @@ export default function Inventario() {
             </button>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+            {[
+              { label: 'Valor Total Inventario', value: fmt(totalValor), icon: DollarSign, color: '#166534', bg: '#dcfce7' },
+              { label: 'Artículos Activos', value: articulos.length, icon: Package, color: '#1e40af', bg: '#dbeafe' },
+              { label: 'Bajo Mínimo', value: bajosMinimo, icon: AlertTriangle, color: '#b45309', bg: '#fef9c3' },
+              { label: 'Sin Stock', value: sinStock, icon: TrendingDown, color: '#dc2626', bg: '#fee2e2' },
+            ].map(({ label, value, icon: Icon, color, bg }) => (
+              <div key={label} className="card" style={{ borderLeft: `4px solid ${color}`, padding: '12px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div style={{ background: bg, borderRadius: 8, padding: 6, display: 'flex' }}><Icon size={14} color={color} /></div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>{label}</div>
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, color }}>{value}</div>
+              </div>
+            ))}
+          </div>
+
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>
             {articulosFiltrados.length} de {articulos.length} artículos
+            {filtroTipo || filtroStock !== 'todos' || buscar ? ` · Valor filtrado: ${fmt(articulosFiltrados.reduce((s, p) => s + (p.valor_inventario || 0), 0))}` : ''}
           </div>
 
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
