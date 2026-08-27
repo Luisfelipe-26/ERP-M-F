@@ -150,7 +150,7 @@ export default function Analytics() {
       const lastDay = new Date(ano, mes, 0).getDate()
       const fh = `${ano}-${String(mes).padStart(2, '0')}-${lastDay}`
 
-      const [tend, prod, ins, comp, ckg, bal, pest, rend] = await Promise.all([
+      const [tend, prod, ins, comp, ckg, bal, pest] = await Promise.all([
         apiFetch('/analytics/tendencia-costos?meses=12'),
         apiFetch(`/analytics/productividad-trabajadores?mes=${mes}&ano=${ano}`),
         apiFetch(`/analytics/eficiencia-insumos?fecha_desde=${fd}&fecha_hasta=${fh}`),
@@ -158,7 +158,6 @@ export default function Analytics() {
         apiFetch(`/analytics/costo-por-kg?temporada=${ano}`),
         apiFetch(`/analytics/balance-hidrico-resumen?ano=${ano}`),
         apiFetch(`/analytics/presion-plagas?fecha_desde=${fd}&fecha_hasta=${fh}`),
-        apiFetch(`/analytics/rendimiento-por-ha?ano=${ano}&mes=${mes}`),
       ])
       setTendencia(tend.tendencia || [])
       setTrabajadores(prod.trabajadores || [])
@@ -168,7 +167,10 @@ export default function Analytics() {
       setCostoKg(ckg.campos || [])
       setBalance(bal.campos || [])
       setPlagas(pest.campos || [])
-      setRendimiento(rend || { por_actividad: [], por_insumo: [], resumen_campos: [] })
+      try {
+        const rend = await apiFetch(`/analytics/rendimiento-por-ha?ano=${ano}&mes=${mes}`)
+        setRendimiento(rend || { por_actividad: [], por_insumo: [], resumen_campos: [] })
+      } catch { setRendimiento({ por_actividad: [], por_insumo: [], resumen_campos: [] }) }
       if (comp.campos?.length >= 2) {
         setRadarCampos(comp.campos.slice(0, 3).map(c => c.campo_id))
       }
