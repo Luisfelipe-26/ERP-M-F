@@ -140,6 +140,10 @@ export default function Analytics() {
   // Sorting
   const [sortConfig, setSortConfig] = useState({ key: 'cost_per_ha', dir: 'asc' })
 
+  // Rendimiento filters
+  const [rendCampo, setRendCampo] = useState('')
+  const [rendActividad, setRendActividad] = useState('')
+
   // Radar selection
   const [radarCampos, setRadarCampos] = useState([])
 
@@ -569,33 +573,87 @@ export default function Analytics() {
       )}
 
       {/* ═══ TAB: RENDIMIENTO POR HECTÁREA ═══ */}
-      {tab === 'rendimiento' && (
+      {tab === 'rendimiento' && (() => {
+        const allRows = rendimiento.rendimiento || []
+        const allIns = rendimiento.insumos || []
+        const camposList = [...new Set(allRows.map(r => r.campo_id))].map(id => ({ id, nombre: allRows.find(r => r.campo_id === id)?.campo || id }))
+        const actList = [...new Set(allRows.map(r => r.actividad_id))].map(id => ({ id, nombre: allRows.find(r => r.actividad_id === id)?.actividad || id }))
+        const filtered = allRows.filter(r => (!rendCampo || String(r.campo_id) === rendCampo) && (!rendActividad || String(r.actividad_id) === rendActividad))
+        const filteredIns = allIns.filter(r => !rendCampo || String(r.campo_id) === rendCampo)
+
+        const totHoras = filtered.reduce((s, r) => s + r.total_horas, 0)
+        const totCosto = filtered.reduce((s, r) => s + r.total_costo, 0)
+        const totJornadas = filtered.reduce((s, r) => s + r.num_jornadas, 0)
+        const totTrabajadores = new Set(filtered.map(r => `${r.campo_id}-${r.actividad_id}`)).size
+        const areaTotal = [...new Set(filtered.map(r => r.campo_id))].reduce((s, cid) => {
+          const row = filtered.find(r => r.campo_id === cid)
+          return s + (row?.area_ha || 0)
+        }, 0)
+        const avgHorasHa = areaTotal > 0 ? (totHoras / areaTotal) : 0
+        const avgCostoHa = areaTotal > 0 ? (totCosto / areaTotal) : 0
+
+        const grouped = {}
+        filtered.forEach(r => {
+          if (!grouped[r.campo_id]) grouped[r.campo_id] = { campo: r.campo, area_ha: r.area_ha, rows: [] }
+          grouped[r.campo_id].rows.push(r)
+        })
+
+        const chartData = filtered.slice(0, 15).map(r => ({
+          name: `${(r.campo || '').slice(0, 10)} · ${(r.actividad || '').slice(0, 15)}`,
+          'Horas/ha': r.horas_ha,
+          'Costo/ha (miles)': Math.round(r.costo_ha / 1000 * 100) / 100,
+        }))
+
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Chart: Horas/ha por actividad */}
+          {/* Filtros de campo y actividad */}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select className="select" style={{ width: 200, height: 36, fontSize: 13 }} value={rendCampo} onChange={e => setRendCampo(e.target.value)}>
+              <option value="">Todos los campos</option>
+              {camposList.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+            <select className="select" style={{ width: 240, height: 36, fontSize: 13 }} value={rendActividad} onChange={e => setRendActividad(e.target.value)}>
+              <option value="">Todas las actividades</option>
+              {actList.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+            </select>
+            {(rendCampo || rendActividad) && (
+              <button onClick={() => { setRendCampo(''); setRendActividad('') }} style={{
+                padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: 'white',
+                cursor: 'pointer', fontSize: 12, color: '#6b7280'
+              }}>Limpiar filtros</button>
+            )}
+          </div>
+
+          {/* KPI Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+            <KpiCard title="Horas Totales" value={formatNum(totHoras)} subtitle={`${totJornadas} jornadas`} icon={Users} color="#2D6A4F" />
+            <KpiCard title="Costo M.O. Total" value={formatCur(totCosto)} subtitle={`${areaTotal.toFixed(1)} ha cubiertas`} icon={TrendingUp} color="#219EBC" />
+            <KpiCard title="Prom Horas/ha" value={formatNum(avgHorasHa)} subtitle="horas-hombre por hectárea" icon={Layers} color="#F4A261" />
+            <KpiCard title="Prom Costo/ha" value={formatCur(avgCostoHa)} subtitle="mano de obra por hectárea" icon={MapPin} color="#E76F51" />
+          </div>
+
+          {/* Chart: Horas/ha vs Costo/ha */}
+          {chartData.length > 0 && (
           <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1F3A5F', margin: '0 0 16px' }}>
               <Layers size={18} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-              Horas-Hombre por Hectárea — {MESES[mes - 1]} {ano}
+              Horas/ha y Costo/ha por Actividad
             </h3>
-            {(rendimiento.rendimiento || []).length > 0 ? (
-              <ResponsiveContainer width="100%" height={Math.max(300, (rendimiento.rendimiento || []).length * 36)}>
-                <BarChart data={(rendimiento.rendimiento || []).slice(0, 20).map(r => ({
-                  name: `${(r.campo || '').slice(0, 12)} / ${(r.actividad || '').slice(0, 18)}`,
-                  'Horas/ha': r.horas_ha,
-                  'Costo/ha': r.costo_ha,
-                }))} layout="vertical" margin={{ left: 40 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={200} />
-                  <Tooltip formatter={(v, name) => name === 'Costo/ha' ? formatCur(v) : `${v} hrs`} />
-                  <Legend />
-                  <Bar dataKey="Horas/ha" fill="#2D6A4F" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : <p style={{ color: '#9ca3af', textAlign: 'center', padding: 40 }}>Sin datos</p>}
+            <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 38)}>
+              <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={190} />
+                <Tooltip formatter={(v, name) => name.includes('Costo') ? `RD$ ${(v * 1000).toLocaleString('es-DO')}` : `${v} hrs`} />
+                <Legend />
+                <Bar dataKey="Horas/ha" fill="#2D6A4F" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="Costo/ha (miles)" fill="#219EBC" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
+          )}
 
-          {/* Tabla: Rendimiento M.O. por Actividad por Campo */}
+          {/* Tabla agrupada por campo */}
           <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', overflowX: 'auto' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1F3A5F', margin: '0 0 16px' }}>
               Rendimiento de Mano de Obra por Actividad
@@ -603,38 +661,57 @@ export default function Analytics() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Campo', 'Área (ha)', 'Actividad', 'Jornadas', 'Trabajadores', 'Horas Total', 'Prom hrs/hombre', 'Horas/ha', 'Costo M.O.', 'Costo/ha'].map(h => (
+                  {['Actividad', 'Jornadas', 'Trabajadores', 'Horas', 'Prom hrs/hombre', 'Horas/ha', 'Costo M.O.', 'Costo/ha'].map(h => (
                     <th key={h} style={{
-                      padding: '10px 12px', textAlign: h === 'Campo' || h === 'Actividad' ? 'left' : 'right',
+                      padding: '10px 12px', textAlign: h === 'Actividad' ? 'left' : 'right',
                       fontSize: 12, fontWeight: 600, color: '#6b7280',
-                      borderBottom: '1px solid #e5e7eb', background: '#f9fafb', whiteSpace: 'nowrap'
+                      borderBottom: '2px solid #e5e7eb', background: '#f9fafb', whiteSpace: 'nowrap'
                     }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {(rendimiento.rendimiento || []).map((r, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '10px 12px', fontWeight: 500 }}>{r.campo}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatNum(r.area_ha)}</td>
-                    <td style={{ padding: '10px 12px' }}>{r.actividad}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{r.num_jornadas}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{r.num_trabajadores}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatNum(r.total_horas)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatNum(r.prom_horas_hombre)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#2D6A4F' }}>{formatNum(r.horas_ha)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatCur(r.total_costo)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#14532d' }}>{formatCur(r.costo_ha)}</td>
-                  </tr>
-                ))}
-                {(rendimiento.rendimiento || []).length === 0 && (
-                  <tr><td colSpan={10} style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Sin datos de rendimiento</td></tr>
+                {Object.entries(grouped).map(([cid, g]) => {
+                  const subTotal = g.rows.reduce((s, r) => ({ h: s.h + r.total_horas, c: s.c + r.total_costo, j: s.j + r.num_jornadas }), { h: 0, c: 0, j: 0 })
+                  return [
+                    <tr key={`hdr-${cid}`} style={{ background: '#f0fdf4' }}>
+                      <td colSpan={8} style={{ padding: '10px 12px', fontWeight: 700, fontSize: 13, color: '#14532d', borderBottom: '1px solid #bbf7d0' }}>
+                        {g.campo} — {g.area_ha} ha
+                      </td>
+                    </tr>,
+                    ...g.rows.map((r, i) => (
+                      <tr key={`${cid}-${i}`} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '8px 12px 8px 24px' }}>{r.actividad}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{r.num_jornadas}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{r.num_trabajadores}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{formatNum(r.total_horas)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{formatNum(r.prom_horas_hombre)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: '#2D6A4F' }}>{formatNum(r.horas_ha)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{formatCur(r.total_costo)}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: '#14532d' }}>{formatCur(r.costo_ha)}</td>
+                      </tr>
+                    )),
+                    <tr key={`sub-${cid}`} style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                      <td style={{ padding: '8px 12px 8px 24px', fontWeight: 600, fontSize: 12, color: '#6b7280' }}>Subtotal {g.campo}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, fontSize: 12 }}>{subTotal.j}</td>
+                      <td style={{ padding: '8px 12px' }}></td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, fontSize: 12 }}>{formatNum(subTotal.h)}</td>
+                      <td style={{ padding: '8px 12px' }}></td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, fontSize: 12, color: '#2D6A4F' }}>{formatNum(g.area_ha > 0 ? subTotal.h / g.area_ha : 0)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, fontSize: 12 }}>{formatCur(subTotal.c)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, fontSize: 12, color: '#14532d' }}>{formatCur(g.area_ha > 0 ? subTotal.c / g.area_ha : 0)}</td>
+                    </tr>
+                  ]
+                })}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Sin datos de rendimiento</td></tr>
                 )}
               </tbody>
             </table>
           </div>
 
           {/* Tabla: Insumos por Hectárea */}
+          {filteredIns.length > 0 && (
           <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', overflowX: 'auto' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1F3A5F', margin: '0 0 16px' }}>
               Insumos por Hectárea
@@ -652,7 +729,7 @@ export default function Analytics() {
                 </tr>
               </thead>
               <tbody>
-                {(rendimiento.insumos || []).map((r, i) => (
+                {filteredIns.map((r, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '10px 12px', fontWeight: 500 }}>{r.campo}</td>
                     <td style={{ padding: '10px 12px' }}>{r.producto}</td>
@@ -664,14 +741,13 @@ export default function Analytics() {
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#14532d' }}>{formatCur(r.costo_ha)}</td>
                   </tr>
                 ))}
-                {(rendimiento.insumos || []).length === 0 && (
-                  <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Sin datos de insumos</td></tr>
-                )}
               </tbody>
             </table>
           </div>
+          )}
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
