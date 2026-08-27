@@ -253,6 +253,7 @@ export default function Nomina() {
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [modoFecha, setModoFecha] = useState<'mes' | 'rango'>('mes')
+  const [filtroMod, setFiltroMod] = useState('')
   const [tab, setTab] = useState<'resumen' | 'diario'>('resumen')
   const [horasDiarias, setHorasDiarias] = useState([])
   const [loadingDiario, setLoadingDiario] = useState(false)
@@ -261,7 +262,7 @@ export default function Nomina() {
   const [filtroDiarioTrab, setFiltroDiarioTrab] = useState('')
   const [filtroDiarioMod, setFiltroDiarioMod] = useState('')
 
-  useEffect(() => { load() }, [mes, ano, desde, hasta, modoFecha])
+  useEffect(() => { load() }, [mes, ano, desde, hasta, modoFecha, filtroMod])
 
   useEffect(() => {
     if (tab === 'diario' && filtroDiarioDesde && filtroDiarioHasta) loadDiario()
@@ -290,6 +291,7 @@ export default function Nomina() {
         params.mes = mes
         params.ano = ano
       }
+      if (filtroMod) params.modalidad = filtroMod
       const { data } = await api.get('/dashboard/nomina-mensual', { params })
       setNomina(data)
     } catch { toast.error('Error al cargar nómina') }
@@ -381,6 +383,14 @@ export default function Nomina() {
             </div>
           </>
         )}
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Modalidad</label>
+          <select className="select" style={{ width: 140 }} value={filtroMod} onChange={e => setFiltroMod(e.target.value)}>
+            <option value="">Todas</option>
+            <option value="Jornada">Jornada</option>
+            <option value="Ajuste">Ajuste</option>
+          </select>
+        </div>
         <div style={{ flex: 1, minWidth: 180 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Buscar trabajador</label>
           <div style={{ position: 'relative' }}>
