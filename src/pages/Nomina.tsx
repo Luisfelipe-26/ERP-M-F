@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
 import toast from 'react-hot-toast'
-import { Download, X, Eye, Edit2, Save, XCircle } from 'lucide-react'
+import { Download, X, Eye, Edit2, Save, XCircle, Search } from 'lucide-react'
 
 const fmt = n => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-DO') : '—'
@@ -15,7 +15,7 @@ const ESTADO_COLORS = {
   'En Pausa':   { bg: '#f3f4f6', color: '#374151' },
 }
 
-function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
+function ModalDetalleTrabajador({ trabajador, mes, ano, desde = '', hasta = '', onClose }) {
   const [jornadas, setJornadas] = useState([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null)
@@ -25,13 +25,14 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
 
   function loadDetalle() {
     setLoading(true)
-    api.get(`/dashboard/nomina-detalle/${trabajador.id_trab}`, { params: { mes, ano } })
+    const params: Record<string, any> = desde && hasta ? { desde, hasta } : { mes, ano }
+    api.get(`/dashboard/nomina-detalle/${trabajador.id_trab}`, { params })
       .then(({ data }) => setJornadas(data))
       .catch(() => toast.error('Error al cargar detalle'))
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadDetalle() }, [trabajador.id_trab, mes, ano])
+  useEffect(() => { loadDetalle() }, [trabajador.id_trab, mes, ano, desde, hasta])
 
   const totalHoras = jornadas.reduce((s, j) => s + (j.horas_netas || 0), 0)
   const totalCosto = jornadas.reduce((s, j) => s + (j.costo_mo || 0), 0)
@@ -248,13 +249,25 @@ export default function Nomina() {
   const [nomina, setNomina] = useState([])
   const [loading, setLoading] = useState(false)
   const [modalTrabajador, setModalTrabajador] = useState(null)
+  const [buscar, setBuscar] = useState('')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
+  const [modoFecha, setModoFecha] = useState<'mes' | 'rango'>('mes')
 
-  useEffect(() => { load() }, [mes, ano])
+  useEffect(() => { load() }, [mes, ano, desde, hasta, modoFecha])
 
   async function load() {
     setLoading(true)
     try {
-      const { data } = await api.get('/dashboard/nomina-mensual', { params: { mes, ano } })
+      const params: Record<string, any> = {}
+      if (modoFecha === 'rango' && desde && hasta) {
+        params.desde = desde
+        params.hasta = hasta
+      } else {
+        params.mes = mes
+        params.ano = ano
+      }
+      const { data } = await api.get('/dashboard/nomina-mensual', { params })
       setNomina(data)
     } catch { toast.error('Error al cargar nómina') }
     finally { setLoading(false) }
@@ -269,9 +282,12 @@ export default function Nomina() {
     } catch { toast.error('Error al exportar nómina') }
   }
 
-  const total = nomina.reduce((s, r) => s + r.total_ganado, 0)
-  const totalJornadas = nomina.reduce((s, r) => s + r.num_jornadas, 0)
-  const activos = nomina.filter(r => r.num_jornadas > 0)
+  const filtered = buscar
+    ? nomina.filter(r => r.nombre.toLowerCase().includes(buscar.toLowerCase()) || r.id_trab.toLowerCase().includes(buscar.toLowerCase()))
+    : nomina
+  const total = filtered.reduce((s, r) => s + r.total_ganado, 0)
+  const totalJornadas = filtered.reduce((s, r) => s + r.num_jornadas, 0)
+  const activos = filtered.filter(r => r.num_jornadas > 0)
 
   const anos = Array.from({ length: 3 }, (_, i) => now.getFullYear() - i)
 
@@ -281,19 +297,58 @@ export default function Nomina() {
         <div>
           <h1 style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: '#111827' }}>Nómina de Jornales</h1>
           <p style={{ margin: 0, color: '#6b7280', fontSize: 14 }}>
-            {MESES[mes-1]} {ano} · {activos.length} trabajadores activos · {totalJornadas} jornadas
+            {modoFecha === 'rango' && desde && hasta
+              ? `${new Date(desde + 'T12:00').toLocaleDateString('es-DO')} — ${new Date(hasta + 'T12:00').toLocaleDateString('es-DO')}`
+              : `${MESES[mes-1]} ${ano}`}
+            {' · '}{activos.length} trabajadores activos · {totalJornadas} jornadas
           </p>
         </div>
         <button className="btn-secondary" onClick={exportCSV}><Download size={15} /> Exportar CSV</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-        <select className="select" style={{ width: 160 }} value={mes} onChange={e => setMes(Number(e.target.value))}>
-          {MESES.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
-        </select>
-        <select className="select" style={{ width: 100 }} value={ano} onChange={e => setAno(Number(e.target.value))}>
-          {anos.map(a => <option key={a} value={a}>{a}</option>)}
-        </select>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'end' }}>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Período</label>
+          <select className="select" style={{ width: 130 }} value={modoFecha} onChange={e => setModoFecha(e.target.value as 'mes' | 'rango')}>
+            <option value="mes">Por mes</option>
+            <option value="rango">Rango de fechas</option>
+          </select>
+        </div>
+        {modoFecha === 'mes' ? (
+          <>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Mes</label>
+              <select className="select" style={{ width: 150 }} value={mes} onChange={e => setMes(Number(e.target.value))}>
+                {MESES.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Año</label>
+              <select className="select" style={{ width: 100 }} value={ano} onChange={e => setAno(Number(e.target.value))}>
+                {anos.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Desde</label>
+              <input className="input" type="date" value={desde} onChange={e => setDesde(e.target.value)} style={{ width: 160 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Hasta</label>
+              <input className="input" type="date" value={hasta} onChange={e => setHasta(e.target.value)} style={{ width: 160 }} />
+            </div>
+          </>
+        )}
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Buscar trabajador</label>
+          <div style={{ position: 'relative' }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+            <input className="input" value={buscar} onChange={e => setBuscar(e.target.value)}
+              placeholder="Nombre o ID..." style={{ paddingLeft: 32, width: '100%' }} />
+          </div>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
@@ -325,9 +380,9 @@ export default function Nomina() {
           <tbody>
             {loading ? (
               <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
-            ) : nomina.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No hay registros para este período</td></tr>
-            ) : nomina.map(r => {
+            ) : filtered.map(r => {
               const pct = total > 0 ? (r.total_ganado / total * 100) : 0
               const activo = r.num_jornadas > 0
               return (
@@ -375,6 +430,8 @@ export default function Nomina() {
         <ModalDetalleTrabajador
           trabajador={modalTrabajador}
           mes={mes} ano={ano}
+          desde={modoFecha === 'rango' ? desde : ''}
+          hasta={modoFecha === 'rango' ? hasta : ''}
           onClose={() => setModalTrabajador(null)}
         />
       )}
