@@ -259,18 +259,20 @@ export default function Nomina() {
   const [filtroDiarioDesde, setFiltroDiarioDesde] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0])
   const [filtroDiarioHasta, setFiltroDiarioHasta] = useState(now.toISOString().split('T')[0])
   const [filtroDiarioTrab, setFiltroDiarioTrab] = useState('')
+  const [filtroDiarioMod, setFiltroDiarioMod] = useState('')
 
   useEffect(() => { load() }, [mes, ano, desde, hasta, modoFecha])
 
   useEffect(() => {
     if (tab === 'diario' && filtroDiarioDesde && filtroDiarioHasta) loadDiario()
-  }, [tab, filtroDiarioDesde, filtroDiarioHasta])
+  }, [tab, filtroDiarioDesde, filtroDiarioHasta, filtroDiarioMod])
 
   async function loadDiario() {
     setLoadingDiario(true)
     try {
       const params: Record<string, any> = { desde: filtroDiarioDesde, hasta: filtroDiarioHasta }
       if (filtroDiarioTrab) params.trabajador = filtroDiarioTrab
+      if (filtroDiarioMod) params.modalidad = filtroDiarioMod
       const { data } = await api.get('/dashboard/nomina-horas-diarias', { params })
       setHorasDiarias(data)
     } catch { toast.error('Error al cargar horas diarias') }
@@ -527,6 +529,14 @@ export default function Nomina() {
           <div>
             <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Hasta</label>
             <input className="input" type="date" value={filtroDiarioHasta} onChange={e => setFiltroDiarioHasta(e.target.value)} style={{ width: 160 }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Modalidad</label>
+            <select className="input" value={filtroDiarioMod} onChange={e => setFiltroDiarioMod(e.target.value)} style={{ width: 140, height: 38 }}>
+              <option value="">Todas</option>
+              <option value="Jornada">Jornada</option>
+              <option value="Ajuste">Ajuste</option>
+            </select>
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
             <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Buscar trabajador</label>
