@@ -612,6 +612,7 @@ export default function Inventario() {
   const [loading, setLoading] = useState(false)
   const [almacenes, setAlmacenes] = useState([])
   const [alertasVenc, setAlertasVenc] = useState(null)
+  const [conciliacion, setConciliacion] = useState(null)
 
   // Filtros artículos
   const [buscar, setBuscar] = useState('')
@@ -654,6 +655,13 @@ export default function Inventario() {
     finally { setLoading(false) }
   }, [])
 
+  const loadConciliacion = useCallback(async () => {
+    setLoading(true)
+    try { const { data } = await api.get('/inventario/conciliacion-ot'); setConciliacion(data) }
+    catch { toast.error('Error al cargar conciliación') }
+    finally { setLoading(false) }
+  }, [])
+
   useEffect(() => {
     loadArticulos()
     api.get('/contabilidad/almacenes').then(r => setAlmacenes(r.data)).catch(() => {})
@@ -664,7 +672,8 @@ export default function Inventario() {
     if (tab === 'articulos') loadArticulos()
     else if (tab === 'movimientos') loadMovimientos()
     else if (tab === 'valoracion') loadValoracion()
-  }, [tab, loadArticulos, loadMovimientos, loadValoracion])
+    else if (tab === 'conciliacion') loadConciliacion()
+  }, [tab, loadArticulos, loadMovimientos, loadValoracion, loadConciliacion])
 
   function reload() {
     if (tab === 'articulos') loadArticulos()
@@ -775,6 +784,7 @@ export default function Inventario() {
         <TabBtn id="articulos" label="Artículos" icon={Package} />
         <TabBtn id="movimientos" label="Movimientos" icon={ClipboardList} />
         <TabBtn id="valoracion" label="Valoración" icon={BarChart2} />
+        <TabBtn id="conciliacion" label="Conciliación OT" icon={RefreshCw} />
       </div>
 
       {/* ══════════════ TAB: ARTÍCULOS ══════════════ */}
@@ -1145,6 +1155,99 @@ export default function Inventario() {
 
       {tab === 'valoracion' && !valoracion && !loading && (
         <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>Cargando valoración...</div>
+      )}
+
+      {/* ══════════════ TAB: CONCILIACIÓN OT ══════════════ */}
+      {tab === 'conciliacion' && conciliacion && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 16 }}>
+            {[
+              { label: 'Total líneas', value: conciliacion.total, icon: ClipboardList, color: '#374151', bg: '#f3f4f6' },
+              { label: 'Conciliados', value: conciliacion.conciliados, icon: Eye, color: '#166534', bg: '#dcfce7' },
+              { label: 'Diferencias', value: conciliacion.diferencias, icon: AlertTriangle, color: '#b45309', bg: '#fef9c3' },
+              { label: 'Solo en OT', value: conciliacion.solo_ot, icon: ArrowUpCircle, color: '#dc2626', bg: '#fee2e2' },
+              { label: 'Solo en Inv.', value: conciliacion.solo_inv, icon: ArrowDownCircle, color: '#1e40af', bg: '#dbeafe' },
+            ].map(({ label, value, icon: Icon, color, bg }) => (
+              <div key={label} className="card" style={{ borderLeft: `4px solid ${color}`, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div style={{ background: bg, borderRadius: 8, padding: 6, display: 'flex' }}><Icon size={14} color={color} /></div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>{label}</div>
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 800, color }}>{value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+            <div className="card" style={{ padding: '14px 16px', borderLeft: '4px solid #166534' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 4 }}>Valor Total OT (Consumos)</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#166534' }}>{fmt(conciliacion.valor_total_ot)}</div>
+            </div>
+            <div className="card" style={{ padding: '14px 16px', borderLeft: '4px solid #1e40af' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 4 }}>Valor Total Inventario (Salidas)</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#1e40af' }}>{fmt(conciliacion.valor_total_inv)}</div>
+            </div>
+          </div>
+
+          {conciliacion.items.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin datos de consumo para conciliar</div>
+          ) : (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>OT</th>
+                    <th>Artículo</th>
+                    <th style={{ textAlign: 'right' }}>Cant. OT</th>
+                    <th style={{ textAlign: 'right' }}>Cant. Inv.</th>
+                    <th style={{ textAlign: 'right' }}>Dif. Cant.</th>
+                    <th style={{ textAlign: 'right' }}>Valor OT</th>
+                    <th style={{ textAlign: 'right' }}>Valor Inv.</th>
+                    <th style={{ textAlign: 'right' }}>Dif. Valor</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conciliacion.items.map((r, i) => {
+                    const estadoStyles = {
+                      conciliado: { bg: '#dcfce7', color: '#166534', label: 'OK' },
+                      diferencia: { bg: '#fef9c3', color: '#854d0e', label: 'Diferencia' },
+                      solo_ot: { bg: '#fee2e2', color: '#dc2626', label: 'Solo OT' },
+                      solo_inv: { bg: '#dbeafe', color: '#1e40af', label: 'Solo Inv.' },
+                    }
+                    const est = estadoStyles[r.estado] || estadoStyles.diferencia
+                    return (
+                      <tr key={i} style={{ background: r.estado !== 'conciliado' ? `${est.bg}33` : undefined }}>
+                        <td style={{ fontWeight: 700, fontSize: 12 }}>OT-{r.ot_id}</td>
+                        <td>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{r.producto_nombre}</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af' }}>{r.producto_id}</div>
+                        </td>
+                        <td style={{ textAlign: 'right', fontSize: 13 }}>{r.cantidad_ot > 0 ? `${fmtN(r.cantidad_ot)} ${r.unidad}` : '—'}</td>
+                        <td style={{ textAlign: 'right', fontSize: 13 }}>{r.cantidad_inv > 0 ? `${fmtN(r.cantidad_inv)} ${r.unidad}` : '—'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 13, color: Math.abs(r.diferencia_qty) < 0.001 ? '#166534' : '#dc2626' }}>
+                          {Math.abs(r.diferencia_qty) < 0.001 ? '0' : `${r.diferencia_qty > 0 ? '+' : ''}${fmtN(r.diferencia_qty)}`}
+                        </td>
+                        <td style={{ textAlign: 'right', fontSize: 12 }}>{r.valor_ot > 0 ? fmt(r.valor_ot) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontSize: 12 }}>{r.valor_inv > 0 ? fmt(r.valor_inv) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 12, color: Math.abs(r.diferencia_val) < 0.01 ? '#166534' : '#dc2626' }}>
+                          {Math.abs(r.diferencia_val) < 0.01 ? '0' : fmt(r.diferencia_val)}
+                        </td>
+                        <td>
+                          <span style={{ background: est.bg, color: est.color, padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{est.label}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === 'conciliacion' && !conciliacion && !loading && (
+        <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>Cargando conciliación...</div>
       )}
 
       {/* ─── Modals ──── */}
