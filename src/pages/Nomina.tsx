@@ -300,9 +300,19 @@ export default function Nomina() {
 
   async function exportCSV() {
     try {
-      const res = await api.get(`/dashboard/export/nomina-csv?mes=${mes}&ano=${ano}`, { responseType: 'blob' })
+      const params: Record<string, any> = {}
+      if (modoFecha === 'rango' && desde && hasta) {
+        params.desde = desde; params.hasta = hasta
+      } else {
+        params.mes = mes; params.ano = ano
+      }
+      if (buscar) params.trabajador = buscar
+      if (filtroMod) params.modalidad = filtroMod
+      const res = await api.get('/dashboard/export/nomina-csv', { params, responseType: 'blob' })
       const url = window.URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a'); a.href = url; a.download = `nomina_${String(mes).padStart(2,'0')}_${ano}.csv`
+      const suffix = filtroMod ? `_${filtroMod}` : ''
+      const periodo = modoFecha === 'rango' && desde && hasta ? `${desde}_a_${hasta}` : `${String(mes).padStart(2,'0')}_${ano}`
+      const a = document.createElement('a'); a.href = url; a.download = `nomina_${periodo}${suffix}.csv`
       document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url)
     } catch { toast.error('Error al exportar nómina') }
   }
