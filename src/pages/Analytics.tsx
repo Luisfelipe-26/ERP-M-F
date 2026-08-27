@@ -135,7 +135,7 @@ export default function Analytics() {
   const [balance, setBalance] = useState([])
   const [plagas, setPlagas] = useState([])
   const [productividad, setProductividad] = useState({})
-  const [rendimiento, setRendimiento] = useState({ por_actividad: [], por_insumo: [], resumen_campos: [] })
+  const [rendimiento, setRendimiento] = useState({ rendimiento: [], insumos: [] })
 
   // Sorting
   const [sortConfig, setSortConfig] = useState({ key: 'cost_per_ha', dir: 'asc' })
@@ -169,7 +169,7 @@ export default function Analytics() {
     setCostoKg(ckg?.campos || [])
     setBalance(bal?.campos || [])
     setPlagas(pest?.campos || [])
-    setRendimiento(rend || { por_actividad: [], por_insumo: [], resumen_campos: [] })
+    setRendimiento(rend || { rendimiento: [], insumos: [] })
     if (comp?.campos?.length >= 2) {
       setRadarCampos(comp.campos.slice(0, 3).map(c => c.campo_id))
     }
@@ -571,36 +571,39 @@ export default function Analytics() {
       {/* ═══ TAB: RENDIMIENTO POR HECTÁREA ═══ */}
       {tab === 'rendimiento' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Resumen por campo — bar chart */}
+          {/* Chart: Horas/ha por actividad */}
           <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1F3A5F', margin: '0 0 16px' }}>
               <Layers size={18} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-              Costo por Hectárea por Campo — {MESES[mes - 1]} {ano}
+              Horas-Hombre por Hectárea — {MESES[mes - 1]} {ano}
             </h3>
-            {rendimiento.resumen_campos.length > 0 ? (
-              <ResponsiveContainer width="100%" height={Math.max(280, rendimiento.resumen_campos.length * 44)}>
-                <BarChart data={rendimiento.resumen_campos} layout="vertical" margin={{ left: 30 }}>
+            {(rendimiento.rendimiento || []).length > 0 ? (
+              <ResponsiveContainer width="100%" height={Math.max(300, (rendimiento.rendimiento || []).length * 36)}>
+                <BarChart data={(rendimiento.rendimiento || []).slice(0, 20).map(r => ({
+                  name: `${(r.campo || '').slice(0, 12)} / ${(r.actividad || '').slice(0, 18)}`,
+                  'Horas/ha': r.horas_ha,
+                  'Costo/ha': r.costo_ha,
+                }))} layout="vertical" margin={{ left: 40 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="campo" tick={{ fontSize: 11 }} width={140} />
-                  <Tooltip formatter={v => formatCur(v)} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={200} />
+                  <Tooltip formatter={(v, name) => name === 'Costo/ha' ? formatCur(v) : `${v} hrs`} />
                   <Legend />
-                  <Bar dataKey="costo_actividades_ha" name="Actividades/ha" stackId="a" fill="#2D6A4F" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="costo_insumos_ha" name="Insumos/ha" stackId="a" fill="#219EBC" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="Horas/ha" fill="#2D6A4F" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : <p style={{ color: '#9ca3af', textAlign: 'center', padding: 40 }}>Sin datos</p>}
           </div>
 
-          {/* Tabla: Rendimiento por Actividad */}
+          {/* Tabla: Rendimiento M.O. por Actividad por Campo */}
           <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', overflowX: 'auto' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1F3A5F', margin: '0 0 16px' }}>
-              Desglose por Actividad
+              Rendimiento de Mano de Obra por Actividad
             </h3>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Campo', 'Actividad', 'OTs', 'M.Obra', 'Insumos', 'Equipo', 'Costo Total', 'Costo/ha'].map(h => (
+                  {['Campo', 'Área (ha)', 'Actividad', 'Jornadas', 'Trabajadores', 'Horas Total', 'Prom hrs/hombre', 'Horas/ha', 'Costo M.O.', 'Costo/ha'].map(h => (
                     <th key={h} style={{
                       padding: '10px 12px', textAlign: h === 'Campo' || h === 'Actividad' ? 'left' : 'right',
                       fontSize: 12, fontWeight: 600, color: '#6b7280',
@@ -610,20 +613,22 @@ export default function Analytics() {
                 </tr>
               </thead>
               <tbody>
-                {rendimiento.por_actividad.map((r, i) => (
+                {(rendimiento.rendimiento || []).map((r, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '10px 12px', fontWeight: 500 }}>{r.campo}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatNum(r.area_ha)}</td>
                     <td style={{ padding: '10px 12px' }}>{r.actividad}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{r.num_ots}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatCur(r.costo_mo)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatCur(r.costo_insumos)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatCur(r.costo_equipo)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatCur(r.costo_total)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#14532d' }}>{formatCur(r.costo_total_ha)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{r.num_jornadas}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{r.num_trabajadores}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatNum(r.total_horas)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatNum(r.prom_horas_hombre)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#2D6A4F' }}>{formatNum(r.horas_ha)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatCur(r.total_costo)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#14532d' }}>{formatCur(r.costo_ha)}</td>
                   </tr>
                 ))}
-                {rendimiento.por_actividad.length === 0 && (
-                  <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Sin datos de actividades</td></tr>
+                {(rendimiento.rendimiento || []).length === 0 && (
+                  <tr><td colSpan={10} style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Sin datos de rendimiento</td></tr>
                 )}
               </tbody>
             </table>
@@ -632,7 +637,7 @@ export default function Analytics() {
           {/* Tabla: Insumos por Hectárea */}
           <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', overflowX: 'auto' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1F3A5F', margin: '0 0 16px' }}>
-              Desglose por Insumo
+              Insumos por Hectárea
             </h3>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -647,7 +652,7 @@ export default function Analytics() {
                 </tr>
               </thead>
               <tbody>
-                {rendimiento.por_insumo.map((r, i) => (
+                {(rendimiento.insumos || []).map((r, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '10px 12px', fontWeight: 500 }}>{r.campo}</td>
                     <td style={{ padding: '10px 12px' }}>{r.producto}</td>
@@ -659,7 +664,7 @@ export default function Analytics() {
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#14532d' }}>{formatCur(r.costo_ha)}</td>
                   </tr>
                 ))}
-                {rendimiento.por_insumo.length === 0 && (
+                {(rendimiento.insumos || []).length === 0 && (
                   <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Sin datos de insumos</td></tr>
                 )}
               </tbody>
