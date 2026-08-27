@@ -875,18 +875,20 @@ export default function Inventario() {
 
       {/* ══════════════ TAB: MOVIMIENTOS ══════════════ */}
       {tab === 'movimientos' && (() => {
-        const totalEntradas = movimientos.filter(m => m.tipo === 'entrada').reduce((s, m) => s + (m.cantidad * (m.costo_unitario || 0)), 0)
-        const totalSalidas = movimientos.filter(m => m.tipo !== 'entrada').reduce((s, m) => s + (m.cantidad * (m.costo_unitario || 0)), 0)
-        const cantEntradas = movimientos.filter(m => m.tipo === 'entrada').length
-        const cantSalidas = movimientos.filter(m => m.tipo !== 'entrada').length
+        const movsIn = movimientos.filter(m => m.tipo === 'entrada')
+        const movsOut = movimientos.filter(m => m.tipo !== 'entrada')
+        const qtyEntradas = movsIn.reduce((s, m) => s + (m.cantidad || 0), 0)
+        const qtySalidas = movsOut.reduce((s, m) => s + (m.cantidad || 0), 0)
+        const valEntradas = movsIn.reduce((s, m) => s + (m.cantidad * (m.costo_unitario || 0)), 0)
+        const valSalidas = movsOut.reduce((s, m) => s + (m.cantidad * (m.costo_unitario || 0)), 0)
         return (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 16 }}>
             {[
               { label: 'Movimientos', value: movimientos.length, icon: ClipboardList, color: '#374151', bg: '#f3f4f6' },
-              { label: `Entradas (${cantEntradas})`, value: fmt(totalEntradas), icon: ArrowDownCircle, color: '#166534', bg: '#dcfce7' },
-              { label: `Salidas (${cantSalidas})`, value: fmt(totalSalidas), icon: ArrowUpCircle, color: '#dc2626', bg: '#fee2e2' },
-              { label: 'Neto', value: fmt(totalEntradas - totalSalidas), icon: DollarSign, color: '#1e40af', bg: '#dbeafe' },
+              { label: `Entradas (${movsIn.length})`, value: fmt(valEntradas), icon: ArrowDownCircle, color: '#166534', bg: '#dcfce7' },
+              { label: `Salidas (${movsOut.length})`, value: fmt(valSalidas), icon: ArrowUpCircle, color: '#dc2626', bg: '#fee2e2' },
+              { label: 'Neto', value: fmt(valEntradas - valSalidas), icon: DollarSign, color: '#1e40af', bg: '#dbeafe' },
             ].map(({ label, value, icon: Icon, color, bg }) => (
               <div key={label} className="card" style={{ borderLeft: `4px solid ${color}`, padding: '14px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -965,9 +967,16 @@ export default function Inventario() {
                 <tfoot>
                   <tr style={{ background: '#f9fafb', fontWeight: 700 }}>
                     <td colSpan={6} style={{ textAlign: 'right', fontSize: 12, color: '#374151' }}>TOTALES ({movimientos.length} mov.)</td>
-                    <td style={{ textAlign: 'right', color: '#166534', fontSize: 13 }}>{fmt(totalEntradas)}</td>
-                    <td style={{ textAlign: 'right', color: '#dc2626', fontSize: 13 }}>{fmt(totalSalidas)}</td>
-                    <td colSpan={2} style={{ textAlign: 'right', color: '#1e40af', fontSize: 13 }}>Neto: {fmt(totalEntradas - totalSalidas)}</td>
+                    <td style={{ textAlign: 'right', color: '#166534', fontSize: 13 }}>
+                      <div>{fmtN(qtyEntradas)}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600 }}>{fmt(valEntradas)}</div>
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#dc2626', fontSize: 13 }}>
+                      <div>{fmtN(qtySalidas)}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600 }}>{fmt(valSalidas)}</div>
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#1e40af', fontSize: 13 }}>—</td>
+                    <td style={{ textAlign: 'right', color: '#1e40af', fontSize: 13, fontWeight: 800 }}>{fmt(valEntradas - valSalidas)}</td>
                   </tr>
                 </tfoot>
               )}
