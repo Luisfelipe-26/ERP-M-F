@@ -545,17 +545,29 @@ export default function Nomina() {
           const filteredDiario = filtroDiarioTrab
             ? horasDiarias.filter((r: any) => r.nombre.toLowerCase().includes(filtroDiarioTrab.toLowerCase()) || r.id_trab.toLowerCase().includes(filtroDiarioTrab.toLowerCase()))
             : horasDiarias
-          const fechasUnicas = [...new Set(filteredDiario.map((r: any) => r.fecha))].sort()
+          const fechas = [...new Set(filteredDiario.map((r: any) => r.fecha))].sort()
           const totalHorasDiario = filteredDiario.reduce((s: number, r: any) => s + r.horas, 0)
           const totalCostoDiario = filteredDiario.reduce((s: number, r: any) => s + r.costo, 0)
-          const trabUnicos = [...new Set(filteredDiario.map((r: any) => r.id_trab))]
+
+          const trabMap: Record<string, { id: string; nombre: string; cargo: string }> = {}
+          filteredDiario.forEach((r: any) => { trabMap[r.id_trab] = { id: r.id_trab, nombre: r.nombre, cargo: r.cargo } })
+          const trabajadores = Object.values(trabMap).sort((a, b) => a.nombre.localeCompare(b.nombre))
+
+          const matrix: Record<string, Record<string, { horas: number; costo: number }>> = {}
+          filteredDiario.forEach((r: any) => {
+            if (!matrix[r.id_trab]) matrix[r.id_trab] = {}
+            matrix[r.id_trab][r.fecha] = { horas: r.horas, costo: r.costo }
+          })
+
+          const totalPorFecha: Record<string, number> = {}
+          fechas.forEach(f => { totalPorFecha[f] = filteredDiario.filter((r: any) => r.fecha === f).reduce((s: number, r: any) => s + r.horas, 0) })
 
           return (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 20 }}>
                 {[
-                  { label: 'Días con Registro', value: fechasUnicas.length, color: '#1e40af', border: '#93c5fd' },
-                  { label: 'Trabajadores', value: trabUnicos.length, color: '#166534', border: '#86efac' },
+                  { label: 'Días con Registro', value: fechas.length, color: '#1e40af', border: '#93c5fd' },
+                  { label: 'Trabajadores', value: trabajadores.length, color: '#166534', border: '#86efac' },
                   { label: 'Total Horas', value: `${totalHorasDiario.toFixed(1)}h`, color: '#7c3aed', border: '#c4b5fd' },
                   { label: 'Total Costo', value: fmt(totalCostoDiario), color: '#92400e', border: '#fde68a' },
                 ].map(({ label, value, color, border }) => (
@@ -567,65 +579,78 @@ export default function Nomina() {
               </div>
 
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <table style={{ fontSize: 12 }}>
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Día</th>
-                      <th>ID</th>
-                      <th>Trabajador</th>
-                      <th>Cargo</th>
-                      <th style={{ textAlign: 'center' }}>Jornadas</th>
-                      <th style={{ textAlign: 'right' }}>Horas</th>
-                      <th style={{ textAlign: 'right' }}>Costo</th>
-                      <th>OTs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loadingDiario ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
-                    ) : filteredDiario.length === 0 ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin registros en este período</td></tr>
-                    ) : (() => {
-                      let lastFecha = ''
-                      return filteredDiario.map((r: any, i: number) => {
-                        const isNewDate = r.fecha !== lastFecha
-                        lastFecha = r.fecha
-                        const dateObj = new Date(r.fecha + 'T12:00')
-                        const dia = dateObj.toLocaleDateString('es-DO', { weekday: 'short' })
-                        const fechaFmt = dateObj.toLocaleDateString('es-DO', { day: '2-digit', month: 'short' })
-                        const otsList = r.ots ? [...new Set(r.ots.split(','))].map((ot: string) => `#${ot}`).join(', ') : '—'
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ fontSize: 11, borderCollapse: 'collapse', width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ position: 'sticky', left: 0, background: '#f9fafb', zIndex: 2, minWidth: 160, padding: '8px 12px', textAlign: 'left', borderRight: '2px solid #e5e7eb' }}>
+                          Trabajador
+                        </th>
+                        {fechas.map(f => {
+                          const d = new Date(f + 'T12:00')
+                          return (
+                            <th key={f} style={{ padding: '6px 4px', textAlign: 'center', minWidth: 52, fontWeight: 700 }}>
+                              <div style={{ fontSize: 10, color: '#6b7280' }}>{d.toLocaleDateString('es-DO', { weekday: 'short' })}</div>
+                              <div style={{ fontSize: 12, color: '#111827' }}>{d.getDate()}</div>
+                            </th>
+                          )
+                        })}
+                        <th style={{ padding: '8px 12px', textAlign: 'center', minWidth: 60, borderLeft: '2px solid #e5e7eb', fontWeight: 800, color: '#7c3aed' }}>
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingDiario ? (
+                        <tr><td colSpan={fechas.length + 2} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+                      ) : trabajadores.length === 0 ? (
+                        <tr><td colSpan={fechas.length + 2} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin registros en este período</td></tr>
+                      ) : trabajadores.map(t => {
+                        const totalTrab = fechas.reduce((s, f) => s + (matrix[t.id]?.[f]?.horas || 0), 0)
                         return (
-                          <tr key={`${r.fecha}-${r.id_trab}`}
-                            style={{ borderTop: isNewDate && i > 0 ? '2px solid #e5e7eb' : undefined }}>
-                            <td style={{ fontWeight: isNewDate ? 700 : 400, color: isNewDate ? '#111827' : '#9ca3af' }}>
-                              {isNewDate ? fechaFmt : ''}
+                          <tr key={t.id}>
+                            <td style={{ position: 'sticky', left: 0, background: 'white', zIndex: 1, padding: '6px 12px', borderRight: '2px solid #e5e7eb', whiteSpace: 'nowrap' }}>
+                              <span style={{ fontWeight: 600, color: '#111827' }}>{t.nombre}</span>
+                              <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 6 }}>{t.id}</span>
                             </td>
-                            <td style={{ color: '#6b7280', fontSize: 11 }}>{isNewDate ? dia : ''}</td>
-                            <td style={{ fontWeight: 600, color: '#166534', fontSize: 11 }}>{r.id_trab}</td>
-                            <td style={{ fontWeight: 500 }}>{r.nombre}</td>
-                            <td><span className="badge badge-blue" style={{ fontSize: 10 }}>{r.cargo || '—'}</span></td>
-                            <td style={{ textAlign: 'center' }}><span className="badge badge-green">{r.jornadas}</span></td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: '#7c3aed' }}>{r.horas.toFixed(1)}h</td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: '#166534' }}>{fmt(r.costo)}</td>
-                            <td style={{ fontSize: 11, color: '#6b7280' }}>{otsList}</td>
+                            {fechas.map(f => {
+                              const cell = matrix[t.id]?.[f]
+                              if (!cell) return <td key={f} style={{ textAlign: 'center', padding: '6px 4px', color: '#e5e7eb' }}>—</td>
+                              const intensity = Math.min(cell.horas / 10, 1)
+                              const bg = `rgba(124, 58, 237, ${0.08 + intensity * 0.18})`
+                              return (
+                                <td key={f} style={{ textAlign: 'center', padding: '6px 4px', background: bg, fontWeight: 700, color: '#7c3aed', cursor: 'default' }}
+                                  title={`${t.nombre} · ${f}\n${cell.horas.toFixed(1)}h · ${fmt(cell.costo)}`}>
+                                  {cell.horas.toFixed(1)}
+                                </td>
+                              )
+                            })}
+                            <td style={{ textAlign: 'center', padding: '6px 12px', borderLeft: '2px solid #e5e7eb', fontWeight: 800, color: '#7c3aed', fontSize: 13 }}>
+                              {totalTrab.toFixed(1)}
+                            </td>
                           </tr>
                         )
-                      })
-                    })()}
-                  </tbody>
-                  {filteredDiario.length > 0 && (
-                    <tfoot>
-                      <tr style={{ background: '#f9fafb', fontWeight: 700 }}>
-                        <td colSpan={5} style={{ padding: '12px', fontSize: 12, color: '#6b7280' }}>TOTAL</td>
-                        <td style={{ padding: '12px', textAlign: 'center', color: '#166534' }}>{filteredDiario.reduce((s: number, r: any) => s + r.jornadas, 0)}</td>
-                        <td style={{ padding: '12px', textAlign: 'right', color: '#7c3aed' }}>{totalHorasDiario.toFixed(1)}h</td>
-                        <td style={{ padding: '12px', textAlign: 'right', color: '#166534', fontSize: 14 }}>{fmt(totalCostoDiario)}</td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
+                      })}
+                    </tbody>
+                    {trabajadores.length > 0 && (
+                      <tfoot>
+                        <tr style={{ background: '#f9fafb' }}>
+                          <td style={{ position: 'sticky', left: 0, background: '#f9fafb', zIndex: 1, padding: '8px 12px', fontWeight: 800, fontSize: 11, color: '#6b7280', borderRight: '2px solid #e5e7eb' }}>
+                            TOTAL / DÍA
+                          </td>
+                          {fechas.map(f => (
+                            <td key={f} style={{ textAlign: 'center', padding: '6px 4px', fontWeight: 800, color: '#111827', fontSize: 12 }}>
+                              {totalPorFecha[f]?.toFixed(1)}
+                            </td>
+                          ))}
+                          <td style={{ textAlign: 'center', padding: '8px 12px', borderLeft: '2px solid #e5e7eb', fontWeight: 800, color: '#7c3aed', fontSize: 15 }}>
+                            {totalHorasDiario.toFixed(1)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
               </div>
             </>
           )
