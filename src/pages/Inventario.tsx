@@ -874,8 +874,30 @@ export default function Inventario() {
       )}
 
       {/* ══════════════ TAB: MOVIMIENTOS ══════════════ */}
-      {tab === 'movimientos' && (
+      {tab === 'movimientos' && (() => {
+        const totalEntradas = movimientos.filter(m => m.tipo === 'entrada').reduce((s, m) => s + (m.cantidad * (m.costo_unitario || 0)), 0)
+        const totalSalidas = movimientos.filter(m => m.tipo !== 'entrada').reduce((s, m) => s + (m.cantidad * (m.costo_unitario || 0)), 0)
+        const cantEntradas = movimientos.filter(m => m.tipo === 'entrada').length
+        const cantSalidas = movimientos.filter(m => m.tipo !== 'entrada').length
+        return (
         <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 16 }}>
+            {[
+              { label: 'Movimientos', value: movimientos.length, icon: ClipboardList, color: '#374151', bg: '#f3f4f6' },
+              { label: `Entradas (${cantEntradas})`, value: fmt(totalEntradas), icon: ArrowDownCircle, color: '#166534', bg: '#dcfce7' },
+              { label: `Salidas (${cantSalidas})`, value: fmt(totalSalidas), icon: ArrowUpCircle, color: '#dc2626', bg: '#fee2e2' },
+              { label: 'Neto', value: fmt(totalEntradas - totalSalidas), icon: DollarSign, color: '#1e40af', bg: '#dbeafe' },
+            ].map(({ label, value, icon: Icon, color, bg }) => (
+              <div key={label} className="card" style={{ borderLeft: `4px solid ${color}`, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div style={{ background: bg, borderRadius: 8, padding: 6, display: 'flex' }}><Icon size={14} color={color} /></div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>{label}</div>
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 800, color }}>{value}</div>
+              </div>
+            ))}
+          </div>
+
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
             <select className="select" style={{ width: 200 }} value={filtroMovProd} onChange={e => { setFiltroMovProd(e.target.value); }}>
               <option value="">Todos los artículos</option>
@@ -939,10 +961,21 @@ export default function Inventario() {
                   )
                 })}
               </tbody>
+              {movimientos.length > 0 && (
+                <tfoot>
+                  <tr style={{ background: '#f9fafb', fontWeight: 700 }}>
+                    <td colSpan={6} style={{ textAlign: 'right', fontSize: 12, color: '#374151' }}>TOTALES ({movimientos.length} mov.)</td>
+                    <td style={{ textAlign: 'right', color: '#166534', fontSize: 13 }}>{fmt(totalEntradas)}</td>
+                    <td style={{ textAlign: 'right', color: '#dc2626', fontSize: 13 }}>{fmt(totalSalidas)}</td>
+                    <td colSpan={2} style={{ textAlign: 'right', color: '#1e40af', fontSize: 13 }}>Neto: {fmt(totalEntradas - totalSalidas)}</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </>
-      )}
+        )
+      })()}
 
       {/* ══════════════ TAB: VALORACIÓN ══════════════ */}
       {tab === 'valoracion' && valoracion && (
