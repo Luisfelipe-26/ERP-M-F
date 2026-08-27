@@ -287,7 +287,10 @@ export default function Nomina() {
     : nomina
   const total = filtered.reduce((s, r) => s + r.total_ganado, 0)
   const totalJornadas = filtered.reduce((s, r) => s + r.num_jornadas, 0)
+  const totalHoras = filtered.reduce((s, r) => s + (r.total_horas || 0), 0)
   const activos = filtered.filter(r => r.num_jornadas > 0)
+  const horasRanking = [...activos].sort((a, b) => (b.total_horas || 0) - (a.total_horas || 0))
+  const maxHoras = horasRanking.length > 0 ? horasRanking[0].total_horas || 1 : 1
 
   const anos = Array.from({ length: 3 }, (_, i) => now.getFullYear() - i)
 
@@ -351,11 +354,12 @@ export default function Nomina() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 20 }}>
         {[
           { label: 'Total Nómina', value: fmt(total), sub: `${MESES[mes-1]} ${ano}`, color: '#166534', bg: '#dcfce7', border: '#86efac' },
           { label: 'Trabajadores Activos', value: activos.length, sub: `de ${nomina.length} en nómina`, color: '#1e40af', bg: '#dbeafe', border: '#93c5fd' },
           { label: 'Total Jornadas', value: totalJornadas, sub: 'en el período', color: '#92400e', bg: '#fef3c7', border: '#fde68a' },
+          { label: 'Horas Trabajadas', value: `${totalHoras.toFixed(1)}h`, sub: activos.length > 0 ? `${(totalHoras / activos.length).toFixed(1)}h promedio` : '—', color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
         ].map(({ label, value, sub, color, bg, border }) => (
           <div key={label} className="card" style={{ borderLeft: `4px solid ${border}` }}>
             <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{label}</div>
@@ -373,15 +377,16 @@ export default function Nomina() {
               <th>Trabajador</th>
               <th>Cargo</th>
               <th style={{ textAlign: 'center' }}>Jornadas</th>
+              <th style={{ textAlign: 'right' }}>Horas</th>
               <th style={{ textAlign: 'right' }}>Total Ganado</th>
               <th style={{ textAlign: 'right' }}>% del total</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No hay registros para este período</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No hay registros para este período</td></tr>
             ) : filtered.map(r => {
               const pct = total > 0 ? (r.total_ganado / total * 100) : 0
               const activo = r.num_jornadas > 0
@@ -395,6 +400,9 @@ export default function Nomina() {
                   <td><span className="badge badge-blue" style={{ fontSize: 11 }}>{r.cargo || '—'}</span></td>
                   <td style={{ textAlign: 'center' }}>
                     {activo ? <span className="badge badge-green">{r.num_jornadas}</span> : <span style={{ color: '#9ca3af', fontSize: 12 }}>Sin jornadas</span>}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: activo ? '#7c3aed' : '#9ca3af' }}>
+                    {activo ? `${(r.total_horas || 0).toFixed(1)}h` : '—'}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: activo ? '#166534' : '#9ca3af' }}>
                     {activo ? fmt(r.total_ganado) : '—'}
@@ -418,6 +426,7 @@ export default function Nomina() {
               <tr style={{ background: '#f9fafb', fontWeight: 700 }}>
                 <td colSpan={3} style={{ padding: '12px', fontSize: 12, color: '#6b7280' }}>TOTAL NÓMINA</td>
                 <td style={{ padding: '12px', textAlign: 'center', color: '#166534' }}>{totalJornadas}</td>
+                <td style={{ padding: '12px', textAlign: 'right', color: '#7c3aed' }}>{totalHoras.toFixed(1)}h</td>
                 <td style={{ padding: '12px', textAlign: 'right', color: '#166534', fontSize: 16 }}>{fmt(total)}</td>
                 <td style={{ padding: '12px', textAlign: 'right', color: '#6b7280' }}>100%</td>
               </tr>
@@ -425,6 +434,43 @@ export default function Nomina() {
           )}
         </table>
       </div>
+
+      {horasRanking.length > 0 && (
+        <div className="card" style={{ marginTop: 20 }}>
+          <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#7c3aed' }}>Horas Trabajadas por Trabajador</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {horasRanking.map((r, i) => {
+              const pctHoras = maxHoras > 0 ? ((r.total_horas || 0) / maxHoras) * 100 : 0
+              const costoHoraPromedio = r.total_horas > 0 ? r.total_ganado / r.total_horas : 0
+              return (
+                <div key={r.id_trab} style={{ display: 'grid', gridTemplateColumns: '24px 180px 1fr 80px 100px', gap: 12, alignItems: 'center', padding: '6px 0', borderBottom: i < horasRanking.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textAlign: 'right' }}>{i + 1}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nombre}</span>
+                  <div style={{ height: 20, background: '#f5f3ff', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                    <div style={{ width: `${pctHoras}%`, height: '100%', background: 'linear-gradient(90deg, #8b5cf6, #7c3aed)', borderRadius: 4, transition: 'width 0.3s' }} />
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#7c3aed', textAlign: 'right' }}>{(r.total_horas || 0).toFixed(1)}h</span>
+                  <span style={{ fontSize: 11, color: '#6b7280', textAlign: 'right' }}>{fmt(costoHoraPromedio)}/h</span>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 16, paddingTop: 12, borderTop: '1px solid #e5e7eb' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 }}>Total Horas</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#7c3aed' }}>{totalHoras.toFixed(1)}h</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 }}>Promedio / Trabajador</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#7c3aed' }}>{activos.length > 0 ? (totalHoras / activos.length).toFixed(1) : 0}h</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 }}>Costo Promedio / Hora</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#7c3aed' }}>{totalHoras > 0 ? fmt(total / totalHoras) : '—'}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalTrabajador && (
         <ModalDetalleTrabajador
