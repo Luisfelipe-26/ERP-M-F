@@ -6,7 +6,8 @@ import {
 } from 'recharts'
 import {
   BarChart3, TrendingUp, Users, Package, Droplets, Bug, MapPin,
-  ArrowUpRight, ArrowDownRight, Minus, ChevronUp, ChevronDown, Loader2, RefreshCw
+  ArrowUpRight, ArrowDownRight, Minus, ChevronUp, ChevronDown, Loader2, RefreshCw,
+  Calendar
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../api'
@@ -113,9 +114,17 @@ const MONTH_NAMES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago',
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
 export default function Analytics() {
+  const now = new Date()
   const [tab, setTab] = useState('resumen')
   const [loading, setLoading] = useState(true)
+
+  // Filters
+  const [mes, setMes] = useState(now.getMonth() + 1)
+  const [ano, setAno] = useState(now.getFullYear())
+  const anos = Array.from({ length: 5 }, (_, i) => now.getFullYear() - i)
 
   // Data stores
   const [tendencia, setTendencia] = useState([])
@@ -136,14 +145,18 @@ export default function Analytics() {
   async function loadAll() {
     setLoading(true)
     try {
+      const fd = `${ano}-${String(mes).padStart(2, '0')}-01`
+      const lastDay = new Date(ano, mes, 0).getDate()
+      const fh = `${ano}-${String(mes).padStart(2, '0')}-${lastDay}`
+
       const [tend, prod, ins, comp, ckg, bal, pest] = await Promise.all([
         apiFetch('/analytics/tendencia-costos?meses=12'),
-        apiFetch('/analytics/productividad-trabajadores'),
-        apiFetch('/analytics/eficiencia-insumos'),
-        apiFetch('/analytics/comparativo-campos'),
-        apiFetch('/analytics/costo-por-kg'),
-        apiFetch('/analytics/balance-hidrico-resumen'),
-        apiFetch('/analytics/presion-plagas'),
+        apiFetch(`/analytics/productividad-trabajadores?mes=${mes}&ano=${ano}`),
+        apiFetch(`/analytics/eficiencia-insumos?fecha_desde=${fd}&fecha_hasta=${fh}`),
+        apiFetch(`/analytics/comparativo-campos?ano=${ano}`),
+        apiFetch(`/analytics/costo-por-kg?temporada=${ano}`),
+        apiFetch(`/analytics/balance-hidrico-resumen?ano=${ano}`),
+        apiFetch(`/analytics/presion-plagas?fecha_desde=${fd}&fecha_hasta=${fh}`),
       ])
       setTendencia(tend.tendencia || [])
       setTrabajadores(prod.trabajadores || [])
@@ -162,7 +175,7 @@ export default function Analytics() {
     setLoading(false)
   }
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [mes, ano])
 
   function handleSort(key) {
     setSortConfig(prev => ({
@@ -247,15 +260,24 @@ export default function Analytics() {
             Analytics Avanzado
           </h1>
           <p style={{ color: '#6b7280', fontSize: 14, margin: '4px 0 0' }}>
-            KPIs agrícolas • Finca Aguacate Hass CORVUS
+            {MESES[mes - 1]} {ano} • Finca Aguacate Hass CORVUS
           </p>
         </div>
-        <button onClick={loadAll} style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8,
-          border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 500
-        }}>
-          <RefreshCw size={14} /> Actualizar
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Calendar size={16} color="#6b7280" />
+          <select className="select" style={{ width: 140, height: 36, fontSize: 13 }} value={mes} onChange={e => setMes(Number(e.target.value))}>
+            {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+          </select>
+          <select className="select" style={{ width: 90, height: 36, fontSize: 13 }} value={ano} onChange={e => setAno(Number(e.target.value))}>
+            {anos.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <button onClick={loadAll} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8,
+            border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 500
+          }}>
+            <RefreshCw size={14} /> Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -348,7 +370,7 @@ export default function Analytics() {
           {/* Worker ranking table */}
           <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', overflowX: 'auto' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1F3A5F', margin: '0 0 16px' }}>
-              Ranking de Productividad — {MONTH_NAMES[productividad.mes || 1]} {productividad.ano || ''}
+              Ranking de Productividad — {MESES[mes - 1]} {ano}
             </h3>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -498,7 +520,7 @@ export default function Analytics() {
           <div style={{ background: 'white', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', overflowX: 'auto' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1F3A5F', margin: '0 0 16px' }}>
               <MapPin size={18} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-              Comparativo de Campos — Año {new Date().getFullYear()}
+              Comparativo de Campos — Año {ano}
             </h3>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
