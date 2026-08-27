@@ -41,7 +41,7 @@ const StockBadge = ({ stock, minimo }) => {
 }
 
 // ─── Modal Base ───────────────────────────────────────────────────────────────
-const Modal = ({ title, subtitle, onClose, children, width = 560 }) => (
+const Modal = ({ title, subtitle = '', onClose, children, width = 560 }) => (
   <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
     <div className="modal" style={{ maxWidth: width, width: '90%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
@@ -56,7 +56,7 @@ const Modal = ({ title, subtitle, onClose, children, width = 560 }) => (
   </div>
 )
 
-const Field = ({ label, children, full }) => (
+const Field = ({ label, children, full = false }) => (
   <div style={{ gridColumn: full ? '1/-1' : undefined }}>
     <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</label>
     {children}
@@ -462,7 +462,7 @@ const ModalKardex = ({ producto, onClose }) => {
                   const val = (m.stock_post || 0) * (m.costo_promedio_post || 0)
                   return (
                     <tr key={m.id} style={{ background: i % 2 === 0 ? 'white' : '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ padding: '7px 10px', fontWeight: 700, fontSize: 11, color: '#374151', whiteSpace: 'nowrap' }}>{m.num_documento || '—'}</td>
+                      <td style={{ padding: '7px 10px', fontWeight: 700, fontSize: 11, color: '#374151', whiteSpace: 'nowrap' }}>{m.num_documento || '—'}{m.asiento_id ? <span title="Asiento contable vinculado" style={{ marginLeft: 4, color: '#3b82f6', fontSize: 10 }}>📒</span> : ''}</td>
                       <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtDate(m.fecha)}</td>
                       <td style={{ padding: '7px 10px' }}><Badge tipo_doc={m.tipo_doc} /></td>
                       <td style={{ padding: '7px 10px', color: '#6b7280' }}>{m.motivo || '—'}</td>

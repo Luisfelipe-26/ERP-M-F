@@ -19,7 +19,7 @@ function ModalDetalleTrabajador({ trabajador, mes, ano, onClose }) {
   const [jornadas, setJornadas] = useState([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null)
-  const [editForm, setEditForm] = useState({})
+  const [editForm, setEditForm] = useState<Record<string, any>>({})
   const [saving, setSaving] = useState(false)
   const navigate = useNavigate()
 

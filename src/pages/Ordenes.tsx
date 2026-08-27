@@ -50,8 +50,9 @@ export default function Ordenes() {
         if (input === null) return // canceló
         hora_cierre = input || ahora
       }
-      await api.put(`/ordenes/${ot_id}/estado`, null, { params: { estado, hora_cierre } })
-      toast.success(`Estado actualizado a: ${estado}${hora_cierre ? ` · Cierre: ${hora_cierre}` : ''}`)
+      const res = await api.put(`/ordenes/${ot_id}/estado`, null, { params: { estado, hora_cierre } })
+      const asientoRef = res.data?.asiento ? ` · Asiento: ${res.data.asiento}` : ''
+      toast.success(`Estado actualizado a: ${estado}${hora_cierre ? ` · Cierre: ${hora_cierre}` : ''}${asientoRef}`)
       load()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al cambiar estado')

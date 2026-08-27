@@ -20,7 +20,7 @@ const Badge = ({ estado }) => {
   return <span style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}`, borderRadius: 6, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>{estado}</span>
 }
 
-const Modal = ({ title, subtitle, onClose, children, width = 700 }) => (
+const Modal = ({ title, subtitle = '', onClose, children, width = 700 }) => (
   <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
     <div className="modal" style={{ maxWidth: width, width: '95%', maxHeight: '90vh', overflow: 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
@@ -259,7 +259,8 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
         }))
       }
       const { data: result } = await api.post(`/ordenes-compra/${ocId}/recepcion`, payload)
-      toast.success(`Recepción registrada — Estado: ${result.estado}`)
+      const asientoRef = result.asiento ? ` · Asiento: ${result.asiento}` : ''
+      toast.success(`Recepción registrada — Estado: ${result.estado}${asientoRef}`)
       onDone()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al registrar recepción')
@@ -380,6 +381,15 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
       {orden.observaciones && (
         <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
           <strong>Observaciones:</strong> {orden.observaciones}
+        </div>
+      )}
+
+      {data.asiento_contable && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+          <span>📒</span>
+          <span style={{ fontWeight: 700, color: '#1e40af' }}>Asiento: {data.asiento_contable.numero}</span>
+          <span style={{ color: '#6b7280' }}>{data.asiento_contable.fecha} · {fmt(data.asiento_contable.total_debe)}</span>
+          <span style={{ marginLeft: 'auto', background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{data.asiento_contable.estado}</span>
         </div>
       )}
 
@@ -565,7 +575,7 @@ export default function Compras() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const params = {}
+      const params: Record<string, string> = {}
       if (filtroEstado) params.estado = filtroEstado
       if (buscar) params.proveedor = buscar
       const { data } = await api.get('/ordenes-compra', { params })

@@ -16,15 +16,20 @@ export default function OrdenDetalle() {
   }, [id])
 
   async function cambiarEstado(estado) {
-    await api.put(`/ordenes/${id}/estado`, null, { params: { estado } })
-    toast.success(`Estado: ${estado}`)
-    const r = await api.get(`/ordenes/${id}/detalle`)
-    setData(r.data)
+    try {
+      const res = await api.put(`/ordenes/${id}/estado`, null, { params: { estado } })
+      const asientoRef = res.data?.asiento ? ` · Asiento: ${res.data.asiento}` : ''
+      toast.success(`Estado: ${estado}${asientoRef}`)
+      const r = await api.get(`/ordenes/${id}/detalle`)
+      setData(r.data)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Error al cambiar estado')
+    }
   }
 
   if (!data) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
 
-  const { orden, mano_obra, detalles } = data
+  const { orden, mano_obra, detalles, asiento_contable } = data
 
   return (
     <div style={{ maxWidth: 900 }}>
@@ -85,6 +90,18 @@ export default function OrdenDetalle() {
           </div>
         ))}
       </div>
+
+      {asiento_contable && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12, fontSize: 13 }}>
+          <span style={{ fontSize: 16 }}>📒</span>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontWeight: 700, color: '#1e40af' }}>Asiento: {asiento_contable.numero}</span>
+            <span style={{ color: '#6b7280', marginLeft: 8 }}>{asiento_contable.fecha}</span>
+            <span style={{ color: '#6b7280', marginLeft: 8 }}>· {fmt(asiento_contable.total_debe)}</span>
+          </div>
+          <span style={{ background: asiento_contable.estado === 'contabilizado' ? '#dcfce7' : '#fef9c3', color: asiento_contable.estado === 'contabilizado' ? '#166534' : '#854d0e', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{asiento_contable.estado}</span>
+        </div>
+      )}
 
       {/* Mano de obra */}
       {mano_obra.length > 0 && (
