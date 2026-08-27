@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import {
   Plus, Search, Download, RefreshCw, AlertTriangle, TrendingUp, TrendingDown,
   Package, DollarSign, Edit2, Trash2, BarChart2, ArrowDownCircle, ArrowUpCircle,
-  ClipboardList, ChevronRight, X, Eye
+  ClipboardList, ChevronRight, X, Eye, Clock
 } from 'lucide-react'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ const SearchSelect = ({ items, value, onChange, placeholder = 'Buscar artículo.
 }
 
 // ─── Modal GR — Entrada de Mercancía ──────────────────────────────────────────
-const ModalGR = ({ producto, articulos, onClose, onDone }) => {
+const ModalGR = ({ producto, articulos, almacenes, onClose, onDone }) => {
   const [form, setForm] = useState({
     producto_id: producto?.id_prod || '',
     cantidad: '',
@@ -146,6 +146,7 @@ const ModalGR = ({ producto, articulos, onClose, onDone }) => {
     fecha: new Date().toISOString().slice(0, 10),
     observacion: '',
     orden_compra_id: '',
+    almacen_id: '',
   })
   const [saving, setSaving] = useState(false)
   const [ocs, setOcs] = useState([])
@@ -169,6 +170,7 @@ const ModalGR = ({ producto, articulos, onClose, onDone }) => {
         fecha: form.fecha ? new Date(form.fecha).toISOString() : undefined,
         vencimiento: form.vencimiento ? new Date(form.vencimiento).toISOString() : undefined,
         orden_compra_id: form.orden_compra_id || undefined,
+        almacen_id: form.almacen_id ? Number(form.almacen_id) : undefined,
       })
       toast.success('Entrada de mercancía registrada')
       onDone()
@@ -225,6 +227,14 @@ const ModalGR = ({ producto, articulos, onClose, onDone }) => {
         <Field label="Fecha Recepción *">
           <input className="input" type="date" value={form.fecha} onChange={e => f('fecha', e.target.value)} required />
         </Field>
+        {(almacenes || []).length > 0 && (
+          <Field label="Almacén">
+            <select className="select" value={form.almacen_id} onChange={e => f('almacen_id', e.target.value)}>
+              <option value="">— Sin almacén —</option>
+              {almacenes.map(a => <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>)}
+            </select>
+          </Field>
+        )}
         <Field label="Observación" full>
           <input className="input" value={form.observacion} onChange={e => f('observacion', e.target.value)} />
         </Field>
@@ -253,7 +263,7 @@ const ModalGR = ({ producto, articulos, onClose, onDone }) => {
 }
 
 // ─── Modal GI — Salida de Mercancía ──────────────────────────────────────────
-const ModalGI = ({ producto, onClose, onDone }) => {
+const ModalGI = ({ producto, articulos, almacenes, onClose, onDone }) => {
   const [form, setForm] = useState({
     producto_id: producto?.id_prod || '',
     cantidad: '',
@@ -262,6 +272,7 @@ const ModalGI = ({ producto, onClose, onDone }) => {
     fecha: new Date().toISOString().slice(0, 10),
     observacion: '',
     ot_id: '',
+    almacen_id: '',
   })
   const [saving, setSaving] = useState(false)
   const [ots, setOts] = useState([])
@@ -280,6 +291,7 @@ const ModalGI = ({ producto, onClose, onDone }) => {
         cantidad: Number(form.cantidad),
         fecha: form.fecha ? new Date(form.fecha).toISOString() : undefined,
         ot_id: form.ot_id ? Number(form.ot_id) : undefined,
+        almacen_id: form.almacen_id ? Number(form.almacen_id) : undefined,
       })
       toast.success('Salida de mercancía registrada')
       onDone()
@@ -294,8 +306,8 @@ const ModalGI = ({ producto, onClose, onDone }) => {
     <Modal title="Salida de Mercancía (GI)" subtitle={producto ? `${producto.producto} · Stock disponible: ${fmtN(producto.stock_actual)} ${producto.unidad}` : undefined} onClose={onClose} width={560}>
       <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         {!producto && (
-          <Field label="ID Artículo *" full>
-            <input className="input" value={form.producto_id} onChange={e => f('producto_id', e.target.value)} required />
+          <Field label="Artículo *" full>
+            <SearchSelect items={articulos || []} value={form.producto_id} onChange={id => f('producto_id', id)} />
           </Field>
         )}
         <Field label="Orden de Trabajo" full>
@@ -321,6 +333,14 @@ const ModalGI = ({ producto, onClose, onDone }) => {
         <Field label="Fecha *">
           <input className="input" type="date" value={form.fecha} onChange={e => f('fecha', e.target.value)} required />
         </Field>
+        {(almacenes || []).length > 0 && (
+          <Field label="Almacén">
+            <select className="select" value={form.almacen_id} onChange={e => f('almacen_id', e.target.value)}>
+              <option value="">— Sin almacén —</option>
+              {almacenes.map(a => <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>)}
+            </select>
+          </Field>
+        )}
         <Field label="Observación" full>
           <input className="input" value={form.observacion} onChange={e => f('observacion', e.target.value)} />
         </Field>
@@ -336,12 +356,13 @@ const ModalGI = ({ producto, onClose, onDone }) => {
 }
 
 // ─── Modal Ajuste — Recuento Físico ──────────────────────────────────────────
-const ModalAjuste = ({ producto, articulos, onClose, onDone }) => {
+const ModalAjuste = ({ producto, articulos, almacenes, onClose, onDone }) => {
   const [form, setForm] = useState({
     producto_id: producto?.id_prod || '',
     cantidad_contada: '',
     observacion: '',
     fecha: new Date().toISOString().slice(0, 10),
+    almacen_id: '',
   })
   const [saving, setSaving] = useState(false)
 
@@ -359,6 +380,7 @@ const ModalAjuste = ({ producto, articulos, onClose, onDone }) => {
         ...form,
         cantidad_contada: Number(form.cantidad_contada),
         fecha: form.fecha ? new Date(form.fecha).toISOString() : undefined,
+        almacen_id: form.almacen_id ? Number(form.almacen_id) : undefined,
       })
       toast.success('Ajuste de inventario registrado')
       onDone()
@@ -401,6 +423,14 @@ const ModalAjuste = ({ producto, articulos, onClose, onDone }) => {
         <Field label="Observación">
           <input className="input" value={form.observacion} onChange={e => f('observacion', e.target.value)} placeholder="Motivo del ajuste..." />
         </Field>
+        {(almacenes || []).length > 0 && (
+          <Field label="Almacén">
+            <select className="select" value={form.almacen_id} onChange={e => f('almacen_id', e.target.value)}>
+              <option value="">— Sin almacén —</option>
+              {almacenes.map(a => <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>)}
+            </select>
+          </Field>
+        )}
         <Field label="Fecha Conteo">
           <input className="input" type="date" value={form.fecha} onChange={e => f('fecha', e.target.value)} />
         </Field>
@@ -573,11 +603,13 @@ const ModalArticulo = ({ item, onClose, onDone }) => {
 // COMPONENTE PRINCIPAL
 // ══════════════════════════════════════════════════════════════════════════════
 export default function Inventario() {
-  const [tab, setTab] = useState('movimientos')
+  const [tab, setTab] = useState('articulos')
   const [articulos, setArticulos] = useState([])
   const [movimientos, setMovimientos] = useState([])
   const [valoracion, setValoracion] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [almacenes, setAlmacenes] = useState([])
+  const [alertasVenc, setAlertasVenc] = useState(null)
 
   // Filtros artículos
   const [buscar, setBuscar] = useState('')
@@ -595,6 +627,7 @@ export default function Inventario() {
   const [modalGI, setModalGI] = useState(null)
   const [modalAJ, setModalAJ] = useState(null)
   const [modalKardex, setModalKardex] = useState(null)
+  const [modalArticulo, setModalArticulo] = useState(null)
 
   const loadArticulos = useCallback(async () => {
     setLoading(true)
@@ -620,14 +653,16 @@ export default function Inventario() {
   }, [])
 
   useEffect(() => {
-    // Always load articulos for modals (GR/GI/AJ need the list)
     loadArticulos()
+    api.get('/contabilidad/almacenes').then(r => setAlmacenes(r.data)).catch(() => {})
+    api.get('/inventario/alertas-vencimiento').then(r => setAlertasVenc(r.data)).catch(() => {})
   }, [])
 
   useEffect(() => {
-    if (tab === 'movimientos') loadMovimientos()
+    if (tab === 'articulos') loadArticulos()
+    else if (tab === 'movimientos') loadMovimientos()
     else if (tab === 'valoracion') loadValoracion()
-  }, [tab, loadMovimientos, loadValoracion])
+  }, [tab, loadArticulos, loadMovimientos, loadValoracion])
 
   function reload() {
     if (tab === 'articulos') loadArticulos()
@@ -636,10 +671,40 @@ export default function Inventario() {
   }
 
   function afterAction() {
-    setModalGR(null); setModalGI(null); setModalAJ(null)
+    setModalGR(null); setModalGI(null); setModalAJ(null); setModalArticulo(null)
     loadArticulos()
     if (tab === 'movimientos') loadMovimientos()
     if (tab === 'valoracion') loadValoracion()
+    api.get('/inventario/alertas-vencimiento').then(r => setAlertasVenc(r.data)).catch(() => {})
+  }
+
+  function exportCSV() {
+    let csv = '', filename = ''
+    if (tab === 'articulos') {
+      csv = 'ID,Artículo,Tipo,Unidad,Stock,Mínimo,C.Promedio,Valor Inv.\n'
+      articulosFiltrados.forEach(p => {
+        csv += `${p.id_prod},"${p.producto}",${p.tipo || ''},${p.unidad},${p.stock_actual},${p.stock_minimo},${p.costo_promedio},${p.valor_inventario}\n`
+      })
+      filename = `articulos_${new Date().toISOString().slice(0, 10)}.csv`
+    } else if (tab === 'movimientos') {
+      csv = 'N° Doc,Fecha,Tipo Doc,Artículo,Motivo,Cantidad,Tipo,Costo Unit.,Saldo\n'
+      movimientos.forEach(m => {
+        csv += `${m.num_documento},${m.fecha?.slice(0, 10) || ''},${m.tipo_doc},"${m.producto_nombre || m.producto_id}",${m.motivo || ''},${m.cantidad},${m.tipo},${m.costo_unitario || ''},${m.stock_post ?? ''}\n`
+      })
+      filename = `movimientos_${new Date().toISOString().slice(0, 10)}.csv`
+    } else if (tab === 'valoracion' && valoracion) {
+      csv = 'ID,Artículo,Tipo,Unidad,Stock,C.Promedio,Valor\n'
+      valoracion.items.forEach(p => {
+        csv += `${p.id_prod},"${p.producto}",${p.tipo},${p.unidad},${p.stock},${p.costo_promedio},${p.valor}\n`
+      })
+      filename = `valoracion_${new Date().toISOString().slice(0, 10)}.csv`
+    }
+    if (!csv) return
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = filename; a.click()
+    URL.revokeObjectURL(url)
   }
 
   async function delArticulo(id_prod) {
@@ -678,9 +743,16 @@ export default function Inventario() {
             {articulos.length} artículos · Valor total: <strong style={{ color: '#166534' }}>{fmt(totalValor)}</strong>
             {bajosMinimo > 0 && <span style={{ marginLeft: 12, color: '#dc2626' }}>⚠ {bajosMinimo} bajo mínimo</span>}
             {sinStock > 0 && <span style={{ marginLeft: 8, color: '#9ca3af' }}>· {sinStock} sin stock</span>}
+            {alertasVenc && alertasVenc.total > 0 && (
+              <span style={{ marginLeft: 12, color: alertasVenc.vencidos > 0 ? '#dc2626' : '#b45309' }}>
+                <Clock size={12} style={{ verticalAlign: 'middle', marginRight: 2 }} />
+                {alertasVenc.vencidos > 0 ? `${alertasVenc.vencidos} vencidos` : `${alertasVenc.total} por vencer`}
+              </span>
+            )}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" onClick={exportCSV} title="Exportar CSV"><Download size={14} /></button>
           <button className="btn-secondary" onClick={reload} title="Actualizar"><RefreshCw size={14} /></button>
           <button onClick={() => setModalGR(true)} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:10, border:'none', background:'#166534', color:'white', cursor:'pointer', fontWeight:600, fontSize:13 }}>
             <ArrowDownCircle size={14} /> GR — Entrada
@@ -696,9 +768,88 @@ export default function Inventario() {
 
       {/* ─── Tabs ──── */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f3f4f6', padding: 4, borderRadius: 12, width: 'fit-content' }}>
+        <TabBtn id="articulos" label="Artículos" icon={Package} />
         <TabBtn id="movimientos" label="Movimientos" icon={ClipboardList} />
         <TabBtn id="valoracion" label="Valoración" icon={BarChart2} />
       </div>
+
+      {/* ══════════════ TAB: ARTÍCULOS ══════════════ */}
+      {tab === 'articulos' && (
+        <>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: 320 }}>
+              <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+              <input className="input" placeholder="Buscar por nombre, ID o proveedor..." value={buscar} onChange={e => setBuscar(e.target.value)} style={{ paddingLeft: 34 }} />
+            </div>
+            <select className="select" style={{ width: 180 }} value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
+              <option value="">Todos los tipos</option>
+              {TIPOS_PROD.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select className="select" style={{ width: 160 }} value={filtroStock} onChange={e => setFiltroStock(e.target.value)}>
+              <option value="todos">Todos</option>
+              <option value="ok">Stock OK</option>
+              <option value="bajo">Bajo mínimo</option>
+              <option value="sin">Sin stock</option>
+            </select>
+            <button onClick={() => setModalArticulo('new')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: 'none', background: '#1e40af', color: 'white', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+              <Plus size={14} /> Nuevo Artículo
+            </button>
+          </div>
+
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>
+            {articulosFiltrados.length} de {articulos.length} artículos
+          </div>
+
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Artículo</th><th>Tipo</th><th>Unidad</th>
+                    <th style={{ textAlign: 'right' }}>Stock</th>
+                    <th style={{ textAlign: 'right' }}>Mínimo</th>
+                    <th style={{ textAlign: 'right' }}>C. Promedio</th>
+                    <th style={{ textAlign: 'right' }}>Valor Inv.</th>
+                    <th>Estado</th>
+                    <th style={{ textAlign: 'center' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+                  ) : articulosFiltrados.length === 0 ? (
+                    <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin artículos</td></tr>
+                  ) : articulosFiltrados.map(p => (
+                    <tr key={p.id_prod}>
+                      <td style={{ fontWeight: 700, fontSize: 12, color: '#166534', whiteSpace: 'nowrap' }}>{p.id_prod}</td>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{p.producto}</div>
+                        {p.concentracion && <div style={{ fontSize: 10, color: '#9ca3af' }}>{p.concentracion}</div>}
+                      </td>
+                      <td><span className="badge badge-blue" style={{ fontSize: 10 }}>{p.tipo || '—'}</span></td>
+                      <td style={{ fontSize: 12 }}>{p.unidad}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 800, color: p.stock_actual === 0 ? '#dc2626' : '#111827' }}>{fmtN(p.stock_actual)}</td>
+                      <td style={{ textAlign: 'right', color: '#6b7280', fontSize: 12 }}>{fmtN(p.stock_minimo)}</td>
+                      <td style={{ textAlign: 'right', color: '#6b7280', fontSize: 12 }}>{fmt(p.costo_promedio)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#166534' }}>{fmt(p.valor_inventario)}</td>
+                      <td><StockBadge stock={p.stock_actual} minimo={p.stock_minimo} /></td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                          <button title="Kardex" onClick={() => setModalKardex(p)} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: '#6b7280' }}><Eye size={13} /></button>
+                          <button title="Entrada" onClick={() => setModalGR(p)} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: '#166534' }}><ArrowDownCircle size={13} /></button>
+                          <button title="Salida" onClick={() => setModalGI(p)} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: '#dc2626' }}><ArrowUpCircle size={13} /></button>
+                          <button title="Editar" onClick={() => setModalArticulo(p)} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: '#1e40af' }}><Edit2 size={13} /></button>
+                          <button title="Desactivar" onClick={() => delArticulo(p.id_prod)} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: '#9ca3af' }}><Trash2 size={13} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ══════════════ TAB: MOVIMIENTOS ══════════════ */}
       {tab === 'movimientos' && (
@@ -839,6 +990,49 @@ export default function Inventario() {
             </div>
           </div>
 
+          {/* Alertas de vencimiento */}
+          {alertasVenc && alertasVenc.total > 0 && (
+            <div className="card" style={{ marginTop: 20 }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#b45309' }}>
+                <Clock size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                Alertas de Vencimiento ({alertasVenc.total})
+                {alertasVenc.vencidos > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#dc2626', borderRadius: 6, padding: '2px 8px', fontSize: 11 }}>{alertasVenc.vencidos} vencidos</span>}
+                {alertasVenc.criticos > 0 && <span style={{ marginLeft: 6, background: '#fef9c3', color: '#854d0e', borderRadius: 6, padding: '2px 8px', fontSize: 11 }}>{alertasVenc.criticos} criticos</span>}
+              </h3>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead style={{ background: '#f9fafb' }}>
+                    <tr>
+                      {['Artículo', 'Lote', 'N° Doc.', 'Cantidad', 'Vencimiento', 'Días', 'Estado'].map(h => (
+                        <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {alertasVenc.alertas.map(a => (
+                      <tr key={a.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '7px 10px', fontWeight: 600 }}>{a.producto_nombre || a.producto_id}</td>
+                        <td style={{ padding: '7px 10px', color: '#6b7280' }}>{a.lote || '—'}</td>
+                        <td style={{ padding: '7px 10px', fontWeight: 700, fontSize: 11, color: '#374151' }}>{a.num_documento}</td>
+                        <td style={{ padding: '7px 10px' }}>{fmtN(a.cantidad)}</td>
+                        <td style={{ padding: '7px 10px' }}>{fmtDate(a.vencimiento)}</td>
+                        <td style={{ padding: '7px 10px', fontWeight: 700, color: a.estado === 'vencido' ? '#dc2626' : a.estado === 'critico' ? '#b45309' : '#6b7280' }}>{a.dias_restantes}</td>
+                        <td style={{ padding: '7px 10px' }}>
+                          <span style={{ borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700,
+                            background: a.estado === 'vencido' ? '#fee2e2' : a.estado === 'critico' ? '#fef9c3' : '#dbeafe',
+                            color: a.estado === 'vencido' ? '#dc2626' : a.estado === 'critico' ? '#854d0e' : '#1e40af'
+                          }}>
+                            {a.estado === 'vencido' ? 'Vencido' : a.estado === 'critico' ? 'Crítico' : 'Próximo'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Top 10 por valor */}
           <div className="card" style={{ marginTop: 20, padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '14px 16px', borderBottom: '1px solid #f3f4f6' }}>
@@ -890,10 +1084,11 @@ export default function Inventario() {
       )}
 
       {/* ─── Modals ──── */}
-      {modalGR && <ModalGR producto={modalGR === true ? null : modalGR} articulos={articulos} onClose={() => setModalGR(null)} onDone={afterAction} />}
-      {modalGI && <ModalGI producto={modalGI === true ? null : modalGI} onClose={() => setModalGI(null)} onDone={afterAction} />}
-      {modalAJ && <ModalAjuste producto={modalAJ === true ? null : modalAJ} articulos={articulos} onClose={() => setModalAJ(null)} onDone={afterAction} />}
+      {modalGR && <ModalGR producto={modalGR === true ? null : modalGR} articulos={articulos} almacenes={almacenes} onClose={() => setModalGR(null)} onDone={afterAction} />}
+      {modalGI && <ModalGI producto={modalGI === true ? null : modalGI} articulos={articulos} almacenes={almacenes} onClose={() => setModalGI(null)} onDone={afterAction} />}
+      {modalAJ && <ModalAjuste producto={modalAJ === true ? null : modalAJ} articulos={articulos} almacenes={almacenes} onClose={() => setModalAJ(null)} onDone={afterAction} />}
       {modalKardex && <ModalKardex producto={modalKardex} onClose={() => setModalKardex(null)} />}
+      {modalArticulo && <ModalArticulo item={modalArticulo === 'new' ? null : modalArticulo} onClose={() => setModalArticulo(null)} onDone={afterAction} />}
     </div>
   )
 }
