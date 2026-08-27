@@ -350,7 +350,7 @@ export default function NuevaOrden() {
     if (key === 'producto_id') {
       const p = productos.find(p => p.id_prod === val)
       if (p) {
-        updated[i].costo_unitario = p.costo_unitario
+        updated[i].costo_unitario = p.costo_promedio || p.costo_unitario || 0
         updated[i].unidad = p.unidad
         updated[i]._manualCosto = false
       }
@@ -656,7 +656,7 @@ export default function NuevaOrden() {
                     {i === 0 && <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>PRODUCTO</label>}
                     <select className="select" value={d.producto_id} onChange={e => updateDet(i, 'producto_id', e.target.value)} required>
                       <option value="">Seleccionar...</option>
-                      {productos.map(p => <option key={p.id_prod} value={p.id_prod}>{p.producto}</option>)}
+                      {productos.map(p => <option key={p.id_prod} value={p.id_prod}>{p.producto}{p.stock_actual ? ` (${p.stock_actual} ${p.unidad || ''})` : ''}</option>)}
                     </select>
                   </div>
                   <div>
