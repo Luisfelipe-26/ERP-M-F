@@ -145,38 +145,36 @@ export default function Analytics() {
 
   async function loadAll() {
     setLoading(true)
-    try {
-      const fd = `${ano}-${String(mes).padStart(2, '0')}-01`
-      const lastDay = new Date(ano, mes, 0).getDate()
-      const fh = `${ano}-${String(mes).padStart(2, '0')}-${lastDay}`
+    const fd = `${ano}-${String(mes).padStart(2, '0')}-01`
+    const lastDay = new Date(ano, mes, 0).getDate()
+    const fh = `${ano}-${String(mes).padStart(2, '0')}-${lastDay}`
 
-      const [tend, prod, ins, comp, ckg, bal, pest] = await Promise.all([
-        apiFetch('/analytics/tendencia-costos?meses=12'),
-        apiFetch(`/analytics/productividad-trabajadores?mes=${mes}&ano=${ano}`),
-        apiFetch(`/analytics/eficiencia-insumos?fecha_desde=${fd}&fecha_hasta=${fh}`),
-        apiFetch(`/analytics/comparativo-campos?ano=${ano}`),
-        apiFetch(`/analytics/costo-por-kg?temporada=${ano}`),
-        apiFetch(`/analytics/balance-hidrico-resumen?ano=${ano}`),
-        apiFetch(`/analytics/presion-plagas?fecha_desde=${fd}&fecha_hasta=${fh}`),
-      ])
-      setTendencia(tend.tendencia || [])
-      setTrabajadores(prod.trabajadores || [])
-      setProductividad(prod)
-      setInsumos(ins)
-      setCampos(comp.campos || [])
-      setCostoKg(ckg.campos || [])
-      setBalance(bal.campos || [])
-      setPlagas(pest.campos || [])
-      try {
-        const rend = await apiFetch(`/analytics/rendimiento-por-ha?ano=${ano}&mes=${mes}`)
-        setRendimiento(rend || { por_actividad: [], por_insumo: [], resumen_campos: [] })
-      } catch { setRendimiento({ por_actividad: [], por_insumo: [], resumen_campos: [] }) }
-      if (comp.campos?.length >= 2) {
-        setRadarCampos(comp.campos.slice(0, 3).map(c => c.campo_id))
-      }
-    } catch (e) {
-      toast.error('Error cargando analytics: ' + e.message)
+    const safe = (p) => p.catch(err => { console.error('Analytics fetch error:', err); return null })
+
+    const [tend, prod, ins, comp, ckg, bal, pest, rend] = await Promise.all([
+      safe(apiFetch('/analytics/tendencia-costos?meses=12')),
+      safe(apiFetch(`/analytics/productividad-trabajadores?mes=${mes}&ano=${ano}`)),
+      safe(apiFetch(`/analytics/eficiencia-insumos?fecha_desde=${fd}&fecha_hasta=${fh}`)),
+      safe(apiFetch(`/analytics/comparativo-campos?ano=${ano}`)),
+      safe(apiFetch(`/analytics/costo-por-kg?temporada=${ano}`)),
+      safe(apiFetch(`/analytics/balance-hidrico-resumen?ano=${ano}`)),
+      safe(apiFetch(`/analytics/presion-plagas?fecha_desde=${fd}&fecha_hasta=${fh}`)),
+      safe(apiFetch(`/analytics/rendimiento-por-ha?ano=${ano}&mes=${mes}`)),
+    ])
+    setTendencia(tend?.tendencia || [])
+    setTrabajadores(prod?.trabajadores || [])
+    setProductividad(prod || {})
+    setInsumos(ins || { productos: [], top10_by_cost: [] })
+    setCampos(comp?.campos || [])
+    setCostoKg(ckg?.campos || [])
+    setBalance(bal?.campos || [])
+    setPlagas(pest?.campos || [])
+    setRendimiento(rend || { por_actividad: [], por_insumo: [], resumen_campos: [] })
+    if (comp?.campos?.length >= 2) {
+      setRadarCampos(comp.campos.slice(0, 3).map(c => c.campo_id))
     }
+    const failed = [tend, prod, ins, comp, ckg, bal, pest, rend].filter(x => x === null).length
+    if (failed > 0) toast.error(`${failed} reporte(s) fallaron al cargar`)
     setLoading(false)
   }
 
