@@ -1160,11 +1160,12 @@ export default function Inventario() {
       {/* ══════════════ TAB: CONCILIACIÓN OT ══════════════ */}
       {tab === 'conciliacion' && conciliacion && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14, marginBottom: 16 }}>
             {[
               { label: 'Total líneas', value: conciliacion.total, icon: ClipboardList, color: '#374151', bg: '#f3f4f6' },
               { label: 'Conciliados', value: conciliacion.conciliados, icon: Eye, color: '#166534', bg: '#dcfce7' },
               { label: 'Diferencias', value: conciliacion.diferencias, icon: AlertTriangle, color: '#b45309', bg: '#fef9c3' },
+              { label: 'No invent.', value: conciliacion.no_inventariable ?? 0, icon: Package, color: '#6b7280', bg: '#f3f4f6' },
               { label: 'Solo en OT', value: conciliacion.solo_ot, icon: ArrowUpCircle, color: '#dc2626', bg: '#fee2e2' },
               { label: 'Solo en Inv.', value: conciliacion.solo_inv, icon: ArrowDownCircle, color: '#1e40af', bg: '#dbeafe' },
             ].map(({ label, value, icon: Icon, color, bg }) => (
@@ -1178,16 +1179,47 @@ export default function Inventario() {
             ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
-            <div className="card" style={{ padding: '14px 16px', borderLeft: '4px solid #166534' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 4 }}>Valor Total OT (Consumos)</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#166534' }}>{fmt(conciliacion.valor_total_ot)}</div>
-            </div>
-            <div className="card" style={{ padding: '14px 16px', borderLeft: '4px solid #1e40af' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 4 }}>Valor Total Inventario (Salidas)</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#1e40af' }}>{fmt(conciliacion.valor_total_inv)}</div>
-            </div>
-          </div>
+          {(() => {
+            const difNeta = conciliacion.diferencia_neta ?? (conciliacion.valor_conciliable_ot - conciliacion.valor_total_inv)
+            const cuadra = Math.abs(difNeta) < 1
+            return (
+              <div className="card" style={{ padding: '16px 20px', marginBottom: 16, borderLeft: `4px solid ${cuadra ? '#166534' : '#dc2626'}` }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', marginBottom: 12 }}>Cuadre Consumo OT ↔ Inventario</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14, fontSize: 13 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>Consumo OT total</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#166534' }}>{fmt(conciliacion.valor_total_ot)}</div>
+                  </div>
+                  <div style={{ fontSize: 20, color: '#9ca3af', fontWeight: 300 }}>−</div>
+                  <div>
+                    <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>No inventariable</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#6b7280' }}>{fmt(conciliacion.valor_no_inventariable ?? 0)}</div>
+                  </div>
+                  <div style={{ fontSize: 20, color: '#9ca3af', fontWeight: 300 }}>=</div>
+                  <div>
+                    <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>Conciliable OT</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#1e40af' }}>{fmt(conciliacion.valor_conciliable_ot ?? 0)}</div>
+                  </div>
+                  <div style={{ fontSize: 20, color: '#9ca3af', fontWeight: 300 }}>vs</div>
+                  <div>
+                    <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>Salidas Inventario</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#1e40af' }}>{fmt(conciliacion.valor_total_inv)}</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                    <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>Diferencia neta</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: cuadra ? '#166534' : '#dc2626' }}>
+                      {cuadra ? '✓ ' + fmt(0) : fmt(difNeta)}
+                    </div>
+                  </div>
+                </div>
+                {!cuadra && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: '#854d0e', background: '#fef9c3', borderRadius: 8, padding: '8px 12px' }}>
+                    Quedan RD$ {fmtN(Math.abs(difNeta))} sin explicar por no inventariables. Revisa las filas marcadas "Diferencia" o "Solo OT" abajo.
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {conciliacion.items.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin datos de consumo para conciliar</div>
@@ -1214,6 +1246,7 @@ export default function Inventario() {
                       diferencia: { bg: '#fef9c3', color: '#854d0e', label: 'Diferencia' },
                       solo_ot: { bg: '#fee2e2', color: '#dc2626', label: 'Solo OT' },
                       solo_inv: { bg: '#dbeafe', color: '#1e40af', label: 'Solo Inv.' },
+                      no_inventariable: { bg: '#f3f4f6', color: '#6b7280', label: 'No invent.' },
                     }
                     const est = estadoStyles[r.estado] || estadoStyles.diferencia
                     return (
