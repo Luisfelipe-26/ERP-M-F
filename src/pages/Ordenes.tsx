@@ -119,7 +119,8 @@ export default function Ordenes() {
         o.supervisor?.toLowerCase().includes(buscar.toLowerCase()) ||
         String(o.ot_id).includes(buscar) ||
         o.campo_id?.toLowerCase().includes(buscar.toLowerCase()) ||
-        o.actividad_id?.toLowerCase().includes(buscar.toLowerCase())
+        o.actividad_id?.toLowerCase().includes(buscar.toLowerCase()) ||
+        o.actividad_nombre?.toLowerCase().includes(buscar.toLowerCase())
       )
     : items
 
@@ -192,7 +193,7 @@ export default function Ordenes() {
                   <td><span style={{ fontWeight: 700, color: '#166534' }}>#{o.ot_id}</span></td>
                   <td>{o.fecha_ejecucion ? new Date(o.fecha_ejecucion).toLocaleDateString('es-DO') : '—'}</td>
                   <td><span style={{ fontWeight: 600 }}>{o.campo_id || '—'}</span></td>
-                  <td style={{ fontSize: 12, color: '#4b5563' }}>{o.actividad_id || '—'}</td>
+                  <td style={{ fontSize: 12, color: '#4b5563' }}>{o.actividad_nombre || o.actividad_id || '—'}</td>
                   <td style={{ fontSize: 12, color: '#6b7280' }}>{o.supervisor || '—'}</td>
                   <td><span className={`badge ${cfg.badge}`}>{o.estado}</span></td>
                   <td>{fmt(o.costo_mano_obra)}</td>
