@@ -13,7 +13,8 @@ const fmtN = (n, dec = 2) => Number(n || 0).toLocaleString('es-DO', { minimumFra
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-DO') : '—'
 
 const TIPOS_PROD = ['FERTILIZANTE','FUNGICIDAS','INSECTICIDAS','HERBICIDA','BIOESTIMULANTE','PBZ','REGULADOR HORMONAL','OTRO']
-const MOTIVOS_GI = ['Consumo OT','Merma','Vencimiento','Devolucion Proveedor','Muestra','Uso No Productivo','Otro']
+// El consumo por OT se registra desde el módulo de Órdenes de Trabajo, no como GI manual
+const MOTIVOS_GI = ['Merma','Vencimiento','Devolucion Proveedor','Muestra','Uso No Productivo','Otro']
 const DOC_LABELS = { GR: 'Entrada', GI: 'Salida', AJ: 'Ajuste', OT: 'Consumo OT' }
 const DOC_COLORS = {
   GR: { bg: '#dcfce7', color: '#166534', border: '#86efac' },
@@ -266,19 +267,13 @@ const ModalGI = ({ producto, articulos, almacenes, onClose, onDone }) => {
   const [form, setForm] = useState({
     producto_id: producto?.id_prod || '',
     cantidad: '',
-    motivo: 'Consumo OT',
+    motivo: 'Merma',
     referencia: '',
     fecha: new Date().toISOString().slice(0, 10),
     observacion: '',
-    ot_id: '',
     almacen_id: '',
   })
   const [saving, setSaving] = useState(false)
-  const [ots, setOts] = useState([])
-
-  useEffect(() => {
-    api.get('/inventario/ordenes-trabajo-lista').then(r => setOts(r.data)).catch(() => toast.error('Error al cargar órdenes de trabajo'))
-  }, [])
 
   async function submit(e) {
     e.preventDefault()
@@ -289,7 +284,6 @@ const ModalGI = ({ producto, articulos, almacenes, onClose, onDone }) => {
         ...form,
         cantidad: Number(form.cantidad),
         fecha: form.fecha ? new Date(form.fecha).toISOString() : undefined,
-        ot_id: form.ot_id ? Number(form.ot_id) : undefined,
         almacen_id: form.almacen_id ? Number(form.almacen_id) : undefined,
       })
       toast.success('Salida de mercancía registrada')
@@ -309,15 +303,6 @@ const ModalGI = ({ producto, articulos, almacenes, onClose, onDone }) => {
             <SearchSelect items={articulos || []} value={form.producto_id} onChange={id => f('producto_id', id)} />
           </Field>
         )}
-        <Field label="Orden de Trabajo" full>
-          <select className="select" value={form.ot_id} onChange={e => {
-            f('ot_id', e.target.value)
-            if (e.target.value) f('motivo', 'Consumo OT')
-          }}>
-            <option value="">— Sin OT vinculada —</option>
-            {ots.map(ot => <option key={ot.ot_id} value={ot.ot_id}>{ot.label}</option>)}
-          </select>
-        </Field>
         <Field label="Cantidad *">
           <input className="input" type="number" step="0.01" min="0.01" max={producto?.stock_actual || undefined} value={form.cantidad} onChange={e => f('cantidad', e.target.value)} required autoFocus={!!producto} />
         </Field>
