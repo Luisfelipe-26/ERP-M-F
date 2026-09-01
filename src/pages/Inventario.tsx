@@ -685,9 +685,9 @@ export default function Inventario() {
       })
       filename = `articulos_${new Date().toISOString().slice(0, 10)}.csv`
     } else if (tab === 'movimientos') {
-      csv = 'N° Doc,Fecha,Tipo Doc,Artículo,Motivo,Cantidad,Tipo,Costo Unit.,Saldo\n'
+      csv = 'N° Doc,Actividad,Fecha,Tipo Doc,Artículo,Motivo,Cantidad,Tipo,Costo Unit.,Saldo\n'
       movimientos.forEach(m => {
-        csv += `${m.num_documento},${m.fecha?.slice(0, 10) || ''},${m.tipo_doc},${csvEsc(m.producto_nombre || m.producto_id)},${csvEsc(m.motivo)},${m.cantidad},${m.tipo},${m.costo_unitario || ''},${m.stock_post ?? ''}\n`
+        csv += `${m.num_documento},${csvEsc(m.actividad || '')},${m.fecha?.slice(0, 10) || ''},${m.tipo_doc},${csvEsc(m.producto_nombre || m.producto_id)},${csvEsc(m.motivo)},${m.cantidad},${m.tipo},${m.costo_unitario || ''},${m.stock_post ?? ''}\n`
       })
       filename = `movimientos_${new Date().toISOString().slice(0, 10)}.csv`
     } else if (tab === 'valoracion' && valoracion) {
@@ -919,6 +919,7 @@ export default function Inventario() {
               <thead>
                 <tr>
                   <th>N° Doc.</th>
+                  <th>Actividad</th>
                   <th>Fecha</th>
                   <th>Tipo Doc.</th>
                   <th>Artículo</th>
@@ -932,14 +933,15 @@ export default function Inventario() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
                 ) : movimientos.length === 0 ? (
-                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin movimientos en el período</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin movimientos en el período</td></tr>
                 ) : movimientos.map(m => {
                   const isIn = m.tipo === 'entrada'
                   return (
                     <tr key={m.id}>
                       <td style={{ fontWeight: 700, fontSize: 12, color: '#374151', whiteSpace: 'nowrap' }}>{m.num_documento || '—'}</td>
+                      <td style={{ fontSize: 12, color: '#374151' }}>{m.actividad || '—'}</td>
                       <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(m.fecha)}</td>
                       <td><Badge tipo_doc={m.tipo_doc} /></td>
                       <td>
@@ -961,7 +963,7 @@ export default function Inventario() {
               {movimientos.length > 0 && (
                 <tfoot>
                   <tr style={{ background: '#f9fafb', fontWeight: 700 }}>
-                    <td colSpan={6} style={{ textAlign: 'right', fontSize: 12, color: '#374151' }}>TOTALES ({movimientos.length} mov.)</td>
+                    <td colSpan={7} style={{ textAlign: 'right', fontSize: 12, color: '#374151' }}>TOTALES ({movimientos.length} mov.)</td>
                     <td style={{ textAlign: 'right', color: '#166534', fontSize: 13 }}>
                       <div>{fmtN(qtyEntradas)}</div>
                       <div style={{ fontSize: 11, fontWeight: 600 }}>{fmt(valEntradas)}</div>
