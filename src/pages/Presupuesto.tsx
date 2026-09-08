@@ -137,6 +137,8 @@ export default function Presupuesto() {
   const [documentos, setDocumentos] = useState<any[]>([])
   const [showCrearDoc, setShowCrearDoc] = useState(false)
   const [docForm, setDocForm] = useState<any>({ nombre: '', descripcion: '', anio: new Date().getFullYear(), clase_cuentas: 'todas' })
+  const [aniosFiscales, setAniosFiscales] = useState<number[]>([])
+  const [nextNumero, setNextNumero] = useState('')
   const [activeDoc, setActiveDoc] = useState<any>(null)
   const [docLineas, setDocLineas] = useState<any[]>([])
   const [showAddLinea, setShowAddLinea] = useState(false)
@@ -200,8 +202,14 @@ export default function Presupuesto() {
 
   const loadDocumentos = useCallback(async () => {
     setLoading(true)
-    try { setDocumentos((await api.get(`/contabilidad/presupuestos-documento?anio=${anio}`)).data) }
-    catch { toast.error('Error al cargar presupuestos') }
+    try {
+      const [docs, aniosRes] = await Promise.allSettled([
+        api.get(`/contabilidad/presupuestos-documento?anio=${anio}`),
+        api.get('/contabilidad/presupuestos-documento/anios-fiscales'),
+      ])
+      if (docs.status === 'fulfilled') setDocumentos(docs.value.data)
+      if (aniosRes.status === 'fulfilled') setAniosFiscales(aniosRes.value.data)
+    } catch { toast.error('Error al cargar presupuestos') }
     finally { setLoading(false) }
   }, [anio])
 
@@ -726,7 +734,7 @@ export default function Presupuesto() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ fontSize: 13, color: '#64748b' }}>{documentos.length} presupuesto(s) para {anio}</div>
-              <button className="btn-primary" style={{ height: 36, background: '#166534' }} onClick={() => { setDocForm({ ...docForm, anio }); setShowCrearDoc(true) }}><Plus size={14} /> Crear presupuesto</button>
+              <button className="btn-primary" style={{ height: 36, background: '#166534' }} onClick={async () => { setDocForm({ ...docForm, anio }); setShowCrearDoc(true); try { const r = await api.get('/contabilidad/presupuestos-documento/next-numero'); setNextNumero(r.data.numero) } catch {} }}><Plus size={14} /> Crear presupuesto</button>
             </div>
             {documentos.length === 0 ? (
               <div style={{ ...S.card, padding: 60, textAlign: 'center' }}>
@@ -1447,7 +1455,12 @@ export default function Presupuesto() {
       )}
 
       {showCrearDoc && (
-        <Modal title="Crear presupuesto" subtitle={`Ejercicio ${anio}`} onClose={() => setShowCrearDoc(false)} width={540}>
+        <Modal title="Crear presupuesto" subtitle={nextNumero || 'Nuevo'} onClose={() => setShowCrearDoc(false)} width={540}>
+          {nextNumero && <div style={{ marginBottom: 16, padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileText size={14} color="#166534" />
+            <span style={{ fontSize: 13, color: '#166534', fontWeight: 600 }}>{nextNumero}</span>
+            <span style={{ fontSize: 11, color: '#64748b' }}>se asignará automáticamente</span>
+          </div>}
           <form onSubmit={crearDocumento}>
             <div style={{ marginBottom: 16 }}>
               <Label>Nombre del presupuesto *</Label>
@@ -1460,8 +1473,11 @@ export default function Presupuesto() {
               </div>
               <div>
                 <Label>Año fiscal *</Label>
-                <select className="select" value={docForm.anio} onChange={e => setDocForm({ ...docForm, anio: Number(e.target.value) })}>
-                  {[anio - 1, anio, anio + 1].map(y => <option key={y} value={y}>{y}</option>)}
+                <select className="select" required value={docForm.anio} onChange={e => setDocForm({ ...docForm, anio: Number(e.target.value) })}>
+                  {aniosFiscales.length > 0
+                    ? aniosFiscales.map(y => <option key={y} value={y}>{y}</option>)
+                    : [anio - 1, anio, anio + 1].map(y => <option key={y} value={y}>{y}</option>)
+                  }
                 </select>
               </div>
             </div>
