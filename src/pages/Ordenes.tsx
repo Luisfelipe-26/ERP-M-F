@@ -19,18 +19,32 @@ export default function Ordenes() {
   const [error, setError] = useState(null)
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroCampo, setFiltroCampo] = useState('')
+  const [filtroBloque, setFiltroBloque] = useState('')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
+  const [bloques, setBloques] = useState<string[]>([])
   const [buscar, setBuscar] = useState('')
   const navigate = useNavigate()
 
-  useEffect(() => { load() }, [filtroEstado, filtroCampo])
+  useEffect(() => { load() }, [filtroEstado, filtroCampo, filtroBloque, fechaDesde, fechaHasta])
+
+  useEffect(() => {
+    api.get('/campos').then(r => {
+      const bls = [...new Set(r.data.map((c: any) => c.bloque).filter(Boolean))].sort()
+      setBloques(bls as string[])
+    }).catch(() => {})
+  }, [])
 
   async function load() {
     setLoading(true)
     setError(null)
     try {
-      const params = { limit: 500 }
+      const params: any = { limit: 500 }
       if (filtroEstado) params.estado = filtroEstado
       if (filtroCampo) params.campo_id = filtroCampo
+      if (filtroBloque) params.bloque = filtroBloque
+      if (fechaDesde) params.fecha_desde = fechaDesde
+      if (fechaHasta) params.fecha_hasta = fechaHasta
       const { data } = await api.get('/ordenes', { params })
       setItems(data)
     } catch (err) {
@@ -168,6 +182,12 @@ export default function Ordenes() {
           <option value="">Todos los campos</option>
           {campos.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+        <select className="select" style={{ width: 130 }} value={filtroBloque} onChange={e => setFiltroBloque(e.target.value)}>
+          <option value="">Todos los bloques</option>
+          {bloques.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <input className="input" type="date" style={{ width: 145 }} value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} title="Fecha desde" />
+        <input className="input" type="date" style={{ width: 145 }} value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} title="Fecha hasta" />
       </div>
 
       {error && (
