@@ -129,17 +129,16 @@ export default function Presupuesto() {
 
   /* ── loaders ── */
   const loadBase = useCallback(async () => {
-    try {
-      const [c, f, un, dep, cfg] = await Promise.all([
-        api.get('/contabilidad/cuentas'), api.get('/campos'),
-        api.get('/contabilidad/unidades-negocio'), api.get('/contabilidad/departamentos'),
-        api.get('/contabilidad/config-presupuesto'),
-      ])
-      setCuentas(c.data.filter((x: any) => x.acepta_movimientos))
-      setCampos(f.data)
-      setDims({ unidades: un.data, deptos: dep.data })
-      setConfig(cfg.data); setConfigDirty(false)
-    } catch { /* silent */ }
+    const [c, f, un, dep, cfg] = await Promise.allSettled([
+      api.get('/contabilidad/cuentas'), api.get('/campos'),
+      api.get('/contabilidad/unidades-negocio'), api.get('/contabilidad/departamentos'),
+      api.get('/contabilidad/config-presupuesto'),
+    ])
+    if (c.status === 'fulfilled') setCuentas(c.value.data.filter((x: any) => x.acepta_movimientos))
+    else toast.error('Error al cargar plan de cuentas')
+    if (f.status === 'fulfilled') setCampos(f.value.data)
+    if (un.status === 'fulfilled' && dep.status === 'fulfilled') setDims({ unidades: un.value.data, deptos: dep.value.data })
+    if (cfg.status === 'fulfilled') { setConfig(cfg.value.data); setConfigDirty(false) }
   }, [])
 
   const loadRegistros = useCallback(async () => {
