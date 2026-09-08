@@ -6,7 +6,8 @@ import {
   Table2, Gauge, CheckCircle2, AlertTriangle, AlertOctagon,
   Copy, Search, ChevronDown, ChevronRight,
   ChevronsDown, ChevronsRight, TrendingUp, Undo2, Settings, FileText,
-  XCircle, BarChart3, Percent, Shield, Clock, Hash, Layers, Pencil, Filter
+  XCircle, BarChart3, Percent, Shield, Clock, Hash, Layers, Pencil, Filter,
+  Upload, Lock, GitBranch
 } from 'lucide-react'
 
 /* ═══════════════════════════════ constants ═══════════════════════════════ */
@@ -108,6 +109,7 @@ export default function Presupuesto() {
   const [unFiltro, setUnFiltro] = useState('')
   const [depFiltro, setDepFiltro] = useState('')
   const [tipoFiltro, setTipoFiltro] = useState('')
+  const [estadoFiltro, setEstadoFiltro] = useState('')
   const [showTipoDropdown, setShowTipoDropdown] = useState(false)
 
   const [showNuevoRegistro, setShowNuevoRegistro] = useState(false)
@@ -125,6 +127,13 @@ export default function Presupuesto() {
     if (!claseFilter) return cuentas
     return cuentas.filter((c: any) => (c.codigo || '')[0] === claseFilter)
   }, [cuentas, claseFilter])
+  const [escenario, setEscenario] = useState('principal')
+  const [escenarios, setEscenarios] = useState<any[]>([])
+  const [showImportExcel, setShowImportExcel] = useState(false)
+  const [importingExcel, setImportingExcel] = useState(false)
+  const [periodosCerrados, setPeriodosCerrados] = useState<number[]>([])
+  const [showEscenarioMgmt, setShowEscenarioMgmt] = useState(false)
+  const [newEscenario, setNewEscenario] = useState({ nombre: '', origen: 'principal', factor: '1.0' })
   const [saving, setSaving] = useState(false)
 
   /* ── loaders ── */
@@ -161,16 +170,30 @@ export default function Presupuesto() {
   const loadControl = useCallback(async () => {
     setLoading(true)
     try {
-      let url = `/contabilidad/presupuesto-vs-real?anio=${anio}`
+      let url = `/contabilidad/presupuesto-vs-real?anio=${anio}&escenario=${escenario}`
       if (campoFiltro) url += `&campo_id=${campoFiltro}`
       if (unFiltro) url += `&unidad_negocio_id=${unFiltro}`
       if (depFiltro) url += `&departamento_id=${depFiltro}`
       setVsReal((await api.get(url)).data)
     } catch { toast.error('Error cargando control') }
     finally { setLoading(false) }
-  }, [anio, campoFiltro, unFiltro, depFiltro])
+  }, [anio, campoFiltro, unFiltro, depFiltro, escenario])
+
+  const loadEscenarios = useCallback(async () => {
+    try { setEscenarios((await api.get(`/contabilidad/presupuestos/escenarios?anio=${anio}`)).data) }
+    catch { /* silently ignore */ }
+  }, [anio])
+
+  const loadPeriodos = useCallback(async () => {
+    try {
+      const { data } = await api.get(`/contabilidad/periodos?anio=${anio}`)
+      setPeriodosCerrados((data || []).filter((p: any) => p.estado === 'cerrado').map((p: any) => p.mes))
+    } catch { setPeriodosCerrados([]) }
+  }, [anio])
 
   useEffect(() => { loadBase() }, [loadBase])
+  useEffect(() => { loadEscenarios() }, [loadEscenarios])
+  useEffect(() => { if (tab === 'saldos') loadPeriodos() }, [tab, loadPeriodos])
   useEffect(() => {
     if (tab === 'registros') loadRegistros()
     else if (tab === 'saldos') loadSaldos()
@@ -236,6 +259,25 @@ export default function Presupuesto() {
     try { await api.delete(`/contabilidad/registros-presupuestarios/${id}`); toast.success('Eliminado'); loadRegistros(); setShowDetalleRegistro(null) }
     catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
   }
+
+  async function aprobarLote() {
+    const pendientes = items.filter((p: any) => p.estado === 'borrador').length
+    if (!pendientes) { toast('No hay borradores pendientes'); return }
+    if (!confirm(`¿Aprobar los ${pendientes} presupuestos en borrador del año ${anio}?`)) return
+    try {
+      const r = await api.put(`/contabilidad/presupuestos/aprobar-lote?anio=${anio}`)
+      toast.success(`${r.data.aprobados} presupuesto(s) aprobado(s)`)
+      loadSaldos()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al aprobar lote') }
+  }
+
+  const [drillDown, setDrillDown] = useState<{ cuenta_codigo: string; cuenta_nombre: string; lineas: any[] } | null>(null)
+  async function openDrillDown(row: any) {
+    try {
+      const { data } = await api.get(`/contabilidad/presupuesto-drill-down`, { params: { anio, cuenta_id: row.cuenta_id } })
+      setDrillDown({ cuenta_codigo: row.cuenta_codigo, cuenta_nombre: row.cuenta_nombre, lineas: data })
+    } catch { toast.error('Error al cargar detalle de asientos') }
+  }
   function detectDist(ln: any): string {
     const vals = MK.map(mk => Number(ln[mk] || 0))
     const nonZero = vals.map((v, i) => v > 0 ? i : -1).filter(i => i >= 0)
@@ -294,6 +336,36 @@ export default function Presupuesto() {
     try { const r = await api.post('/contabilidad/presupuestos/copiar-anio', { anio_origen: Number(copyData.anio_origen), anio_destino: anio, factor: parseFloat(copyData.factor)||1.0 }); toast.success(`${r.data.creados} copiadas, ${r.data.omitidos} omitidas`); setShowCopy(false); loadSaldos() }
     catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
   }
+  async function importarExcel(file: File) {
+    setImportingExcel(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const { data } = await api.post(`/contabilidad/presupuestos/importar-excel?anio=${anio}`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      toast.success(`${data.creados} línea(s) importada(s)${data.errores?.length ? `, ${data.errores.length} error(es)` : ''}`)
+      if (data.errores?.length) data.errores.slice(0, 5).forEach((e: string) => toast.error(e, { duration: 5000 }))
+      setShowImportExcel(false); loadSaldos()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al importar') }
+    finally { setImportingExcel(false) }
+  }
+
+  async function duplicarEscenario(e: any) {
+    e.preventDefault()
+    try {
+      const { data } = await api.post('/contabilidad/presupuestos/duplicar-escenario', { anio, escenario_origen: newEscenario.origen, escenario_destino: newEscenario.nombre, factor: parseFloat(newEscenario.factor) || 1.0 })
+      toast.success(`${data.creados} línea(s) copiadas al escenario "${newEscenario.nombre}"`)
+      setNewEscenario({ nombre: '', origen: 'principal', factor: '1.0' }); loadEscenarios()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function eliminarEscenario(nombre: string) {
+    if (!confirm(`¿Eliminar el escenario "${nombre}" y todas sus líneas?`)) return
+    try { await api.delete(`/contabilidad/presupuestos/escenario/${nombre}?anio=${anio}`); toast.success('Escenario eliminado'); loadEscenarios(); if (escenario === nombre) setEscenario('principal') }
+    catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  const totalComprometido = vsReal.reduce((s: number, r: any) => s + (r.total_comprometido || 0), 0)
+
   function exportCSV() {
     const src = tab === 'saldos' ? filteredSaldos : vsReal; if (!src.length) { toast.error('Nada'); return }
     let csv = tab === 'saldos'
@@ -330,6 +402,8 @@ export default function Presupuesto() {
   const forecast = tab==='control' && totalReal>0 && mesActual>1 ? Math.round((totalReal/mesActual)*12) : null
   const filteredRegistros = useMemo(() => registros.filter(r => {
     if (busqueda) { const q = busqueda.toLowerCase(); if (!(r.numero||'').toLowerCase().includes(q) && !(r.descripcion||'').toLowerCase().includes(q)) return false }
+    if (estadoFiltro && r.estado !== estadoFiltro) return false
+    if (tipoFiltro && r.version !== tipoFiltro) return false
     if (campoFiltro || unFiltro || depFiltro) {
       const lineas = r.lineas || []
       const match = lineas.some((ln: any) => {
@@ -341,7 +415,7 @@ export default function Presupuesto() {
       if (!match) return false
     }
     return true
-  }), [registros, busqueda, campoFiltro, unFiltro, depFiltro])
+  }), [registros, busqueda, estadoFiltro, tipoFiltro, campoFiltro, unFiltro, depFiltro])
 
   const regStats = { total:filteredRegistros.length, borradores:filteredRegistros.filter(r=>r.estado==='borrador').length, aprobados:filteredRegistros.filter(r=>r.estado==='aprobado').length, monto:filteredRegistros.reduce((s:number,r:any)=>s+(r.total||0),0) }
 
@@ -412,10 +486,19 @@ export default function Presupuesto() {
               <Search size={13} style={{ position: 'absolute', left: 8, top: 9, color: '#94a3b8' }} />
               <input className="input" placeholder="Buscar…" value={busqueda} onChange={e => setBusqueda(e.target.value)} style={{ width: 140, height: 32, paddingLeft: 28, fontSize: 12 }} />
             </div>
-            {tab === 'registros' && (
+            {tab === 'registros' && <>
               <select className="select" style={{ width: 120, height: 32 }} value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)}>
                 <option value="">Todo tipo</option>
                 {Object.entries(TIPO_LABELS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <select className="select" style={{ width: 120, height: 32 }} value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}>
+                <option value="">Todo estado</option>
+                {Object.entries(ESTADO_BADGE).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </>}
+            {tab === 'control' && escenarios.length > 1 && (
+              <select className="select" style={{ width: 130, height: 32, fontWeight: 600, color: '#7c3aed', borderColor: '#c4b5fd' }} value={escenario} onChange={e => setEscenario(e.target.value)}>
+                {escenarios.map((es: any) => <option key={es.escenario} value={es.escenario}>{es.escenario} ({es.count})</option>)}
               </select>
             )}
             {config.dim_campo !== false && <select className="select" style={{ width: 110, height: 32 }} value={campoFiltro} onChange={e => setCampoFiltro(e.target.value)}><option value="">Todo campo</option>{campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select>}
@@ -454,7 +537,10 @@ export default function Presupuesto() {
             {tab === 'saldos' && <>
               <button className="btn-primary" style={{ height: 32, opacity: dirty?1:.4, pointerEvents: dirty?'auto':'none', background: '#0369a1' }} onClick={guardarCambios} disabled={saving}><Save size={14} /> {saving?'…':`Guardar${dirtyCount>0?` (${dirtyCount})`:''}`}</button>
               {dirty && <button className="btn-secondary" style={{ height: 32 }} onClick={() => { setEdits({}); toast.success('Descartados') }}><Undo2 size={14} /></button>}
+              <button className="btn-secondary" style={{ height: 32, color: '#166534' }} onClick={aprobarLote} title="Aprobar todos los borradores del año"><CheckCircle2 size={14} /> Aprobar lote</button>
+              <button className="btn-secondary" style={{ height: 32 }} onClick={() => setShowImportExcel(true)} title="Importar desde Excel"><Upload size={14} /> Excel</button>
               <button className="btn-secondary" style={{ height: 32 }} onClick={() => { setCopyData({anio_origen:anio-1,factor:1.0}); setShowCopy(true) }}><Copy size={14} /></button>
+              <button className="btn-secondary" style={{ height: 32, color: '#7c3aed' }} onClick={() => setShowEscenarioMgmt(true)} title="Gestionar escenarios"><GitBranch size={14} /></button>
             </>}
             <button className="btn-secondary" style={{ height: 32 }} onClick={() => tab==='registros'?loadRegistros():tab==='saldos'?loadSaldos():loadControl()}><RefreshCw size={14} /></button>
             {tab !== 'registros' && <button className="btn-secondary" style={{ height: 32 }} onClick={exportCSV}><Download size={14} /></button>}
@@ -478,7 +564,8 @@ export default function Presupuesto() {
           {tab === 'control' && <>
             <KpiCard label={`Presupuesto ${anio}`} value={`RD$ ${fmt0(totalPres)}`} color="#0369a1" Icon={PiggyBank} />
             <KpiCard label="Real ejecutado" value={`RD$ ${fmt0(totalReal)}`} color="#16a34a" Icon={BarChart3} />
-            <KpiCard label="Disponible" value={`RD$ ${fmt0(disponible)}`} color={disponible<0?'#dc2626':'#475569'} Icon={Shield} />
+            {totalComprometido > 0 && <KpiCard label="Comprometido" value={`RD$ ${fmt0(totalComprometido)}`} color="#7c3aed" Icon={Lock} />}
+            <KpiCard label="Disponible" value={`RD$ ${fmt0(disponible - totalComprometido)}`} color={(disponible - totalComprometido)<0?'#dc2626':'#475569'} Icon={Shield} />
             <KpiCard label="% Consumido" value={`${pctGlobal}%`} color={estadoPct(pctGlobal).color} Icon={Percent} />
             {forecast!==null && <KpiCard label="Proyección año" value={`RD$ ${fmt0(forecast)}`} color={forecast>totalPres?'#dc2626':'#0369a1'} Icon={TrendingUp} />}
           </>}
@@ -537,7 +624,7 @@ export default function Presupuesto() {
                   </button>Cuenta
                 </th>
                 <th style={{...thL,width:100}}>Dimensiones</th>
-                {cols.map(c => <th key={c.label} style={thR}>{c.label}</th>)}
+                {cols.map(c => <th key={c.label} style={thR}>{periodo==='mes' && periodosCerrados.includes(c.idx[0]+1) ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Lock size={9} color="#94a3b8" />{c.label}</span> : c.label}</th>)}
                 <th style={thR}>Total</th><th style={{...thR,width:50}}></th>
               </tr></thead>
               <tbody>
@@ -566,14 +653,25 @@ export default function Presupuesto() {
                             <span style={{ color: '#334155' }}>{p.cuenta_nombre}</span>
                             {d && <span style={{ marginLeft: 6, fontSize: 9, color: '#3b82f6', fontWeight: 700 }}>●</span>}
                           </td>
-                          <td style={tdL}><DimTags p={p} /></td>
+                          <td style={tdL}>
+                            <DimTags p={p} />
+                            {p.estado && p.estado !== 'aprobado' && (() => { const eb = ESTADO_BADGE[p.estado] || ESTADO_BADGE.borrador; return (
+                              <span style={{ display: 'inline-block', fontSize: 9, fontWeight: 600, color: eb.color, background: eb.bg, border: `1px solid ${eb.border}`, padding: '1px 6px', borderRadius: 99, marginLeft: 4 }}>{eb.label}</span>
+                            )})()}
+                          </td>
                           {cols.map(c => {
-                            if (periodo==='mes') { const mk=MK[c.idx[0]]; return (
-                              <td key={c.label} style={{ padding: '2px 3px', textAlign: 'right', borderBottom: '1px solid #f1f5f9' }}>
-                                <input value={cellVal(p,mk)||''} onChange={e => setCell(p.id,mk,e.target.value)} type="number" step="0.01"
-                                  style={{ width: 76, textAlign: 'right', fontVariantNumeric: 'tabular-nums', border: '1px solid transparent', borderRadius: 5, padding: '5px 6px', fontSize: 12, background: 'transparent', transition: 'all .15s' }}
-                                  onFocus={e => { e.target.style.border='1px solid #93c5fd'; e.target.style.background='#fff'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,.1)' }}
-                                  onBlur={e => { e.target.style.border='1px solid transparent'; e.target.style.background='transparent'; e.target.style.boxShadow='none' }} />
+                            if (periodo==='mes') { const mk=MK[c.idx[0]]; const mesNum=c.idx[0]+1; const cerrado=periodosCerrados.includes(mesNum); return (
+                              <td key={c.label} style={{ padding: '2px 3px', textAlign: 'right', borderBottom: '1px solid #f1f5f9', position: 'relative' }}>
+                                {cerrado ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3, padding: '5px 6px', fontSize: 12, color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }} title="Período cerrado">
+                                    <Lock size={10} color="#94a3b8" />{fmt(cellVal(p,mk))}
+                                  </div>
+                                ) : (
+                                  <input value={cellVal(p,mk)||''} onChange={e => setCell(p.id,mk,e.target.value)} type="number" step="0.01"
+                                    style={{ width: 76, textAlign: 'right', fontVariantNumeric: 'tabular-nums', border: '1px solid transparent', borderRadius: 5, padding: '5px 6px', fontSize: 12, background: 'transparent', transition: 'all .15s' }}
+                                    onFocus={e => { e.target.style.border='1px solid #93c5fd'; e.target.style.background='#fff'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,.1)' }}
+                                    onBlur={e => { e.target.style.border='1px solid transparent'; e.target.style.background='transparent'; e.target.style.boxShadow='none' }} />
+                                )}
                               </td>
                             )} return <td key={c.label} style={tdR}>{fmt(c.idx.reduce((s:number,i:number)=>s+cellVal(p,MK[i]),0))}</td>
                           })}
@@ -614,21 +712,26 @@ export default function Presupuesto() {
                     label: m,
                     pres: vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.presupuesto || 0), 0),
                     real: vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.real || 0), 0),
+                    comp: vsReal.reduce((s: number, r: any) => s + (r.meses?.[mi]?.comprometido || 0), 0),
                   }))
-                  const maxVal = Math.max(...mData.map(d => Math.max(d.pres, d.real)), 1)
+                  const hasComp = mData.some(d => d.comp > 0)
+                  const maxVal = Math.max(...mData.map(d => Math.max(d.pres, d.real + d.comp)), 1)
                   const W = 100, barH = 140
+                  const nbars = hasComp ? 3 : 2
                   return (
                     <svg viewBox={`0 0 ${W} ${barH + 18}`} style={{ width: '100%', height: 180, display: 'block' }}>
                       {mData.map((d, i) => {
-                        const gw = W / 12, bw = gw * 0.35, x = i * gw + gw * 0.12
+                        const gw = W / 12, bw = gw * (0.7 / nbars), x = i * gw + gw * 0.12
                         const hp = (d.pres / maxVal) * barH, hr = (d.real / maxVal) * barH
-                        const pct = d.pres ? (d.real / d.pres) * 100 : 0
+                        const hc = hasComp ? (d.comp / maxVal) * barH : 0
+                        const pct = d.pres ? ((d.real + d.comp) / d.pres) * 100 : 0
                         const barColor = pct >= (config.umbral_bloqueo || 100) ? '#dc2626' : pct >= (config.umbral_alerta || 85) ? '#d97706' : '#22c55e'
                         return (
                           <g key={i}>
                             <rect x={x} y={barH - hp} width={bw} height={hp} rx={1.5} fill="#e2e8f0" />
-                            <rect x={x + bw + 0.4} y={barH - hr} width={bw} height={hr} rx={1.5} fill={barColor} />
-                            <text x={x + bw} y={barH + 10} textAnchor="middle" fontSize={3.5} fill="#94a3b8" fontWeight={500}>{d.label}</text>
+                            <rect x={x + bw + 0.3} y={barH - hr} width={bw} height={hr} rx={1.5} fill={barColor} />
+                            {hasComp && <rect x={x + (bw + 0.3) * 2} y={barH - hc} width={bw} height={hc} rx={1.5} fill="#8b5cf6" />}
+                            <text x={x + bw * (nbars / 2)} y={barH + 10} textAnchor="middle" fontSize={3.5} fill="#94a3b8" fontWeight={500}>{d.label}</text>
                           </g>
                         )
                       })}
@@ -638,6 +741,7 @@ export default function Presupuesto() {
                 <div style={{ display: 'flex', gap: 16, justifyContent: 'center', fontSize: 11, color: '#64748b' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#e2e8f0', display: 'inline-block' }} /> Presupuesto</span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#22c55e', display: 'inline-block' }} /> Real</span>
+                  {totalComprometido > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#8b5cf6', display: 'inline-block' }} /> Comprometido</span>}
                 </div>
               </div>
               {/* Dona: distribución por clase */}
@@ -675,7 +779,7 @@ export default function Presupuesto() {
                       <text x={cx} y={cy + 6} textAnchor="middle" fontSize={3.5} fill="#94a3b8">consumido</text>
                     </svg>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-                      {entries.map((c, i) => (
+                      {arcs.map((c, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
                           <span style={{ width: 8, height: 8, borderRadius: 2, background: c.color, flexShrink: 0 }} />
                           <span style={{ flex: 1, color: '#475569' }}>{c.label}</span>
@@ -731,18 +835,18 @@ export default function Presupuesto() {
                 <thead><tr style={{ background: '#f8fafc' }}>
                   <th style={thL}>Cuenta</th>
                   {periodo==='mes' ? MESES.map(m => <th key={m} style={{...thR,fontSize:10}}>{m}</th>) : periodo==='trim' ? TRIMS.map(t => <th key={t.label} style={thR}>{t.label}</th>) : <th style={thR}>Año</th>}
-                  <th style={thR}>Presup.</th><th style={thR}>Real</th><th style={thR}>Disponible</th>
+                  <th style={thR}>Presup.</th><th style={thR}>Real</th><th style={thR}>Compr.</th><th style={thR}>Disponible</th>
                   <th style={{...thL,width:180}}>Consumo</th><th style={{...thL,width:80}}>Estado</th>
                 </tr></thead>
                 <tbody>
                   {vsReal.length===0 ? (
-                    <tr><td colSpan={periodo==='mes'?18:periodo==='trim'?10:7} style={{ textAlign: 'center', padding: 50, color: '#94a3b8' }}>
+                    <tr><td colSpan={periodo==='mes'?19:periodo==='trim'?11:8} style={{ textAlign: 'center', padding: 50, color: '#94a3b8' }}>
                       <Gauge size={36} style={{ marginBottom: 8, opacity: .3 }} /><br/>Sin datos de control para {anio}
                     </td></tr>
                   ) : vsReal.map((r,i) => {
-                    const disp=r.total_presupuesto-r.total_real, pct=r.total_presupuesto?(r.total_real/r.total_presupuesto*100):0, st=estadoPct(pct), meses=r.meses||[]
+                    const comp = r.total_comprometido || 0, disp=r.total_presupuesto-r.total_real-comp, pct=r.total_presupuesto?((r.total_real+comp)/r.total_presupuesto*100):0, st=estadoPct(pct), meses=r.meses||[]
                     return (
-                      <tr key={i}>
+                      <tr key={i} onClick={() => openDrillDown(r)} style={{ cursor: 'pointer', transition: 'background .1s' }} onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
                         <td style={{ ...tdL, whiteSpace: 'nowrap' }}><span style={{ color: '#94a3b8', marginRight: 6, fontFamily: 'monospace', fontSize: 11 }}>{r.cuenta_codigo}</span><span style={{ color: '#334155' }}>{r.cuenta_nombre}</span></td>
                         {periodo==='mes' ? meses.map((m:any,mi:number) => {
                           const mp=m.presupuesto?(m.real/m.presupuesto*100):0, mc=mp>(config.umbral_bloqueo||100)?'#dc2626':mp>=(config.umbral_alerta||85)?'#d97706':'#475569'
@@ -755,6 +859,7 @@ export default function Presupuesto() {
                         }) : <td style={tdR}><div>{fmt(r.total_real)}</div><div style={{fontSize:9,color:'#cbd5e1'}}>{fmt(r.total_presupuesto)}</div></td>}
                         <td style={tdR}>{fmt(r.total_presupuesto)}</td>
                         <td style={tdR}>{fmt(r.total_real)}</td>
+                        <td style={{...tdR,color: comp>0?'#7c3aed':'#cbd5e1'}}>{fmt(comp)}</td>
                         <td style={{...tdR,color:disp<0?'#dc2626':'#475569',fontWeight:disp<0?700:400}}>{fmt(disp)}</td>
                         <td style={{ padding: '10px 12px', borderBottom: '1px solid #f1f5f9' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -783,7 +888,8 @@ export default function Presupuesto() {
                     }) : <td style={{...tdR,borderTop:'2px solid #cbd5e1'}}><div>{fmt(totalReal)}</div><div style={{fontSize:9,color:'#cbd5e1'}}>{fmt(totalPres)}</div></td>}
                     <td style={{...tdR,borderTop:'2px solid #cbd5e1'}}>{fmt(totalPres)}</td>
                     <td style={{...tdR,borderTop:'2px solid #cbd5e1'}}>{fmt(totalReal)}</td>
-                    <td style={{...tdR,borderTop:'2px solid #cbd5e1',color:disponible<0?'#dc2626':'#475569'}}>{fmt(disponible)}</td>
+                    <td style={{...tdR,borderTop:'2px solid #cbd5e1',color:totalComprometido>0?'#7c3aed':'#cbd5e1'}}>{fmt(totalComprometido)}</td>
+                    <td style={{...tdR,borderTop:'2px solid #cbd5e1',color:(disponible-totalComprometido)<0?'#dc2626':'#475569'}}>{fmt(disponible-totalComprometido)}</td>
                     <td colSpan={2} style={{...tdL,borderTop:'2px solid #cbd5e1',color:estadoPct(pctGlobal).color,fontWeight:700}}>{pctGlobal}% consumido</td>
                   </tr>
                 </tfoot>}
@@ -1143,6 +1249,117 @@ export default function Presupuesto() {
               <button type="submit" className="btn-primary"><Copy size={14} /> Copiar</button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {showImportExcel && (
+        <Modal title="Importar presupuesto desde Excel" subtitle={`Año ${anio} — Las líneas se crean como borrador`} onClose={() => setShowImportExcel(false)} width={520}>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '14px 16px', fontSize: 12, color: '#0369a1', lineHeight: 1.6 }}>
+              <strong>Formato esperado del Excel:</strong><br/>
+              Columna A: <code>cuenta_codigo</code> (ej: 6101-001)<br/>
+              Columnas B-M: montos de Ene a Dic (opcionales)<br/>
+              Si solo hay columna B, se toma como total anual y se distribuye mensualmente.<br/>
+              Columnas opcionales: <code>campo_id</code>, <code>unidad_negocio_id</code>, <code>departamento_id</code>
+            </div>
+          </div>
+          <div style={{ border: '2px dashed #cbd5e1', borderRadius: 10, padding: 40, textAlign: 'center', marginBottom: 20, background: '#f8fafc' }}>
+            <Upload size={32} color="#94a3b8" style={{ marginBottom: 8 }} />
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b' }}>Arrastra tu archivo .xlsx aquí o</p>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 20px', background: '#166534', color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+              <Upload size={14} /> Seleccionar archivo
+              <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importarExcel(f) }} disabled={importingExcel} />
+            </label>
+          </div>
+          {importingExcel && <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Procesando archivo…</div>}
+        </Modal>
+      )}
+
+      {showEscenarioMgmt && (
+        <Modal title="Gestionar escenarios de presupuesto" subtitle={`Año ${anio} — Solo "principal" se usa para control presupuestario`} onClose={() => setShowEscenarioMgmt(false)} width={600}>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>Escenarios existentes</div>
+            {escenarios.length === 0 ? (
+              <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>Sin escenarios para {anio}</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {escenarios.map((es: any) => (
+                  <div key={es.escenario} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: es.escenario === 'principal' ? '#f0fdf4' : '#f8fafc', borderRadius: 8, border: `1px solid ${es.escenario === 'principal' ? '#86efac' : '#e2e8f0'}` }}>
+                    <GitBranch size={14} color={es.escenario === 'principal' ? '#166534' : '#7c3aed'} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{es.escenario}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{es.count} línea(s){es.escenario === 'principal' && ' — usado para control'}</div>
+                    </div>
+                    {es.escenario !== 'principal' && (
+                      <button className="btn-icon" style={{ color: '#dc2626' }} onClick={() => eliminarEscenario(es.escenario)}><Trash2 size={13} /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>Crear nuevo escenario</div>
+            <form onSubmit={duplicarEscenario}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 10, marginBottom: 12 }}>
+                <div>
+                  <Label>Nombre *</Label>
+                  <input className="input" required value={newEscenario.nombre} onChange={e => setNewEscenario({ ...newEscenario, nombre: e.target.value })} placeholder="ej: optimista" />
+                </div>
+                <div>
+                  <Label>Copiar desde</Label>
+                  <select className="select" value={newEscenario.origen} onChange={e => setNewEscenario({ ...newEscenario, origen: e.target.value })}>
+                    {escenarios.map((es: any) => <option key={es.escenario} value={es.escenario}>{es.escenario}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Factor</Label>
+                  <input className="input" type="number" step="0.01" value={newEscenario.factor} onChange={e => setNewEscenario({ ...newEscenario, factor: e.target.value })} />
+                </div>
+              </div>
+              <p style={{ margin: '0 0 12px', fontSize: 11, color: '#94a3b8' }}>Factor: 1.0 = copia exacta, 1.10 = +10%, 0.85 = -15%</p>
+              <button type="submit" className="btn-primary" style={{ background: '#7c3aed' }}><GitBranch size={14} /> Crear escenario</button>
+            </form>
+          </div>
+        </Modal>
+      )}
+
+      {drillDown && (
+        <Modal title={`Detalle de asientos — ${drillDown.cuenta_codigo}`} subtitle={drillDown.cuenta_nombre} onClose={() => setDrillDown(null)} width={800}>
+          {drillDown.lineas.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Sin asientos contabilizados para esta cuenta en {anio}</div>
+          ) : (
+            <div style={{ overflowX: 'auto', maxHeight: 460, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead><tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
+                  <th style={thL}>Fecha</th>
+                  <th style={thL}>Asiento</th>
+                  <th style={thL}>Descripción</th>
+                  <th style={thR}>Debe</th>
+                  <th style={thR}>Haber</th>
+                  <th style={thL}>Origen</th>
+                </tr></thead>
+                <tbody>
+                  {drillDown.lineas.map((l: any, i: number) => (
+                    <tr key={i}>
+                      <td style={{ ...tdL, whiteSpace: 'nowrap' }}>{l.fecha ? new Date(l.fecha).toLocaleDateString('es-DO') : '—'}</td>
+                      <td style={{ ...tdL, fontFamily: 'monospace', fontSize: 11, color: '#166534', fontWeight: 600 }}>{l.asiento_numero || '—'}</td>
+                      <td style={{ ...tdL, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.descripcion || '—'}</td>
+                      <td style={{ ...tdR, color: l.debe > 0 ? '#0f172a' : '#cbd5e1' }}>{fmt(l.debe)}</td>
+                      <td style={{ ...tdR, color: l.haber > 0 ? '#0f172a' : '#cbd5e1' }}>{fmt(l.haber)}</td>
+                      <td style={tdL}>{l.origen ? <span style={{ fontSize: 9, background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: 4 }}>{l.origen}</span> : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr style={{ fontWeight: 700, background: '#f1f5f9' }}>
+                  <td colSpan={3} style={{ ...tdL, borderTop: '2px solid #cbd5e1' }}>TOTAL ({drillDown.lineas.length} líneas)</td>
+                  <td style={{ ...tdR, borderTop: '2px solid #cbd5e1' }}>{fmt(drillDown.lineas.reduce((s: number, l: any) => s + (l.debe || 0), 0))}</td>
+                  <td style={{ ...tdR, borderTop: '2px solid #cbd5e1' }}>{fmt(drillDown.lineas.reduce((s: number, l: any) => s + (l.haber || 0), 0))}</td>
+                  <td style={{ borderTop: '2px solid #cbd5e1' }}></td>
+                </tr></tfoot>
+              </table>
+            </div>
+          )}
         </Modal>
       )}
     </div>
