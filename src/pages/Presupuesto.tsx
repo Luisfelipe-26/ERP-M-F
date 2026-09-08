@@ -136,7 +136,7 @@ export default function Presupuesto() {
   const [newEscenario, setNewEscenario] = useState({ nombre: '', origen: 'principal', factor: '1.0' })
   const [documentos, setDocumentos] = useState<any[]>([])
   const [showCrearDoc, setShowCrearDoc] = useState(false)
-  const [docForm, setDocForm] = useState<any>({ nombre: '', descripcion: '', anio: new Date().getFullYear(), periodo_inicio: 1, periodo_fin: 12, clase_cuentas: 'todas' })
+  const [docForm, setDocForm] = useState<any>({ nombre: '', descripcion: '', anio: new Date().getFullYear(), clase_cuentas: 'todas' })
   const [activeDoc, setActiveDoc] = useState<any>(null)
   const [docLineas, setDocLineas] = useState<any[]>([])
   const [showAddLinea, setShowAddLinea] = useState(false)
@@ -393,7 +393,7 @@ export default function Presupuesto() {
       const { data } = await api.post('/contabilidad/presupuestos-documento', { ...docForm, anio })
       toast.success(`Presupuesto "${docForm.nombre}" creado`)
       setShowCrearDoc(false)
-      setDocForm({ nombre: '', descripcion: '', anio, periodo_inicio: 1, periodo_fin: 12, clase_cuentas: 'todas' })
+      setDocForm({ nombre: '', descripcion: '', anio, clase_cuentas: 'todas' })
       loadDocumentos()
       loadDocDetalle(data.id)
     } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
@@ -661,10 +661,9 @@ export default function Presupuesto() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
               <button className="btn-secondary" style={{ height: 32 }} onClick={() => { setActiveDoc(null); loadDocumentos() }}><ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> Volver</button>
               <div style={{ flex: 1 }}>
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{activeDoc.nombre}</h2>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{activeDoc.nombre}{activeDoc.numero && <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>{activeDoc.numero}</span>}</h2>
                 <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', gap: 12, marginTop: 2 }}>
-                  <span>Año {activeDoc.anio}</span>
-                  <span>Período: {MESES[activeDoc.periodo_inicio - 1]} – {MESES[activeDoc.periodo_fin - 1]}</span>
+                  <span>Año fiscal {activeDoc.anio}</span>
                   <span>Estructura: {activeDoc.clase_cuentas === 'todas' ? 'Todas las cuentas' : `Clase ${activeDoc.clase_cuentas}`}</span>
                   {activeDoc.usuario_nombre && <span>Por: {activeDoc.usuario_nombre}</span>}
                 </div>
@@ -745,12 +744,12 @@ export default function Presupuesto() {
                       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,.08)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,.04)'; e.currentTarget.style.transform = '' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{d.nombre}</div>
+                        <div><span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{d.nombre}</span>{d.numero && <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>{d.numero}</span>}</div>
                         <Badge color={est.color} bg={est.bg} border={est.border}>{est.label}</Badge>
                       </div>
                       {d.descripcion && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10, lineHeight: 1.4 }}>{d.descripcion}</div>}
                       <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#94a3b8', marginBottom: 12 }}>
-                        <span>{MESES[d.periodo_inicio - 1]} – {MESES[d.periodo_fin - 1]} {d.anio}</span>
+                        <span>Año fiscal {d.anio}</span>
                         <span>{d.clase_cuentas === 'todas' ? 'Todas las cuentas' : `Clase ${d.clase_cuentas}`}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
@@ -1454,21 +1453,15 @@ export default function Presupuesto() {
               <Label>Nombre del presupuesto *</Label>
               <input className="input" required value={docForm.nombre} onChange={e => setDocForm({ ...docForm, nombre: e.target.value })} placeholder="ej: Presupuesto Operativo 2026" />
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <Label>Descripción</Label>
-              <input className="input" value={docForm.descripcion} onChange={e => setDocForm({ ...docForm, descripcion: e.target.value })} placeholder="Descripción opcional" />
-            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div>
-                <Label>Período inicio</Label>
-                <select className="select" value={docForm.periodo_inicio} onChange={e => setDocForm({ ...docForm, periodo_inicio: Number(e.target.value) })}>
-                  {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
+                <Label>Descripción</Label>
+                <input className="input" value={docForm.descripcion} onChange={e => setDocForm({ ...docForm, descripcion: e.target.value })} placeholder="Descripción opcional" />
               </div>
               <div>
-                <Label>Período fin</Label>
-                <select className="select" value={docForm.periodo_fin} onChange={e => setDocForm({ ...docForm, periodo_fin: Number(e.target.value) })}>
-                  {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                <Label>Año fiscal *</Label>
+                <select className="select" value={docForm.anio} onChange={e => setDocForm({ ...docForm, anio: Number(e.target.value) })}>
+                  {[anio - 1, anio, anio + 1].map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
             </div>
@@ -1498,8 +1491,8 @@ export default function Presupuesto() {
               <div>
                 <Label>Fecha *</Label>
                 <input className="input" type="date" required value={lineaForm.fecha} onChange={e => setLineaForm({ ...lineaForm, fecha: e.target.value })}
-                  min={`${activeDoc.anio}-${String(activeDoc.periodo_inicio).padStart(2, '0')}-01`}
-                  max={`${activeDoc.anio}-${String(activeDoc.periodo_fin).padStart(2, '0')}-${new Date(activeDoc.anio, activeDoc.periodo_fin, 0).getDate()}`} />
+                  min={`${activeDoc.anio}-01-01`}
+                  max={`${activeDoc.anio}-12-31`} />
               </div>
               <div>
                 <Label>Monto *</Label>
