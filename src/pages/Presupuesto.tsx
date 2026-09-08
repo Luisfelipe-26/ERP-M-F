@@ -236,6 +236,15 @@ export default function Presupuesto() {
     try { await api.delete(`/contabilidad/registros-presupuestarios/${id}`); toast.success('Eliminado'); loadRegistros(); setShowDetalleRegistro(null) }
     catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
   }
+  function detectDist(ln: any): string {
+    const vals = MK.map(mk => Number(ln[mk] || 0))
+    const nonZero = vals.map((v, i) => v > 0 ? i : -1).filter(i => i >= 0)
+    if (!nonZero.length) return config.distribucion_default || 'mensual'
+    for (const [key, dk] of Object.entries(DIST_KEYS)) {
+      if (dk.months.length === nonZero.length && dk.months.every((m, i) => m === nonZero[i])) return key
+    }
+    return 'mensual'
+  }
   function initEditRegistro(reg: any) {
     setEditingRegistro({
       id: reg.id, tipo: reg.tipo, anio: reg.anio, descripcion: reg.descripcion || '',
@@ -244,7 +253,7 @@ export default function Presupuesto() {
         unidad_negocio_id: ln.unidad_negocio_id ? String(ln.unidad_negocio_id) : '',
         departamento_id: ln.departamento_id ? String(ln.departamento_id) : '',
         total: String(MK.reduce((s: number, mk: string) => s + Number(ln[mk] || 0), 0)),
-        dist: config.distribucion_default || 'mensual', descripcion: ln.descripcion || '',
+        dist: detectDist(ln), descripcion: ln.descripcion || '',
       })),
     })
   }
