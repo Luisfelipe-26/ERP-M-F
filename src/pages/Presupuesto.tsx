@@ -90,7 +90,7 @@ function Badge({ color, bg, border, children }: any) {
 
 /* ═══════════════════════════════ page ═══════════════════════════════ */
 export default function Presupuesto() {
-  const [tab, setTab] = useState<'registros' | 'saldos' | 'control' | 'config'>('registros')
+  const [tab, setTab] = useState<'presupuestos' | 'registros' | 'saldos' | 'control' | 'config'>('presupuestos')
   const [periodo, setPeriodo] = useState<'mes' | 'trim' | 'anio'>('mes')
   const [anio, setAnio] = useState(new Date().getFullYear())
   const [loading, setLoading] = useState(true)
@@ -134,6 +134,13 @@ export default function Presupuesto() {
   const [periodosCerrados, setPeriodosCerrados] = useState<number[]>([])
   const [showEscenarioMgmt, setShowEscenarioMgmt] = useState(false)
   const [newEscenario, setNewEscenario] = useState({ nombre: '', origen: 'principal', factor: '1.0' })
+  const [documentos, setDocumentos] = useState<any[]>([])
+  const [showCrearDoc, setShowCrearDoc] = useState(false)
+  const [docForm, setDocForm] = useState<any>({ nombre: '', descripcion: '', anio: new Date().getFullYear(), periodo_inicio: 1, periodo_fin: 12, clase_cuentas: 'todas' })
+  const [activeDoc, setActiveDoc] = useState<any>(null)
+  const [docLineas, setDocLineas] = useState<any[]>([])
+  const [showAddLinea, setShowAddLinea] = useState(false)
+  const [lineaForm, setLineaForm] = useState<any>({ cuenta_id: '', fecha: '', monto: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', descripcion: '' })
   const [saving, setSaving] = useState(false)
 
   /* ── loaders ── */
@@ -191,15 +198,31 @@ export default function Presupuesto() {
     } catch { setPeriodosCerrados([]) }
   }, [anio])
 
+  const loadDocumentos = useCallback(async () => {
+    setLoading(true)
+    try { setDocumentos((await api.get(`/contabilidad/presupuestos-documento?anio=${anio}`)).data) }
+    catch { toast.error('Error al cargar presupuestos') }
+    finally { setLoading(false) }
+  }, [anio])
+
+  const loadDocDetalle = useCallback(async (docId: number) => {
+    try {
+      const { data } = await api.get(`/contabilidad/presupuestos-documento/${docId}`)
+      setActiveDoc(data)
+      setDocLineas(data.lineas || [])
+    } catch { toast.error('Error al cargar detalle') }
+  }, [])
+
   useEffect(() => { loadBase() }, [loadBase])
   useEffect(() => { loadEscenarios() }, [loadEscenarios])
   useEffect(() => { if (tab === 'saldos') loadPeriodos() }, [tab, loadPeriodos])
   useEffect(() => {
-    if (tab === 'registros') loadRegistros()
+    if (tab === 'presupuestos') loadDocumentos()
+    else if (tab === 'registros') loadRegistros()
     else if (tab === 'saldos') loadSaldos()
     else if (tab === 'control') loadControl()
     else setLoading(false)
-  }, [tab, loadRegistros, loadSaldos, loadControl])
+  }, [tab, loadDocumentos, loadRegistros, loadSaldos, loadControl])
 
   /* ── saldos editing ── */
   const cellVal = (row: any, mk: string) => { const e = edits[row.id]; return e && mk in e ? e[mk] : Number(row[mk] || 0) }
@@ -364,6 +387,61 @@ export default function Presupuesto() {
     catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
   }
 
+  async function crearDocumento(e: any) {
+    e.preventDefault()
+    try {
+      const { data } = await api.post('/contabilidad/presupuestos-documento', { ...docForm, anio })
+      toast.success(`Presupuesto "${docForm.nombre}" creado`)
+      setShowCrearDoc(false)
+      setDocForm({ nombre: '', descripcion: '', anio, periodo_inicio: 1, periodo_fin: 12, clase_cuentas: 'todas' })
+      loadDocumentos()
+      loadDocDetalle(data.id)
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function agregarLineaDoc(e: any) {
+    e.preventDefault()
+    if (!activeDoc) return
+    try {
+      await api.post(`/contabilidad/presupuestos-documento/${activeDoc.id}/lineas`, {
+        cuenta_id: Number(lineaForm.cuenta_id), fecha: lineaForm.fecha,
+        monto: parseFloat(lineaForm.monto) || 0,
+        campo_id: lineaForm.campo_id || null,
+        unidad_negocio_id: lineaForm.unidad_negocio_id ? Number(lineaForm.unidad_negocio_id) : null,
+        departamento_id: lineaForm.departamento_id ? Number(lineaForm.departamento_id) : null,
+        descripcion: lineaForm.descripcion || null,
+      })
+      toast.success('Línea agregada')
+      setShowAddLinea(false)
+      setLineaForm({ cuenta_id: '', fecha: '', monto: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', descripcion: '' })
+      loadDocDetalle(activeDoc.id)
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function eliminarLineaDoc(lineaId: number) {
+    if (!activeDoc || !confirm('¿Eliminar esta línea?')) return
+    try { await api.delete(`/contabilidad/presupuestos-documento/${activeDoc.id}/lineas/${lineaId}`); toast.success('Eliminada'); loadDocDetalle(activeDoc.id) }
+    catch { toast.error('Error') }
+  }
+
+  async function aprobarDocumento(docId: number) {
+    if (!confirm('¿Aprobar este presupuesto? Todas sus líneas pasarán a estado aprobado.')) return
+    try { const { data } = await api.put(`/contabilidad/presupuestos-documento/${docId}/aprobar`); toast.success(`Aprobado — ${data.lineas_aprobadas} línea(s)`); loadDocumentos(); if (activeDoc?.id === docId) loadDocDetalle(docId) }
+    catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  async function eliminarDocumento(docId: number) {
+    if (!confirm('¿Eliminar este presupuesto y todas sus líneas?')) return
+    try { await api.delete(`/contabilidad/presupuestos-documento/${docId}`); toast.success('Eliminado'); loadDocumentos(); if (activeDoc?.id === docId) setActiveDoc(null) }
+    catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  const docCuentasFiltradas = useMemo(() => {
+    if (!activeDoc || activeDoc.clase_cuentas === 'todas') return cuentas
+    const clases = activeDoc.clase_cuentas.split(',').map((c: string) => c.trim())
+    return cuentas.filter((c: any) => clases.includes((c.codigo || '')[0]))
+  }, [cuentas, activeDoc])
+
   const totalComprometido = vsReal.reduce((s: number, r: any) => s + (r.total_comprometido || 0), 0)
 
   function exportCSV() {
@@ -447,6 +525,7 @@ export default function Presupuesto() {
       {/* tabs */}
       <div style={{ display: 'flex', gap: 2, marginBottom: 16 }}>
         {([
+          { key: 'presupuestos', label: 'Presupuestos', Icon: PiggyBank, desc: 'Documentos de presupuesto' },
           { key: 'registros', label: 'Registros', Icon: FileText, desc: 'Asientos presupuestarios' },
           { key: 'saldos',    label: 'Saldos',    Icon: Table2,   desc: 'Balances por cuenta' },
           { key: 'control',   label: 'Control',   Icon: Gauge,    desc: 'Presupuesto vs Real' },
@@ -468,7 +547,7 @@ export default function Presupuesto() {
       </div>
 
       {/* toolbar contextual */}
-      {tab !== 'config' && (
+      {tab !== 'config' && tab !== 'presupuestos' && (
         <div style={S.ribbon}>
           {tab !== 'registros' && (
             <PaneGroup title="Pivote">
@@ -549,7 +628,7 @@ export default function Presupuesto() {
       )}
 
       {/* KPIs */}
-      {tab !== 'config' && (
+      {tab !== 'config' && tab !== 'presupuestos' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
           {tab === 'registros' && <>
             <KpiCard label="Registros" value={String(regStats.total)} color="#475569" Icon={Hash} />
@@ -574,6 +653,122 @@ export default function Presupuesto() {
 
       {loading && tab !== 'config' ? (
         <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Cargando…</div>
+      ) : tab === 'presupuestos' ? (
+        /* ═══ PRESUPUESTOS (documentos maestros) ═══ */
+        activeDoc ? (
+          /* ── Vista detalle del documento ── */
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <button className="btn-secondary" style={{ height: 32 }} onClick={() => { setActiveDoc(null); loadDocumentos() }}><ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> Volver</button>
+              <div style={{ flex: 1 }}>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{activeDoc.nombre}</h2>
+                <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', gap: 12, marginTop: 2 }}>
+                  <span>Año {activeDoc.anio}</span>
+                  <span>Período: {MESES[activeDoc.periodo_inicio - 1]} – {MESES[activeDoc.periodo_fin - 1]}</span>
+                  <span>Estructura: {activeDoc.clase_cuentas === 'todas' ? 'Todas las cuentas' : `Clase ${activeDoc.clase_cuentas}`}</span>
+                  {activeDoc.usuario_nombre && <span>Por: {activeDoc.usuario_nombre}</span>}
+                </div>
+              </div>
+              <Badge color={ESTADO_BADGE[activeDoc.estado]?.color || '#475569'} bg={ESTADO_BADGE[activeDoc.estado]?.bg || '#f1f5f9'} border={ESTADO_BADGE[activeDoc.estado]?.border}>{ESTADO_BADGE[activeDoc.estado]?.label || activeDoc.estado}</Badge>
+              {activeDoc.estado === 'borrador' && <>
+                <button className="btn-secondary" style={{ height: 32 }} onClick={() => setShowAddLinea(true)}><Plus size={14} /> Agregar línea</button>
+                <button className="btn-primary" style={{ height: 32, background: '#166534' }} onClick={() => aprobarDocumento(activeDoc.id)}><CheckCircle2 size={14} /> Aprobar</button>
+              </>}
+            </div>
+            {activeDoc.descripcion && <div style={{ ...S.card, padding: '12px 16px', marginBottom: 14, fontSize: 12, color: '#475569' }}>{activeDoc.descripcion}</div>}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
+              <KpiCard label="Líneas" value={String(docLineas.length)} color="#475569" Icon={Hash} />
+              <KpiCard label="Total" value={`RD$ ${fmt0(docLineas.reduce((s: number, l: any) => s + (l.total || 0), 0))}`} color="#0369a1" Icon={PiggyBank} />
+            </div>
+            <div style={{ ...S.card, overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    <th style={thL}>Fecha</th><th style={thL}>Cuenta</th><th style={thL}>Dimensiones</th>
+                    <th style={thR}>Monto</th><th style={thL}>Descripción</th><th style={thL}>Estado</th>
+                    <th style={{ ...thR, width: 50 }}></th>
+                  </tr></thead>
+                  <tbody>
+                    {docLineas.length === 0 ? (
+                      <tr><td colSpan={7} style={{ textAlign: 'center', padding: 50, color: '#94a3b8' }}>
+                        <Plus size={32} style={{ marginBottom: 8, opacity: .3 }} /><br/>Sin líneas — agrega la primera
+                      </td></tr>
+                    ) : docLineas.map((ln: any) => {
+                      const est = ESTADO_BADGE[ln.estado] || ESTADO_BADGE.borrador
+                      return (
+                        <tr key={ln.id}>
+                          <td style={{ ...tdL, whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 11, color: '#475569' }}>{ln.fecha || '—'}</td>
+                          <td style={{ ...tdL, whiteSpace: 'nowrap' }}>
+                            <span style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: 11, marginRight: 4 }}>{ln.cuenta_codigo}</span>
+                            <span style={{ color: '#334155' }}>{ln.cuenta_nombre}</span>
+                          </td>
+                          <td style={tdL}><DimTags p={ln} /></td>
+                          <td style={{ ...tdR, fontWeight: 700, color: '#0f172a' }}>{fmt(ln.total)}</td>
+                          <td style={{ ...tdL, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b' }}>{ln.descripcion || '—'}</td>
+                          <td style={tdL}><Badge color={est.color} bg={est.bg} border={est.border}>{est.label}</Badge></td>
+                          <td style={{ ...S.td, textAlign: 'center' }}>
+                            {activeDoc.estado === 'borrador' && <button className="btn-icon" onClick={() => eliminarLineaDoc(ln.id)}><Trash2 size={13} /></button>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  {docLineas.length > 0 && <tfoot><tr style={{ fontWeight: 700, background: '#f1f5f9' }}>
+                    <td colSpan={3} style={{ ...tdL, borderTop: '2px solid #cbd5e1' }}>TOTAL ({docLineas.length} líneas)</td>
+                    <td style={{ ...tdR, borderTop: '2px solid #cbd5e1' }}>{fmt(docLineas.reduce((s: number, l: any) => s + (l.total || 0), 0))}</td>
+                    <td colSpan={3} style={{ borderTop: '2px solid #cbd5e1' }}></td>
+                  </tr></tfoot>}
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ── Lista de documentos ── */
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 13, color: '#64748b' }}>{documentos.length} presupuesto(s) para {anio}</div>
+              <button className="btn-primary" style={{ height: 36, background: '#166534' }} onClick={() => { setDocForm({ ...docForm, anio }); setShowCrearDoc(true) }}><Plus size={14} /> Crear presupuesto</button>
+            </div>
+            {documentos.length === 0 ? (
+              <div style={{ ...S.card, padding: 60, textAlign: 'center' }}>
+                <PiggyBank size={44} color="#cbd5e1" style={{ marginBottom: 12 }} />
+                <div style={{ fontSize: 14, color: '#94a3b8', marginBottom: 8 }}>No hay presupuestos para {anio}</div>
+                <div style={{ fontSize: 12, color: '#cbd5e1' }}>Crea uno para comenzar a planificar</div>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
+                {documentos.map((d: any) => {
+                  const est = ESTADO_BADGE[d.estado] || ESTADO_BADGE.borrador
+                  return (
+                    <div key={d.id} onClick={() => loadDocDetalle(d.id)}
+                      style={{ ...S.card, padding: '20px 22px', cursor: 'pointer', transition: 'all .15s', borderLeft: `4px solid ${est.color}` }}
+                      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,.08)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+                      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,.04)'; e.currentTarget.style.transform = '' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{d.nombre}</div>
+                        <Badge color={est.color} bg={est.bg} border={est.border}>{est.label}</Badge>
+                      </div>
+                      {d.descripcion && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10, lineHeight: 1.4 }}>{d.descripcion}</div>}
+                      <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#94a3b8', marginBottom: 12 }}>
+                        <span>{MESES[d.periodo_inicio - 1]} – {MESES[d.periodo_fin - 1]} {d.anio}</span>
+                        <span>{d.clase_cuentas === 'todas' ? 'Todas las cuentas' : `Clase ${d.clase_cuentas}`}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+                        <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+                          <span style={{ color: '#475569' }}><strong>{d.lineas}</strong> líneas</span>
+                          <span style={{ color: '#0369a1', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>RD$ {fmt0(d.total)}</span>
+                        </div>
+                        {d.estado === 'borrador' && (
+                          <button className="btn-icon" style={{ color: '#dc2626' }} onClick={e => { e.stopPropagation(); eliminarDocumento(d.id) }}><Trash2 size={13} /></button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
       ) : tab === 'registros' ? (
         /* ═══ REGISTROS ═══ */
         <div style={{ ...S.card, overflow: 'hidden' }}>
@@ -1247,6 +1442,89 @@ export default function Presupuesto() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn-secondary" onClick={() => setShowCopy(false)}>Cancelar</button>
               <button type="submit" className="btn-primary"><Copy size={14} /> Copiar</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {showCrearDoc && (
+        <Modal title="Crear presupuesto" subtitle={`Ejercicio ${anio}`} onClose={() => setShowCrearDoc(false)} width={540}>
+          <form onSubmit={crearDocumento}>
+            <div style={{ marginBottom: 16 }}>
+              <Label>Nombre del presupuesto *</Label>
+              <input className="input" required value={docForm.nombre} onChange={e => setDocForm({ ...docForm, nombre: e.target.value })} placeholder="ej: Presupuesto Operativo 2026" />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Label>Descripción</Label>
+              <input className="input" value={docForm.descripcion} onChange={e => setDocForm({ ...docForm, descripcion: e.target.value })} placeholder="Descripción opcional" />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <Label>Período inicio</Label>
+                <select className="select" value={docForm.periodo_inicio} onChange={e => setDocForm({ ...docForm, periodo_inicio: Number(e.target.value) })}>
+                  {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label>Período fin</Label>
+                <select className="select" value={docForm.periodo_fin} onChange={e => setDocForm({ ...docForm, periodo_fin: Number(e.target.value) })}>
+                  {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <Label>Estructura contable (clases de cuentas)</Label>
+              <select className="select" value={docForm.clase_cuentas} onChange={e => setDocForm({ ...docForm, clase_cuentas: e.target.value })}>
+                <option value="todas">Todas las cuentas</option>
+                {Object.entries(CLASE_LABELS).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}
+                <option value="5,6">5,6 — Costos y Gastos</option>
+                <option value="4">4 — Solo Ingresos</option>
+                <option value="1,2">1,2 — Activos y Pasivos</option>
+              </select>
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: '#94a3b8' }}>Filtra las cuentas disponibles al agregar líneas</p>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowCrearDoc(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary" style={{ background: '#166534' }}><Plus size={14} /> Crear presupuesto</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {showAddLinea && activeDoc && (
+        <Modal title="Agregar línea al presupuesto" subtitle={activeDoc.nombre} onClose={() => setShowAddLinea(false)} width={600}>
+          <form onSubmit={agregarLineaDoc}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <Label>Fecha *</Label>
+                <input className="input" type="date" required value={lineaForm.fecha} onChange={e => setLineaForm({ ...lineaForm, fecha: e.target.value })}
+                  min={`${activeDoc.anio}-${String(activeDoc.periodo_inicio).padStart(2, '0')}-01`}
+                  max={`${activeDoc.anio}-${String(activeDoc.periodo_fin).padStart(2, '0')}-${new Date(activeDoc.anio, activeDoc.periodo_fin, 0).getDate()}`} />
+              </div>
+              <div>
+                <Label>Monto *</Label>
+                <input className="input" type="number" step="0.01" required value={lineaForm.monto} onChange={e => setLineaForm({ ...lineaForm, monto: e.target.value })} placeholder="0.00" style={{ textAlign: 'right' }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Label>Cuenta contable *</Label>
+              <select className="select" required value={lineaForm.cuenta_id} onChange={e => setLineaForm({ ...lineaForm, cuenta_id: e.target.value })}>
+                <option value="">Seleccionar cuenta…</option>
+                {docCuentasFiltradas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+              {config.dim_campo !== false && <div><Label>Campo</Label><select className="select" value={lineaForm.campo_id} onChange={e => setLineaForm({ ...lineaForm, campo_id: e.target.value })}><option value="">—</option>{campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}</select></div>}
+              {config.dim_unidad_negocio !== false && <div><Label>UN</Label><select className="select" value={lineaForm.unidad_negocio_id} onChange={e => setLineaForm({ ...lineaForm, unidad_negocio_id: e.target.value })}><option value="">—</option>{dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select></div>}
+              {config.dim_departamento !== false && <div><Label>Depto</Label><select className="select" value={lineaForm.departamento_id} onChange={e => setLineaForm({ ...lineaForm, departamento_id: e.target.value })}><option value="">—</option>{dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}</select></div>}
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <Label>Descripción</Label>
+              <input className="input" value={lineaForm.descripcion} onChange={e => setLineaForm({ ...lineaForm, descripcion: e.target.value })} placeholder="Nota sobre esta línea" />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowAddLinea(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary" style={{ background: '#166534' }}><Plus size={14} /> Agregar línea</button>
             </div>
           </form>
         </Modal>
