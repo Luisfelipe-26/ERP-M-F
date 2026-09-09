@@ -912,7 +912,7 @@ export default function Presupuesto() {
                             )})()}
                           </td>
                           {cols.map(c => {
-                            if (periodo==='mes') { const mk=MK[c.idx[0]]; const mesNum=c.idx[0]+1; const cerrado=periodosCerrados.includes(mesNum); const bloqueado=cerrado||p.estado==='aprobado'; return (
+                            if (periodo==='mes') { const mk=MK[c.idx[0]]; const mesNum=c.idx[0]+1; const cerrado=periodosCerrados.includes(mesNum); const aprobado=p.estado==='aprobado'; const bloqueado=cerrado||aprobado; return (
                               <td key={c.label} style={{ padding: '2px 3px', textAlign: 'right', borderBottom: '1px solid #f1f5f9', position: 'relative' }}>
                                 {bloqueado ? (
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3, padding: '5px 6px', fontSize: 12, color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }} title={cerrado ? 'Período cerrado' : 'Línea aprobada'}>
@@ -928,7 +928,7 @@ export default function Presupuesto() {
                             )} return <td key={c.label} style={tdR}>{fmt(c.idx.reduce((s:number,i:number)=>s+cellVal(p,MK[i]),0))}</td>
                           })}
                           <td style={{ ...tdR, fontWeight: 700, color: '#0f172a' }}>{fmt(rowTotal(p))}</td>
-                          <td style={{ ...S.td, textAlign: 'center' }}>{p.estado !== 'aprobado' && <button className="btn-icon" onClick={() => del(p.id)}><Trash2 size={13} /></button>}</td>
+                          <td style={{ ...S.td, textAlign: 'center' }}>{p.estado !== 'aprobado' ? <button className="btn-icon" onClick={() => del(p.id)}><Trash2 size={13} /></button> : <Lock size={12} color="#94a3b8" title="Aprobado" />}</td>
                         </tr>
                       )
                     }) : [])
