@@ -144,6 +144,10 @@ export default function Presupuesto() {
   const [showAddLinea, setShowAddLinea] = useState(false)
   const [lineaForm, setLineaForm] = useState<any>({ cuenta_id: '', fecha: '', monto: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', descripcion: '' })
   const [saving, setSaving] = useState(false)
+  const [showEditDoc, setShowEditDoc] = useState(false)
+  const [editDocForm, setEditDocForm] = useState<any>({ nombre: '', descripcion: '', anio: 0, clase_cuentas: 'todas' })
+  const [editingLinea, setEditingLinea] = useState<any>(null)
+  const [editLineaForm, setEditLineaForm] = useState<any>({ cuenta_id: '', fecha: '', monto: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', descripcion: '' })
 
   /* ── loaders ── */
   const loadBase = useCallback(async () => {
@@ -444,6 +448,48 @@ export default function Presupuesto() {
     catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
   }
 
+  function openEditDoc() {
+    if (!activeDoc) return
+    setEditDocForm({ nombre: activeDoc.nombre, descripcion: activeDoc.descripcion || '', anio: activeDoc.anio, clase_cuentas: activeDoc.clase_cuentas })
+    setShowEditDoc(true)
+  }
+
+  async function guardarEditDoc(e: any) {
+    e.preventDefault()
+    try {
+      await api.put(`/contabilidad/presupuestos-documento/${activeDoc.id}`, editDocForm)
+      toast.success('Presupuesto actualizado')
+      setShowEditDoc(false)
+      loadDocDetalle(activeDoc.id)
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
+  function openEditLinea(ln: any) {
+    setEditingLinea(ln)
+    setEditLineaForm({
+      cuenta_id: String(ln.cuenta_id), fecha: ln.fecha || '', monto: String(ln.total || 0),
+      campo_id: ln.campo_id || '', unidad_negocio_id: ln.unidad_negocio_id ? String(ln.unidad_negocio_id) : '',
+      departamento_id: ln.departamento_id ? String(ln.departamento_id) : '', descripcion: ln.descripcion || '',
+    })
+  }
+
+  async function guardarEditLinea(e: any) {
+    e.preventDefault()
+    try {
+      await api.put(`/contabilidad/presupuestos-documento/${activeDoc.id}/lineas/${editingLinea.id}`, {
+        cuenta_id: Number(editLineaForm.cuenta_id), fecha: editLineaForm.fecha,
+        monto: Number(editLineaForm.monto),
+        campo_id: editLineaForm.campo_id || null,
+        unidad_negocio_id: editLineaForm.unidad_negocio_id ? Number(editLineaForm.unidad_negocio_id) : null,
+        departamento_id: editLineaForm.departamento_id ? Number(editLineaForm.departamento_id) : null,
+        descripcion: editLineaForm.descripcion || null,
+      })
+      toast.success('Línea actualizada')
+      setEditingLinea(null)
+      loadDocDetalle(activeDoc.id)
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+
   const docCuentasFiltradas = useMemo(() => {
     if (!activeDoc || activeDoc.clase_cuentas === 'todas') return cuentas
     const clases = activeDoc.clase_cuentas.split(',').map((c: string) => c.trim())
@@ -678,6 +724,7 @@ export default function Presupuesto() {
               </div>
               <Badge color={ESTADO_BADGE[activeDoc.estado]?.color || '#475569'} bg={ESTADO_BADGE[activeDoc.estado]?.bg || '#f1f5f9'} border={ESTADO_BADGE[activeDoc.estado]?.border}>{ESTADO_BADGE[activeDoc.estado]?.label || activeDoc.estado}</Badge>
               {activeDoc.estado === 'borrador' && <>
+                <button className="btn-secondary" style={{ height: 32 }} onClick={openEditDoc}><Pencil size={14} /> Editar</button>
                 <button className="btn-secondary" style={{ height: 32 }} onClick={() => setShowAddLinea(true)}><Plus size={14} /> Agregar línea</button>
                 <button className="btn-primary" style={{ height: 32, background: '#166534' }} onClick={() => aprobarDocumento(activeDoc.id)}><CheckCircle2 size={14} /> Aprobar</button>
               </>}
@@ -713,8 +760,11 @@ export default function Presupuesto() {
                           <td style={{ ...tdR, fontWeight: 700, color: '#0f172a' }}>{fmt(ln.total)}</td>
                           <td style={{ ...tdL, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b' }}>{ln.descripcion || '—'}</td>
                           <td style={tdL}><Badge color={est.color} bg={est.bg} border={est.border}>{est.label}</Badge></td>
-                          <td style={{ ...S.td, textAlign: 'center' }}>
-                            {activeDoc.estado === 'borrador' && <button className="btn-icon" onClick={() => eliminarLineaDoc(ln.id)}><Trash2 size={13} /></button>}
+                          <td style={{ ...S.td, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            {activeDoc.estado === 'borrador' && <>
+                              <button className="btn-icon" onClick={() => openEditLinea(ln)} title="Editar"><Pencil size={13} /></button>
+                              <button className="btn-icon" style={{ color: '#dc2626' }} onClick={() => eliminarLineaDoc(ln.id)} title="Eliminar"><Trash2 size={13} /></button>
+                            </>}
                           </td>
                         </tr>
                       )
@@ -1534,6 +1584,84 @@ export default function Presupuesto() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn-secondary" onClick={() => setShowAddLinea(false)}>Cancelar</button>
               <button type="submit" className="btn-primary" style={{ background: '#166534' }}><Plus size={14} /> Agregar línea</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {showEditDoc && activeDoc && (
+        <Modal title="Editar presupuesto" subtitle={activeDoc.numero || activeDoc.nombre} onClose={() => setShowEditDoc(false)} width={540}>
+          <form onSubmit={guardarEditDoc}>
+            <div style={{ marginBottom: 16 }}>
+              <Label>Nombre del presupuesto *</Label>
+              <input className="input" required value={editDocForm.nombre} onChange={e => setEditDocForm({ ...editDocForm, nombre: e.target.value })} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <Label>Descripción</Label>
+                <input className="input" value={editDocForm.descripcion} onChange={e => setEditDocForm({ ...editDocForm, descripcion: e.target.value })} />
+              </div>
+              <div>
+                <Label>Año fiscal *</Label>
+                <select className="select" required value={editDocForm.anio} onChange={e => setEditDocForm({ ...editDocForm, anio: Number(e.target.value) })}>
+                  {aniosFiscales.length > 0
+                    ? aniosFiscales.map(y => <option key={y} value={y}>{y}</option>)
+                    : [anio - 1, anio, anio + 1].map(y => <option key={y} value={y}>{y}</option>)
+                  }
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <Label>Estructura contable (clases de cuentas)</Label>
+              <select className="select" value={editDocForm.clase_cuentas} onChange={e => setEditDocForm({ ...editDocForm, clase_cuentas: e.target.value })}>
+                <option value="todas">Todas las cuentas</option>
+                {Object.entries(CLASE_LABELS).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}
+                <option value="5,6">5,6 — Costos y Gastos</option>
+                <option value="4">4 — Solo Ingresos</option>
+                <option value="1,2">1,2 — Activos y Pasivos</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowEditDoc(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary" style={{ background: '#166534' }}><Save size={14} /> Guardar cambios</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {editingLinea && activeDoc && (
+        <Modal title="Editar línea" subtitle={`${editingLinea.cuenta_codigo} — ${editingLinea.cuenta_nombre}`} onClose={() => setEditingLinea(null)} width={600}>
+          <form onSubmit={guardarEditLinea}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <Label>Fecha *</Label>
+                <input className="input" type="date" required value={editLineaForm.fecha} onChange={e => setEditLineaForm({ ...editLineaForm, fecha: e.target.value })}
+                  min={`${activeDoc.anio}-01-01`} max={`${activeDoc.anio}-12-31`} />
+              </div>
+              <div>
+                <Label>Monto *</Label>
+                <input className="input" type="number" step="0.01" required value={editLineaForm.monto} onChange={e => setEditLineaForm({ ...editLineaForm, monto: e.target.value })} style={{ textAlign: 'right' }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Label>Cuenta contable *</Label>
+              <select className="select" required value={editLineaForm.cuenta_id} onChange={e => setEditLineaForm({ ...editLineaForm, cuenta_id: e.target.value })}>
+                <option value="">Seleccionar cuenta…</option>
+                {docCuentasFiltradas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+              {config.dim_campo !== false && <div><Label>Campo</Label><select className="select" value={editLineaForm.campo_id} onChange={e => setEditLineaForm({ ...editLineaForm, campo_id: e.target.value })}><option value="">—</option>{campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre || c.id_campo}</option>)}</select></div>}
+              {config.dim_unidad_negocio !== false && <div><Label>UN</Label><select className="select" value={editLineaForm.unidad_negocio_id} onChange={e => setEditLineaForm({ ...editLineaForm, unidad_negocio_id: e.target.value })}><option value="">—</option>{dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select></div>}
+              {config.dim_departamento !== false && <div><Label>Depto</Label><select className="select" value={editLineaForm.departamento_id} onChange={e => setEditLineaForm({ ...editLineaForm, departamento_id: e.target.value })}><option value="">—</option>{dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}</select></div>}
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <Label>Descripción</Label>
+              <input className="input" value={editLineaForm.descripcion} onChange={e => setEditLineaForm({ ...editLineaForm, descripcion: e.target.value })} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn-secondary" onClick={() => setEditingLinea(null)}>Cancelar</button>
+              <button type="submit" className="btn-primary" style={{ background: '#166534' }}><Save size={14} /> Guardar cambios</button>
             </div>
           </form>
         </Modal>
