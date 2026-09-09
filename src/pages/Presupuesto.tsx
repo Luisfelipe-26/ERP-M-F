@@ -255,9 +255,11 @@ export default function Presupuesto() {
   }
 
   /* ── registros ── */
-  function initNuevoRegistro(tipo: string) {
-    setNuevoReg({ tipo, anio, descripcion: '', lineas: [emptyLinea()] })
+  const [docsAprobados, setDocsAprobados] = useState<any[]>([])
+  async function initNuevoRegistro(tipo: string) {
+    setNuevoReg({ tipo, anio, descripcion: '', documento_id: '', lineas: [emptyLinea()] })
     setShowNuevoRegistro(true)
+    try { const { data } = await api.get(`/contabilidad/presupuestos-documento?anio=${anio}`); setDocsAprobados(data.filter((d: any) => d.estado === 'aprobado')) } catch {}
   }
   function emptyLinea() { return { cuenta_id: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', total: '', dist: config.distribucion_default || 'mensual', descripcion: '' } }
   function addLinea() { setNuevoReg((p: any) => ({ ...p, lineas: [...p.lineas, emptyLinea()] })) }
@@ -269,6 +271,7 @@ export default function Presupuesto() {
     for (const ln of nuevoReg.lineas) { if (!ln.cuenta_id) { toast.error('Todas las líneas requieren cuenta'); return } }
     const payload = {
       tipo: nuevoReg.tipo, anio: nuevoReg.anio, descripcion: nuevoReg.descripcion,
+      documento_id: nuevoReg.documento_id ? Number(nuevoReg.documento_id) : null,
       lineas: nuevoReg.lineas.map((ln: any) => {
         const vals = distribuir(parseFloat(ln.total) || 0, ln.dist || 'mensual')
         const line: any = { cuenta_id: Number(ln.cuenta_id), campo_id: ln.campo_id || null, unidad_negocio_id: ln.unidad_negocio_id ? Number(ln.unidad_negocio_id) : null, departamento_id: ln.departamento_id ? Number(ln.departamento_id) : null, descripcion: ln.descripcion || '' }
@@ -322,9 +325,10 @@ export default function Presupuesto() {
     }
     return 'mensual'
   }
-  function initEditRegistro(reg: any) {
+  async function initEditRegistro(reg: any) {
     setEditingRegistro({
       id: reg.id, tipo: reg.tipo, anio: reg.anio, descripcion: reg.descripcion || '',
+      documento_id: reg.documento_id ? String(reg.documento_id) : '',
       lineas: (reg.lineas || []).map((ln: any) => ({
         cuenta_id: String(ln.cuenta_id), campo_id: ln.campo_id || '',
         unidad_negocio_id: ln.unidad_negocio_id ? String(ln.unidad_negocio_id) : '',
@@ -333,6 +337,7 @@ export default function Presupuesto() {
         dist: detectDist(ln), descripcion: ln.descripcion || '',
       })),
     })
+    try { const { data } = await api.get(`/contabilidad/presupuestos-documento?anio=${reg.anio}`); setDocsAprobados(data.filter((d: any) => d.estado === 'aprobado')) } catch {}
   }
   function updateEditLinea(idx: number, field: string, val: any) {
     setEditingRegistro((p: any) => { const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }; return { ...p, lineas: l } })
@@ -344,6 +349,7 @@ export default function Presupuesto() {
     for (const ln of editingRegistro.lineas) { if (!ln.cuenta_id) { toast.error('Todas las líneas requieren cuenta'); return } }
     const payload = {
       tipo: editingRegistro.tipo, anio: editingRegistro.anio, descripcion: editingRegistro.descripcion,
+      documento_id: editingRegistro.documento_id ? Number(editingRegistro.documento_id) : null,
       lineas: editingRegistro.lineas.map((ln: any) => {
         const vals = distribuir(parseFloat(ln.total) || 0, ln.dist || 'mensual')
         const line: any = { cuenta_id: Number(ln.cuenta_id), campo_id: ln.campo_id || null, unidad_negocio_id: ln.unidad_negocio_id ? Number(ln.unidad_negocio_id) : null, departamento_id: ln.departamento_id ? Number(ln.departamento_id) : null, descripcion: ln.descripcion || '' }
@@ -833,12 +839,12 @@ export default function Presupuesto() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr style={{ background: '#f8fafc' }}>
                 <th style={thL}>Número</th><th style={thL}>Fecha</th><th style={thL}>Tipo</th>
-                <th style={thL}>Descripción</th><th style={thR}>Líneas</th><th style={thR}>Monto</th>
+                <th style={thL}>Descripción</th><th style={thL}>Modelo</th><th style={thR}>Líneas</th><th style={thR}>Monto</th>
                 <th style={thL}>Estado</th><th style={thL}>Usuario</th><th style={{...thR,width:50}}></th>
               </tr></thead>
               <tbody>
                 {filteredRegistros.length === 0 ? (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: 50, color: '#94a3b8' }}>
+                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 50, color: '#94a3b8' }}>
                     <FileText size={36} style={{ marginBottom: 8, opacity: .3 }} /><br/>Sin registros para {anio}
                   </td></tr>
                 ) : filteredRegistros.map((r: any) => {
@@ -850,6 +856,7 @@ export default function Presupuesto() {
                       <td style={{ ...tdL, color: '#64748b' }}>{r.fecha}</td>
                       <td style={tdL}><Badge color={tp.color} bg={tp.bg}>{tp.icon} {tp.label}</Badge></td>
                       <td style={{ ...tdL, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#475569' }}>{r.descripcion||'—'}</td>
+                      <td style={{ ...tdL, fontSize: 11, color: '#64748b', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.documento_nombre||'—'}</td>
                       <td style={{ ...tdR, color: '#64748b' }}>{r.lineas?.length||0}</td>
                       <td style={{ ...tdR, fontWeight: 700, color: '#0f172a' }}>{fmt(r.total)}</td>
                       <td style={tdL}><Badge color={est.color} bg={est.bg} border={est.border}>{est.label}</Badge></td>
@@ -1323,9 +1330,18 @@ export default function Presupuesto() {
       {showNuevoRegistro && nuevoReg && (
         <Modal title={`Nuevo registro: ${TIPO_LABELS[nuevoReg.tipo]?.label}`} subtitle={`Ejercicio ${nuevoReg.anio}`} onClose={() => setShowNuevoRegistro(false)} width={900}>
           <form onSubmit={crearRegistro}>
-            <div style={{ marginBottom: 16 }}>
-              <Label>Descripción</Label>
-              <input className="input" value={nuevoReg.descripcion} onChange={e => setNuevoReg({...nuevoReg, descripcion: e.target.value})} placeholder="Descripción del registro presupuestario" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <Label>Descripción</Label>
+                <input className="input" value={nuevoReg.descripcion} onChange={e => setNuevoReg({...nuevoReg, descripcion: e.target.value})} placeholder="Descripción del registro presupuestario" />
+              </div>
+              <div>
+                <Label>Modelo presupuestario</Label>
+                <select className="select" value={nuevoReg.documento_id} onChange={e => setNuevoReg({...nuevoReg, documento_id: e.target.value})}>
+                  <option value="">— Sin modelo —</option>
+                  {docsAprobados.map((d: any) => <option key={d.id} value={d.id}>{d.numero} — {d.nombre} ({d.anio})</option>)}
+                </select>
+              </div>
             </div>
             <div style={{ ...S.card, overflow: 'hidden', marginBottom: 20 }}>
               <div style={{ background: '#f8fafc', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0' }}>
@@ -1385,9 +1401,18 @@ export default function Presupuesto() {
         <Modal title={`Registro ${showDetalleRegistro.numero}`} subtitle={`${TIPO_LABELS[showDetalleRegistro.tipo]?.label} — ${showDetalleRegistro.fecha}`} onClose={() => { setShowDetalleRegistro(null); setEditingRegistro(null) }} width={900}>
           {editingRegistro ? (
             <form onSubmit={guardarEdicionRegistro}>
-              <div style={{ marginBottom: 16 }}>
-                <Label>Descripción</Label>
-                <input className="input" value={editingRegistro.descripcion} onChange={e => setEditingRegistro({...editingRegistro, descripcion: e.target.value})} placeholder="Descripción del registro presupuestario" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+                <div>
+                  <Label>Descripción</Label>
+                  <input className="input" value={editingRegistro.descripcion} onChange={e => setEditingRegistro({...editingRegistro, descripcion: e.target.value})} placeholder="Descripción del registro presupuestario" />
+                </div>
+                <div>
+                  <Label>Modelo presupuestario</Label>
+                  <select className="select" value={editingRegistro.documento_id || ''} onChange={e => setEditingRegistro({...editingRegistro, documento_id: e.target.value})}>
+                    <option value="">— Sin modelo —</option>
+                    {docsAprobados.map((d: any) => <option key={d.id} value={d.id}>{d.numero} — {d.nombre} ({d.anio})</option>)}
+                  </select>
+                </div>
               </div>
               <div style={{ ...S.card, overflow: 'hidden', marginBottom: 20 }}>
                 <div style={{ background: '#f8fafc', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0' }}>
@@ -1442,6 +1467,7 @@ export default function Presupuesto() {
               { label: 'Estado', value: <Badge color={ESTADO_BADGE[showDetalleRegistro.estado]?.color} bg={ESTADO_BADGE[showDetalleRegistro.estado]?.bg} border={ESTADO_BADGE[showDetalleRegistro.estado]?.border}>{ESTADO_BADGE[showDetalleRegistro.estado]?.label}</Badge> },
               { label: 'Año', value: showDetalleRegistro.anio },
               { label: 'Usuario', value: showDetalleRegistro.usuario_nombre },
+              ...(showDetalleRegistro.documento_nombre ? [{ label: 'Modelo', value: showDetalleRegistro.documento_nombre }] : []),
             ].map((f, i) => (
               <div key={i} style={{ padding: '8px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4 }}>{f.label}</div>
