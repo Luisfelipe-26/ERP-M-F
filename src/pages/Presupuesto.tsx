@@ -264,11 +264,43 @@ export default function Presupuesto() {
   function emptyLinea() { return { cuenta_id: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', total: '', dist: config.distribucion_default || 'mensual', descripcion: '' } }
   function addLinea() { setNuevoReg((p: any) => ({ ...p, lineas: [...p.lineas, emptyLinea()] })) }
   function removeLinea(idx: number) { setNuevoReg((p: any) => ({ ...p, lineas: p.lineas.filter((_: any, i: number) => i !== idx) })) }
-  function updateLinea(idx: number, field: string, val: any) { setNuevoReg((p: any) => { const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }; return { ...p, lineas: l } }) }
+  const [saldosLinea, setSaldosLinea] = useState<Record<string, { presupuestado: number; ejecutado: number; disponible: number }>>({})
+  function saldoKey(ln: any) { return `${ln.cuenta_id}|${ln.campo_id||''}|${ln.unidad_negocio_id||''}|${ln.departamento_id||''}` }
+  async function fetchSaldo(ln: any, yr: number) {
+    if (!ln.cuenta_id) return
+    const k = saldoKey(ln)
+    if (saldosLinea[k]) return
+    try {
+      let url = `/contabilidad/presupuestos/saldo-linea?anio=${yr}&cuenta_id=${ln.cuenta_id}`
+      if (ln.campo_id) url += `&campo_id=${ln.campo_id}`
+      if (ln.unidad_negocio_id) url += `&unidad_negocio_id=${ln.unidad_negocio_id}`
+      if (ln.departamento_id) url += `&departamento_id=${ln.departamento_id}`
+      const { data } = await api.get(url)
+      setSaldosLinea(prev => ({ ...prev, [k]: data }))
+    } catch {}
+  }
+  function updateLinea(idx: number, field: string, val: any) {
+    setNuevoReg((p: any) => {
+      const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }
+      if (['cuenta_id', 'campo_id', 'unidad_negocio_id', 'departamento_id'].includes(field)) {
+        const ln = l[idx]
+        if (ln.cuenta_id) fetchSaldo(ln, p.anio)
+      }
+      return { ...p, lineas: l }
+    })
+  }
 
   async function crearRegistro(e: any) {
     e.preventDefault()
     for (const ln of nuevoReg.lineas) { if (!ln.cuenta_id) { toast.error('Todas las líneas requieren cuenta'); return } }
+    const tipo = nuevoReg.tipo
+    if (tipo === 'original' || tipo === 'adicion') {
+      for (const ln of nuevoReg.lineas) { if ((parseFloat(ln.total) || 0) < 0) { toast.error(`${tipo === 'original' ? 'Original' : 'Adición'}: los montos deben ser positivos`); return } }
+    }
+    if (tipo === 'transferencia') {
+      const neto = nuevoReg.lineas.reduce((s: number, ln: any) => s + (parseFloat(ln.total) || 0), 0)
+      if (Math.abs(neto) > 0.01) { toast.error(`Transferencia: el neto debe ser 0 (actual: ${neto.toFixed(2)})`); return }
+    }
     const payload = {
       tipo: nuevoReg.tipo, anio: nuevoReg.anio, descripcion: nuevoReg.descripcion,
       documento_id: nuevoReg.documento_id ? Number(nuevoReg.documento_id) : null,
@@ -340,13 +372,28 @@ export default function Presupuesto() {
     try { const { data } = await api.get(`/contabilidad/presupuestos-documento?anio=${reg.anio}`); setDocsAprobados(data.filter((d: any) => d.estado === 'aprobado')) } catch {}
   }
   function updateEditLinea(idx: number, field: string, val: any) {
-    setEditingRegistro((p: any) => { const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }; return { ...p, lineas: l } })
+    setEditingRegistro((p: any) => {
+      const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }
+      if (['cuenta_id', 'campo_id', 'unidad_negocio_id', 'departamento_id'].includes(field)) {
+        const ln = l[idx]
+        if (ln.cuenta_id) fetchSaldo(ln, p.anio)
+      }
+      return { ...p, lineas: l }
+    })
   }
   function addEditLinea() { setEditingRegistro((p: any) => ({ ...p, lineas: [...p.lineas, emptyLinea()] })) }
   function removeEditLinea(idx: number) { setEditingRegistro((p: any) => ({ ...p, lineas: p.lineas.filter((_: any, i: number) => i !== idx) })) }
   async function guardarEdicionRegistro(e: any) {
     e.preventDefault()
     for (const ln of editingRegistro.lineas) { if (!ln.cuenta_id) { toast.error('Todas las líneas requieren cuenta'); return } }
+    const tipoE = editingRegistro.tipo
+    if (tipoE === 'original' || tipoE === 'adicion') {
+      for (const ln of editingRegistro.lineas) { if ((parseFloat(ln.total) || 0) < 0) { toast.error(`${tipoE === 'original' ? 'Original' : 'Adición'}: los montos deben ser positivos`); return } }
+    }
+    if (tipoE === 'transferencia') {
+      const neto = editingRegistro.lineas.reduce((s: number, ln: any) => s + (parseFloat(ln.total) || 0), 0)
+      if (Math.abs(neto) > 0.01) { toast.error(`Transferencia: el neto debe ser 0 (actual: ${neto.toFixed(2)})`); return }
+    }
     const payload = {
       tipo: editingRegistro.tipo, anio: editingRegistro.anio, descripcion: editingRegistro.descripcion,
       documento_id: editingRegistro.documento_id ? Number(editingRegistro.documento_id) : null,
@@ -661,10 +708,10 @@ export default function Presupuesto() {
                         <div>
                           <div style={{ fontWeight: 600, color: v.color }}>{v.label}</div>
                           <div style={{ fontSize: 10, color: '#94a3b8' }}>
-                            {k === 'original' && 'Presupuesto base del ejercicio'}
-                            {k === 'adicion' && 'Incremento de fondos'}
-                            {k === 'transferencia' && 'Reasignar entre cuentas'}
-                            {k === 'revision' && 'Ajustar montos vigentes'}
+                            {k === 'original' && 'Presupuesto base — montos positivos'}
+                            {k === 'adicion' && 'Fondos adicionales — montos positivos'}
+                            {k === 'transferencia' && 'Reasignar entre cuentas — neto debe ser 0'}
+                            {k === 'revision' && 'Ajustar montos — positivos o negativos'}
                           </div>
                         </div>
                       </button>
@@ -1358,10 +1405,14 @@ export default function Presupuesto() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead><tr style={{ background: '#f8fafc' }}>
                     <th style={{...thL,width:200}}>Cuenta *</th>{config.dim_campo !== false && <th style={{...thL,width:110}}>Campo</th>}{config.dim_unidad_negocio !== false && <th style={{...thL,width:100}}>UN</th>}{config.dim_departamento !== false && <th style={{...thL,width:100}}>Depto</th>}
-                    <th style={{...thR,width:110}}>Monto anual</th><th style={{...thL,width:110}}>Distribución</th><th style={{...thL,width:110}}>Nota</th><th style={{width:30}}></th>
+                    <th style={{...thR,width:110}}>Monto anual</th><th style={{...thR,width:90}}>Disponible</th><th style={{...thL,width:100}}>Distribución</th><th style={{...thL,width:100}}>Nota</th><th style={{width:30}}></th>
                   </tr></thead>
                   <tbody>
-                    {nuevoReg.lineas.map((ln:any,idx:number) => (
+                    {nuevoReg.lineas.map((ln:any,idx:number) => {
+                      const sk = saldoKey(ln), sl = saldosLinea[sk]
+                      const tipoReg = nuevoReg.tipo
+                      const minVal = (tipoReg === 'original' || tipoReg === 'adicion') ? '0' : undefined
+                      return (
                       <tr key={idx}>
                         <td style={{padding:'6px'}}>
                           <select className="select" style={{width:'100%',fontSize:11}} required value={ln.cuenta_id} onChange={e=>updateLinea(idx,'cuenta_id',e.target.value)}>
@@ -1371,12 +1422,21 @@ export default function Presupuesto() {
                         {config.dim_campo !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.campo_id} onChange={e=>updateLinea(idx,'campo_id',e.target.value)}><option value="">—</option>{campos.map(c=><option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select></td>}
                         {config.dim_unidad_negocio !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.unidad_negocio_id} onChange={e=>updateLinea(idx,'unidad_negocio_id',e.target.value)}><option value="">—</option>{dims.unidades.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}</select></td>}
                         {config.dim_departamento !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.departamento_id} onChange={e=>updateLinea(idx,'departamento_id',e.target.value)}><option value="">—</option>{dims.deptos.map(d=><option key={d.id} value={d.id}>{d.nombre}</option>)}</select></td>}
-                        <td style={{padding:'6px 4px'}}><input className="input" type="number" step="0.01" style={{width:'100%',fontSize:11,textAlign:'right'}} value={ln.total} onChange={e=>updateLinea(idx,'total',e.target.value)} placeholder="0.00" /></td>
+                        <td style={{padding:'6px 4px'}}><input className="input" type="number" step="0.01" min={minVal} style={{width:'100%',fontSize:11,textAlign:'right'}} value={ln.total} onChange={e=>updateLinea(idx,'total',e.target.value)} placeholder="0.00" /></td>
+                        <td style={{padding:'6px 4px',textAlign:'right',fontSize:10,whiteSpace:'nowrap'}}>
+                          {ln.cuenta_id && sl ? (
+                            <div>
+                              <div style={{color:'#64748b'}}>P: {fmt(sl.presupuestado)}</div>
+                              <div style={{color:'#ea580c'}}>E: {fmt(sl.ejecutado)}</div>
+                              <div style={{fontWeight:700,color:sl.disponible>=0?'#166534':'#dc2626'}}>D: {fmt(sl.disponible)}</div>
+                            </div>
+                          ) : ln.cuenta_id ? <span style={{color:'#cbd5e1'}}>…</span> : <span style={{color:'#e2e8f0'}}>—</span>}
+                        </td>
                         <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.dist} onChange={e=>updateLinea(idx,'dist',e.target.value)}>{Object.entries(DIST_KEYS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></td>
                         <td style={{padding:'6px 4px'}}><input className="input" style={{width:'100%',fontSize:11}} value={ln.descripcion} onChange={e=>updateLinea(idx,'descripcion',e.target.value)} placeholder="—" /></td>
                         <td style={{padding:'6px 2px',textAlign:'center'}}>{nuevoReg.lineas.length>1 && <button type="button" className="btn-icon" onClick={()=>removeLinea(idx)}><X size={13} /></button>}</td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
@@ -1387,7 +1447,14 @@ export default function Presupuesto() {
               )}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: '#64748b' }}>Total: <strong style={{ color: '#0f172a' }}>RD$ {fmt(nuevoReg.lineas.reduce((s:number,ln:any)=>s+(parseFloat(ln.total)||0),0))}</strong></span>
+              {(() => {
+                const totalNeto = nuevoReg.lineas.reduce((s:number,ln:any)=>s+(parseFloat(ln.total)||0),0)
+                if (nuevoReg.tipo === 'transferencia') {
+                  const cuadra = Math.abs(totalNeto) < 0.01
+                  return <span style={{ fontSize: 13, color: cuadra ? '#166534' : '#dc2626', fontWeight: 700 }}>Neto: RD$ {fmt(totalNeto)} {cuadra ? '(cuadrado)' : '(debe ser 0)'}</span>
+                }
+                return <span style={{ fontSize: 13, color: '#64748b' }}>Total: <strong style={{ color: '#0f172a' }}>RD$ {fmt(totalNeto)}</strong></span>
+              })()}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button type="button" className="btn-secondary" onClick={() => setShowNuevoRegistro(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary" style={{ background: TIPO_LABELS[nuevoReg.tipo]?.color }}>Crear registro</button>
@@ -1429,10 +1496,14 @@ export default function Presupuesto() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead><tr style={{ background: '#f8fafc' }}>
                       <th style={{...thL,width:200}}>Cuenta *</th>{config.dim_campo !== false && <th style={{...thL,width:110}}>Campo</th>}{config.dim_unidad_negocio !== false && <th style={{...thL,width:100}}>UN</th>}{config.dim_departamento !== false && <th style={{...thL,width:100}}>Depto</th>}
-                      <th style={{...thR,width:110}}>Monto anual</th><th style={{...thL,width:110}}>Distribución</th><th style={{...thL,width:110}}>Nota</th><th style={{width:30}}></th>
+                      <th style={{...thR,width:110}}>Monto anual</th><th style={{...thR,width:90}}>Disponible</th><th style={{...thL,width:100}}>Distribución</th><th style={{...thL,width:100}}>Nota</th><th style={{width:30}}></th>
                     </tr></thead>
                     <tbody>
-                      {editingRegistro.lineas.map((ln:any,idx:number) => (
+                      {editingRegistro.lineas.map((ln:any,idx:number) => {
+                        const sk = saldoKey(ln), sl = saldosLinea[sk]
+                        const tipoReg = editingRegistro.tipo
+                        const minVal = (tipoReg === 'original' || tipoReg === 'adicion') ? '0' : undefined
+                        return (
                         <tr key={idx}>
                           <td style={{padding:'6px'}}>
                             <select className="select" style={{width:'100%',fontSize:11}} required value={ln.cuenta_id} onChange={e=>updateEditLinea(idx,'cuenta_id',e.target.value)}>
@@ -1442,18 +1513,34 @@ export default function Presupuesto() {
                           {config.dim_campo !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.campo_id} onChange={e=>updateEditLinea(idx,'campo_id',e.target.value)}><option value="">—</option>{campos.map(c=><option key={c.id_campo} value={c.id_campo}>{c.nombre||c.id_campo}</option>)}</select></td>}
                           {config.dim_unidad_negocio !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.unidad_negocio_id} onChange={e=>updateEditLinea(idx,'unidad_negocio_id',e.target.value)}><option value="">—</option>{dims.unidades.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}</select></td>}
                           {config.dim_departamento !== false && <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.departamento_id} onChange={e=>updateEditLinea(idx,'departamento_id',e.target.value)}><option value="">—</option>{dims.deptos.map(d=><option key={d.id} value={d.id}>{d.nombre}</option>)}</select></td>}
-                          <td style={{padding:'6px 4px'}}><input className="input" type="number" step="0.01" style={{width:'100%',fontSize:11,textAlign:'right'}} value={ln.total} onChange={e=>updateEditLinea(idx,'total',e.target.value)} placeholder="0.00" /></td>
+                          <td style={{padding:'6px 4px'}}><input className="input" type="number" step="0.01" min={minVal} style={{width:'100%',fontSize:11,textAlign:'right'}} value={ln.total} onChange={e=>updateEditLinea(idx,'total',e.target.value)} placeholder="0.00" /></td>
+                          <td style={{padding:'6px 4px',textAlign:'right',fontSize:10,whiteSpace:'nowrap'}}>
+                            {ln.cuenta_id && sl ? (
+                              <div>
+                                <div style={{color:'#64748b'}}>P: {fmt(sl.presupuestado)}</div>
+                                <div style={{color:'#ea580c'}}>E: {fmt(sl.ejecutado)}</div>
+                                <div style={{fontWeight:700,color:sl.disponible>=0?'#166534':'#dc2626'}}>D: {fmt(sl.disponible)}</div>
+                              </div>
+                            ) : ln.cuenta_id ? <span style={{color:'#cbd5e1'}}>…</span> : <span style={{color:'#e2e8f0'}}>—</span>}
+                          </td>
                           <td style={{padding:'6px 4px'}}><select className="select" style={{width:'100%',fontSize:11}} value={ln.dist} onChange={e=>updateEditLinea(idx,'dist',e.target.value)}>{Object.entries(DIST_KEYS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></td>
                           <td style={{padding:'6px 4px'}}><input className="input" style={{width:'100%',fontSize:11}} value={ln.descripcion} onChange={e=>updateEditLinea(idx,'descripcion',e.target.value)} placeholder="—" /></td>
                           <td style={{padding:'6px 2px',textAlign:'center'}}>{editingRegistro.lineas.length>1 && <button type="button" className="btn-icon" onClick={()=>removeEditLinea(idx)}><X size={13} /></button>}</td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: '#64748b' }}>Total: <strong style={{ color: '#0f172a' }}>RD$ {fmt(editingRegistro.lineas.reduce((s:number,ln:any)=>s+(parseFloat(ln.total)||0),0))}</strong></span>
+                {(() => {
+                  const totalNeto = editingRegistro.lineas.reduce((s:number,ln:any)=>s+(parseFloat(ln.total)||0),0)
+                  if (editingRegistro.tipo === 'transferencia') {
+                    const cuadra = Math.abs(totalNeto) < 0.01
+                    return <span style={{ fontSize: 13, color: cuadra ? '#166534' : '#dc2626', fontWeight: 700 }}>Neto: RD$ {fmt(totalNeto)} {cuadra ? '(cuadrado)' : '(debe ser 0)'}</span>
+                  }
+                  return <span style={{ fontSize: 13, color: '#64748b' }}>Total: <strong style={{ color: '#0f172a' }}>RD$ {fmt(totalNeto)}</strong></span>
+                })()}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button type="button" className="btn-secondary" onClick={() => setEditingRegistro(null)}>Cancelar</button>
                   <button type="submit" className="btn-primary" style={{ background: '#0369a1' }}><Save size={14} /> Guardar cambios</button>
