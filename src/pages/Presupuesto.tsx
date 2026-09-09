@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import api from '../api'
 import toast from 'react-hot-toast'
 import {
@@ -257,6 +257,7 @@ export default function Presupuesto() {
   /* ── registros ── */
   const [docsAprobados, setDocsAprobados] = useState<any[]>([])
   async function initNuevoRegistro(tipo: string) {
+    setSaldosLinea({}); saldosFetched.current = {}
     setNuevoReg({ tipo, anio, descripcion: '', documento_id: '', lineas: [emptyLinea()] })
     setShowNuevoRegistro(true)
     try { const { data } = await api.get(`/contabilidad/presupuestos-documento?anio=${anio}`); setDocsAprobados(data.filter((d: any) => d.estado === 'aprobado')) } catch {}
@@ -265,29 +266,28 @@ export default function Presupuesto() {
   function addLinea() { setNuevoReg((p: any) => ({ ...p, lineas: [...p.lineas, emptyLinea()] })) }
   function removeLinea(idx: number) { setNuevoReg((p: any) => ({ ...p, lineas: p.lineas.filter((_: any, i: number) => i !== idx) })) }
   const [saldosLinea, setSaldosLinea] = useState<Record<string, { presupuestado: number; ejecutado: number; disponible: number }>>({})
+  const saldosFetched = useRef<Record<string, boolean>>({})
   function saldoKey(ln: any) { return `${ln.cuenta_id}|${ln.campo_id||''}|${ln.unidad_negocio_id||''}|${ln.departamento_id||''}` }
-  async function fetchSaldo(ln: any, yr: number) {
+  function fetchSaldo(ln: any, yr: number) {
     if (!ln.cuenta_id) return
     const k = saldoKey(ln)
-    if (saldosLinea[k]) return
-    try {
-      let url = `/contabilidad/presupuestos/saldo-linea?anio=${yr}&cuenta_id=${ln.cuenta_id}`
-      if (ln.campo_id) url += `&campo_id=${ln.campo_id}`
-      if (ln.unidad_negocio_id) url += `&unidad_negocio_id=${ln.unidad_negocio_id}`
-      if (ln.departamento_id) url += `&departamento_id=${ln.departamento_id}`
-      const { data } = await api.get(url)
-      setSaldosLinea(prev => ({ ...prev, [k]: data }))
-    } catch {}
+    if (saldosFetched.current[k]) return
+    saldosFetched.current[k] = true
+    let url = `/contabilidad/presupuestos/saldo-linea?anio=${yr}&cuenta_id=${ln.cuenta_id}`
+    if (ln.campo_id) url += `&campo_id=${ln.campo_id}`
+    if (ln.unidad_negocio_id) url += `&unidad_negocio_id=${ln.unidad_negocio_id}`
+    if (ln.departamento_id) url += `&departamento_id=${ln.departamento_id}`
+    api.get(url).then(({ data }) => setSaldosLinea(prev => ({ ...prev, [k]: data }))).catch(() => { delete saldosFetched.current[k] })
   }
   function updateLinea(idx: number, field: string, val: any) {
-    setNuevoReg((p: any) => {
-      const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }
-      if (['cuenta_id', 'campo_id', 'unidad_negocio_id', 'departamento_id'].includes(field)) {
-        const ln = l[idx]
-        if (ln.cuenta_id) fetchSaldo(ln, p.anio)
-      }
-      return { ...p, lineas: l }
-    })
+    setNuevoReg((p: any) => { const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }; return { ...p, lineas: l } })
+    if (['cuenta_id', 'campo_id', 'unidad_negocio_id', 'departamento_id'].includes(field)) {
+      setNuevoReg(p => {
+        const ln = p.lineas[idx]
+        if (ln?.cuenta_id) fetchSaldo(ln, p.anio)
+        return p
+      })
+    }
   }
 
   async function crearRegistro(e: any) {
@@ -372,14 +372,14 @@ export default function Presupuesto() {
     try { const { data } = await api.get(`/contabilidad/presupuestos-documento?anio=${reg.anio}`); setDocsAprobados(data.filter((d: any) => d.estado === 'aprobado')) } catch {}
   }
   function updateEditLinea(idx: number, field: string, val: any) {
-    setEditingRegistro((p: any) => {
-      const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }
-      if (['cuenta_id', 'campo_id', 'unidad_negocio_id', 'departamento_id'].includes(field)) {
-        const ln = l[idx]
-        if (ln.cuenta_id) fetchSaldo(ln, p.anio)
-      }
-      return { ...p, lineas: l }
-    })
+    setEditingRegistro((p: any) => { const l = [...p.lineas]; l[idx] = { ...l[idx], [field]: val }; return { ...p, lineas: l } })
+    if (['cuenta_id', 'campo_id', 'unidad_negocio_id', 'departamento_id'].includes(field)) {
+      setEditingRegistro(p => {
+        const ln = p.lineas[idx]
+        if (ln?.cuenta_id) fetchSaldo(ln, p.anio)
+        return p
+      })
+    }
   }
   function addEditLinea() { setEditingRegistro((p: any) => ({ ...p, lineas: [...p.lineas, emptyLinea()] })) }
   function removeEditLinea(idx: number) { setEditingRegistro((p: any) => ({ ...p, lineas: p.lineas.filter((_: any, i: number) => i !== idx) })) }
