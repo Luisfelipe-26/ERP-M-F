@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import api from '../api'
 import toast from 'react-hot-toast'
-import { Plus, Search, RefreshCw, Truck, X, Edit2, Trash2, Eye, ShoppingCart } from 'lucide-react'
+import { Plus, Search, RefreshCw, Truck, X, Edit2, Trash2, Eye, ShoppingCart, DollarSign, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import Compras from './Compras'
 
 const Modal = ({ title, subtitle = '', onClose, children, width = 600 }) => (
@@ -140,13 +140,88 @@ const ESTADO_COLORS_OC = {
   Recibida:  { bg: '#dcfce7', color: '#166534' },
   Cancelada: { bg: '#fee2e2', color: '#991b1b' },
 }
+const ESTADO_COLORS_CXP = {
+  pendiente: { bg: '#fef9c3', color: '#854d0e' },
+  parcial:   { bg: '#dbeafe', color: '#1e40af' },
+  pagada:    { bg: '#dcfce7', color: '#166534' },
+  anulada:   { bg: '#fee2e2', color: '#991b1b' },
+}
+
+function ModalPago({ cxp, onClose, onDone }) {
+  const [form, setForm] = useState({ monto: cxp.saldo, metodo_pago: 'transferencia', referencia_bancaria: '', fecha: new Date().toISOString().slice(0, 10) })
+  const [cuentas, setCuentas] = useState<any[]>([])
+  const [cuentaBancoId, setCuentaBancoId] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.get('/contabilidad/cuentas-bancarias').then(r => setCuentas(r.data)).catch(() => {})
+  }, [])
+
+  async function submit(e: any) {
+    e.preventDefault()
+    if (form.monto <= 0 || form.monto > cxp.saldo) return toast.error(`Monto debe ser entre 0.01 y ${cxp.saldo}`)
+    setSaving(true)
+    try {
+      const payload: any = { cxp_id: cxp.id, monto: form.monto, metodo_pago: form.metodo_pago, referencia_bancaria: form.referencia_bancaria || null, fecha: form.fecha }
+      if (cuentaBancoId) payload.cuenta_bancaria_id = Number(cuentaBancoId)
+      const { data } = await api.post('/contabilidad/pagos', payload)
+      toast.success(`Pago ${data.numero} registrado — Saldo restante: ${fmt(data.saldo_restante)}`)
+      onDone()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al registrar pago') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <Modal title={`Pago — ${cxp.numero}`} subtitle={`Saldo pendiente: ${fmt(cxp.saldo)}`} onClose={onClose} width={480}>
+      <form onSubmit={submit}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div>
+            <Label>Fecha</Label>
+            <input className="input" type="date" value={form.fecha} onChange={e => setForm({ ...form, fecha: e.target.value })} required />
+          </div>
+          <div>
+            <Label>Monto</Label>
+            <input className="input" type="number" step="0.01" min="0.01" max={cxp.saldo} value={form.monto} onChange={e => setForm({ ...form, monto: Number(e.target.value) })} required />
+          </div>
+          <div>
+            <Label>Método</Label>
+            <select className="select" value={form.metodo_pago} onChange={e => setForm({ ...form, metodo_pago: e.target.value })}>
+              <option value="transferencia">Transferencia</option>
+              <option value="cheque">Cheque</option>
+              <option value="efectivo">Efectivo</option>
+            </select>
+          </div>
+          <div>
+            <Label>Referencia</Label>
+            <input className="input" value={form.referencia_bancaria} onChange={e => setForm({ ...form, referencia_bancaria: e.target.value })} placeholder="N° cheque / ref." />
+          </div>
+          <div style={{ gridColumn: '1/-1' }}>
+            <Label>Cuenta Bancaria</Label>
+            <select className="select" value={cuentaBancoId} onChange={e => setCuentaBancoId(e.target.value)}>
+              <option value="">— Sin especificar —</option>
+              {cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.banco} — {c.numero_cuenta}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Registrando...' : 'Registrar Pago'}</button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
 
 function ModalDetalle({ proveedor, onClose }) {
   const [resumen, setResumen] = useState<any>(null)
+  const [expandedCxp, setExpandedCxp] = useState<number | null>(null)
+  const [modalPago, setModalPago] = useState<any>(null)
 
-  useEffect(() => {
+  const loadResumen = useCallback(() => {
     api.get(`/proveedores/${proveedor.id}/resumen`).then(r => setResumen(r.data)).catch(() => {})
   }, [proveedor.id])
+
+  useEffect(() => { loadResumen() }, [loadResumen])
 
   const fields = [
     { label: 'RNC', value: proveedor.rnc || '—' },
@@ -158,7 +233,7 @@ function ModalDetalle({ proveedor, onClose }) {
     { label: 'NCF Default', value: proveedor.tipo_ncf_default || 'B11' },
   ]
   return (
-    <Modal title={proveedor.nombre} onClose={onClose} width={700}>
+    <Modal title={proveedor.nombre} onClose={onClose} width={750}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
         {fields.map(f => (
           <div key={f.label} style={{ background: '#f9fafb', borderRadius: 8, padding: '10px 14px' }}>
@@ -185,6 +260,74 @@ function ModalDetalle({ proveedor, onClose }) {
             </div>
           </div>
 
+          {resumen.cuentas_por_pagar?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 6 }}>Cuentas por Pagar</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {resumen.cuentas_por_pagar.map((c: any) => {
+                  const ec = ESTADO_COLORS_CXP[c.estado] || { bg: '#f3f4f6', color: '#374151' }
+                  const isOpen = expandedCxp === c.id
+                  return (
+                    <div key={c.id}>
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f9fafb', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}
+                        onClick={() => setExpandedCxp(isOpen ? null : c.id)}
+                      >
+                        {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        <span style={{ fontWeight: 700, color: '#166534', minWidth: 70 }}>{c.numero}</span>
+                        <span style={{ color: '#6b7280', minWidth: 75 }}>{c.fecha_factura}</span>
+                        <span style={{ fontWeight: 600, minWidth: 100 }}>{fmt(c.total)}</span>
+                        <span style={{ fontWeight: 600, color: c.saldo > 0 ? '#b45309' : '#166534', minWidth: 100 }}>Saldo: {fmt(c.saldo)}</span>
+                        {c.dias_vencido > 0 && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 2, color: '#dc2626', fontSize: 10, fontWeight: 700 }}>
+                            <AlertTriangle size={10} /> {c.dias_vencido}d
+                          </span>
+                        )}
+                        <span style={{ background: ec.bg, color: ec.color, borderRadius: 6, padding: '1px 8px', fontSize: 10, fontWeight: 700, marginLeft: 'auto' }}>{c.estado}</span>
+                        {c.estado !== 'pagada' && c.estado !== 'anulada' && c.saldo > 0 && (
+                          <button className="btn-primary" style={{ padding: '2px 8px', fontSize: 10 }}
+                            onClick={e => { e.stopPropagation(); setModalPago(c) }}>
+                            <DollarSign size={10} /> Pagar
+                          </button>
+                        )}
+                      </div>
+                      {isOpen && (
+                        <div style={{ marginLeft: 24, padding: '6px 12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, marginTop: 2 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, fontSize: 11, marginBottom: 6 }}>
+                            <div><span style={{ color: '#9ca3af' }}>Factura:</span> {c.num_factura || '—'}</div>
+                            <div><span style={{ color: '#9ca3af' }}>NCF:</span> {c.ncf || '—'} ({c.tipo_ncf})</div>
+                            <div><span style={{ color: '#9ca3af' }}>Vence:</span> {c.fecha_vencimiento || '—'}</div>
+                          </div>
+                          {c.pagos?.length > 0 ? (
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 4 }}>Pagos realizados</div>
+                              <table style={{ width: '100%', fontSize: 11 }}>
+                                <thead><tr><th style={{ textAlign: 'left' }}>N°</th><th>Fecha</th><th>Monto</th><th>Método</th><th>Ref.</th></tr></thead>
+                                <tbody>
+                                  {c.pagos.map((p: any, i: number) => (
+                                    <tr key={i}>
+                                      <td style={{ fontWeight: 600 }}>{p.numero}</td>
+                                      <td>{p.fecha}</td>
+                                      <td style={{ fontWeight: 600 }}>{fmt(p.monto)}</td>
+                                      <td>{p.metodo}</td>
+                                      <td style={{ color: '#6b7280' }}>{p.referencia || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic' }}>Sin pagos registrados</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {resumen.ultimas_ocs.length > 0 && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 6 }}>Últimas Órdenes de Compra</div>
@@ -209,6 +352,8 @@ function ModalDetalle({ proveedor, onClose }) {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
         <button className="btn-secondary" onClick={onClose}>Cerrar</button>
       </div>
+
+      {modalPago && <ModalPago cxp={modalPago} onClose={() => setModalPago(null)} onDone={() => { setModalPago(null); loadResumen() }} />}
     </Modal>
   )
 }
