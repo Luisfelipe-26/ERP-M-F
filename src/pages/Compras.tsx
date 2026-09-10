@@ -429,7 +429,8 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
   const [productos, setProductos] = useState([])
   const [proveedoresLista, setProveedoresLista] = useState([])
   const [campos, setCampos] = useState([])
-  const [form, setForm] = useState({ fecha: '', proveedor: '', campo_id: '', observaciones: '' })
+  const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
+  const [form, setForm] = useState({ fecha: '', proveedor: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', almacen_id: '', observaciones: '' })
   const [lineas, setLineas] = useState([])
   const [saving, setSaving] = useState(false)
 
@@ -439,14 +440,21 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
       api.get('/inventario/articulos'),
       api.get('/proveedores'),
       api.get('/campos'),
-    ]).then(([oc, p, prov, c]) => {
+      api.get('/contabilidad/unidades-negocio'),
+      api.get('/contabilidad/departamentos'),
+      api.get('/contabilidad/almacenes'),
+    ]).then(([oc, p, prov, c, un, dep, alm]) => {
       const o = oc.data.orden
       setForm({
         fecha: o.fecha ? o.fecha.slice(0, 10) : '',
         proveedor: o.proveedor || '',
         campo_id: o.campo_id || '',
+        unidad_negocio_id: o.unidad_negocio_id || '',
+        departamento_id: o.departamento_id || '',
+        almacen_id: o.almacen_id || '',
         observaciones: o.observaciones || '',
       })
+      setDims({ unidades: un.data, deptos: dep.data, almacenes: alm.data })
       setLineas(oc.data.lineas.map(l => ({
         producto_id: l.producto_id,
         cantidad: l.cantidad,
@@ -476,6 +484,9 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
         fecha: form.fecha || null,
         proveedor: form.proveedor,
         campo_id: form.campo_id || null,
+        unidad_negocio_id: form.unidad_negocio_id ? Number(form.unidad_negocio_id) : null,
+        departamento_id: form.departamento_id ? Number(form.departamento_id) : null,
+        almacen_id: form.almacen_id ? Number(form.almacen_id) : null,
         observaciones: form.observaciones,
         lineas: lineas.map(l => ({
           producto_id: l.producto_id,
@@ -512,6 +523,18 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
             <option value="">— Sin asignar —</option>
             {campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre_campo || c.id_campo}</option>)}
           </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Unidad de Negocio</label>
+          <select className="select" value={form.unidad_negocio_id} onChange={e => setForm({ ...form, unidad_negocio_id: e.target.value })}><option value="">—</option>{dims.unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
+        </div>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Departamento</label>
+          <select className="select" value={form.departamento_id} onChange={e => setForm({ ...form, departamento_id: e.target.value })}><option value="">—</option>{dims.deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}</select>
+        </div>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Almacén</label>
+          <select className="select" value={form.almacen_id} onChange={e => setForm({ ...form, almacen_id: e.target.value })}><option value="">—</option>{dims.almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select>
         </div>
         <div style={{ gridColumn: '1/-1' }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Observaciones</label>
