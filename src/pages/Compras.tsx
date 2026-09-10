@@ -214,13 +214,26 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
   const [recepcion, setRecepcion] = useState([])
   const [numFactura, setNumFactura] = useState('')
   const [saving, setSaving] = useState(false)
+  const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
 
   useEffect(() => {
-    api.get(`/ordenes-compra/${ocId}`)
-      .then(({ data }) => setData(data))
-      .catch(() => toast.error('Error al cargar'))
+    Promise.all([
+      api.get(`/ordenes-compra/${ocId}`),
+      api.get('/contabilidad/unidades-negocio'),
+      api.get('/contabilidad/departamentos'),
+      api.get('/contabilidad/almacenes'),
+    ]).then(([oc, un, dep, alm]) => {
+      setData(oc.data)
+      setDims({ unidades: un.data, deptos: dep.data, almacenes: alm.data })
+    }).catch(() => toast.error('Error al cargar'))
       .finally(() => setLoading(false))
   }, [ocId])
+
+  const dimLabel = (type: string, id: number | null) => {
+    if (!id) return null
+    const list = type === 'unidades' ? dims.unidades : type === 'deptos' ? dims.deptos : dims.almacenes
+    return list.find((d: any) => d.id === id)?.nombre || null
+  }
 
   async function cambiarEstado(estado) {
     try {
@@ -393,16 +406,31 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
         </div>
       )}
 
-      {(orden.num_factura || orden.campo_id) && (
-        <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+      {(orden.num_factura || orden.campo_id || orden.unidad_negocio_id || orden.departamento_id || orden.almacen_id) && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
           {orden.num_factura && (
-            <div style={{ background: '#eff6ff', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#1e40af' }}>
+            <div style={{ background: '#eff6ff', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#1e40af' }}>
               <strong>Factura:</strong> {orden.num_factura}
             </div>
           )}
           {orden.campo_id && (
-            <div style={{ background: '#f0fdf4', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#166534' }}>
+            <div style={{ background: '#f0fdf4', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#166534' }}>
               <strong>Campo:</strong> {orden.campo_id}
+            </div>
+          )}
+          {dimLabel('unidades', orden.unidad_negocio_id) && (
+            <div style={{ background: '#eff6ff', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#1e40af', border: '1px solid #bfdbfe' }}>
+              <strong>UN:</strong> {dimLabel('unidades', orden.unidad_negocio_id)}
+            </div>
+          )}
+          {dimLabel('deptos', orden.departamento_id) && (
+            <div style={{ background: '#fef9c3', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#854d0e', border: '1px solid #fde047' }}>
+              <strong>Depto:</strong> {dimLabel('deptos', orden.departamento_id)}
+            </div>
+          )}
+          {dimLabel('almacenes', orden.almacen_id) && (
+            <div style={{ background: '#fce7f3', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#9d174d', border: '1px solid #f9a8d4' }}>
+              <strong>Almacén:</strong> {dimLabel('almacenes', orden.almacen_id)}
             </div>
           )}
         </div>
@@ -594,6 +622,21 @@ export default function Compras() {
   const [modalNueva, setModalNueva] = useState(false)
   const [modalDetalle, setModalDetalle] = useState(null)
   const [modalEditar, setModalEditar] = useState(null)
+  const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/contabilidad/unidades-negocio'),
+      api.get('/contabilidad/departamentos'),
+      api.get('/contabilidad/almacenes'),
+    ]).then(([un, dep, alm]) => setDims({ unidades: un.data, deptos: dep.data, almacenes: alm.data })).catch(() => {})
+  }, [])
+
+  const dimName = useCallback((type: 'unidades' | 'deptos' | 'almacenes', id: number | null) => {
+    if (!id) return null
+    const item = dims[type].find((d: any) => d.id === id)
+    return item?.nombre || null
+  }, [dims])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -681,7 +724,7 @@ export default function Compras() {
               <th>N° OC</th>
               <th>Fecha</th>
               <th>Proveedor</th>
-              <th>Campo</th>
+              <th>Dimensiones</th>
               <th>Factura</th>
               <th>Estado</th>
               <th style={{ textAlign: 'right' }}>Total Estimado</th>
@@ -691,9 +734,9 @@ export default function Compras() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
             ) : ocs.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin órdenes de compra</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin órdenes de compra</td></tr>
             ) : ocs.map(o => (
               <tr key={o.oc_id} style={{ cursor: 'pointer' }} onClick={() => setModalDetalle(o.oc_id)}
                 onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
@@ -701,7 +744,17 @@ export default function Compras() {
                 <td style={{ fontWeight: 700, color: '#166534' }}>{o.oc_id}</td>
                 <td>{fmtDate(o.fecha)}</td>
                 <td>{o.proveedor || '—'}</td>
-                <td style={{ fontSize: 11, color: '#6b7280' }}>{o.campo_id || '—'}</td>
+                <td style={{ fontSize: 10, lineHeight: 1.8 }}>
+                  {(() => {
+                    const tags = [
+                      o.campo_id && { key: 'c', label: o.campo_id, bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
+                      dimName('unidades', o.unidad_negocio_id) && { key: 'u', label: dimName('unidades', o.unidad_negocio_id), bg: '#eff6ff', color: '#1e40af', border: '#bfdbfe' },
+                      dimName('deptos', o.departamento_id) && { key: 'd', label: dimName('deptos', o.departamento_id), bg: '#fef9c3', color: '#854d0e', border: '#fde047' },
+                      dimName('almacenes', o.almacen_id) && { key: 'a', label: dimName('almacenes', o.almacen_id), bg: '#fce7f3', color: '#9d174d', border: '#f9a8d4' },
+                    ].filter(Boolean) as { key: string; label: string; bg: string; color: string; border: string }[]
+                    return tags.length ? tags.map(t => <span key={t.key} style={{ background: t.bg, color: t.color, border: `1px solid ${t.border}`, borderRadius: 4, padding: '1px 5px', marginRight: 3, whiteSpace: 'nowrap' }}>{t.label}</span>) : <span style={{ color: '#d1d5db' }}>—</span>
+                  })()}
+                </td>
                 <td style={{ fontSize: 11, color: '#1e40af' }}>{o.num_factura || '—'}</td>
                 <td><Badge estado={o.estado} /></td>
                 <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(o.total_estimado)}</td>
