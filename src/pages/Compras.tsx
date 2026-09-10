@@ -97,7 +97,7 @@ function ModalNuevaOC({ onClose, onDone }) {
     if (invalid) return toast.error('Complete todos los campos de cada línea')
     setSaving(true)
     try {
-      await api.post('/ordenes-compra', {
+      const { data: result } = await api.post('/ordenes-compra', {
         ...form,
         fecha: form.fecha ? new Date(form.fecha).toISOString() : undefined,
         unidad_negocio_id: form.unidad_negocio_id ? Number(form.unidad_negocio_id) : null,
@@ -105,7 +105,10 @@ function ModalNuevaOC({ onClose, onDone }) {
         almacen_id: form.almacen_id ? Number(form.almacen_id) : null,
         lineas: lineas.map(l => ({ producto_id: l.producto_id, cantidad: Number(l.cantidad), precio_unitario: Number(l.precio_unitario) })),
       })
-      toast.success(`Orden de Compra ${nextId} creada`)
+      toast.success(`Orden de Compra ${result.oc_id || nextId} creada`)
+      if (result.alertas_presupuesto?.length) {
+        result.alertas_presupuesto.forEach((a: string) => toast(a, { icon: '⚠️', duration: 6000 }))
+      }
       onDone()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al crear OC')
@@ -394,6 +397,15 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
       {orden.observaciones && (
         <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
           <strong>Observaciones:</strong> {orden.observaciones}
+        </div>
+      )}
+
+      {data.compromiso && (
+        <div style={{ background: data.compromiso.estado === 'activo' ? '#fef9c3' : data.compromiso.estado === 'ejecutado' ? '#dcfce7' : '#f3f4f6', border: `1px solid ${data.compromiso.estado === 'activo' ? '#fde047' : data.compromiso.estado === 'ejecutado' ? '#86efac' : '#d1d5db'}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+          <span style={{ fontSize: 15 }}>📋</span>
+          <span style={{ fontWeight: 700, color: '#374151' }}>Compromiso Presupuestario</span>
+          <span style={{ color: '#6b7280' }}>{fmt(data.compromiso.monto)}</span>
+          <span style={{ marginLeft: 'auto', background: data.compromiso.estado === 'activo' ? '#fef9c3' : data.compromiso.estado === 'ejecutado' ? '#dcfce7' : '#fee2e2', color: data.compromiso.estado === 'activo' ? '#854d0e' : data.compromiso.estado === 'ejecutado' ? '#166534' : '#991b1b', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>{data.compromiso.estado}</span>
         </div>
       )}
 
