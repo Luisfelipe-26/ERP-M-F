@@ -132,7 +132,22 @@ function ModalProveedor({ proveedor, onClose, onDone }) {
   )
 }
 
+const fmt = (n: number) => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
+
+const ESTADO_COLORS_OC = {
+  Pendiente: { bg: '#fef9c3', color: '#854d0e' },
+  Parcial:   { bg: '#dbeafe', color: '#1e40af' },
+  Recibida:  { bg: '#dcfce7', color: '#166534' },
+  Cancelada: { bg: '#fee2e2', color: '#991b1b' },
+}
+
 function ModalDetalle({ proveedor, onClose }) {
+  const [resumen, setResumen] = useState<any>(null)
+
+  useEffect(() => {
+    api.get(`/proveedores/${proveedor.id}/resumen`).then(r => setResumen(r.data)).catch(() => {})
+  }, [proveedor.id])
+
   const fields = [
     { label: 'RNC', value: proveedor.rnc || '—' },
     { label: 'Teléfono', value: proveedor.telefono || '—' },
@@ -143,8 +158,8 @@ function ModalDetalle({ proveedor, onClose }) {
     { label: 'NCF Default', value: proveedor.tipo_ncf_default || 'B11' },
   ]
   return (
-    <Modal title={proveedor.nombre} onClose={onClose}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+    <Modal title={proveedor.nombre} onClose={onClose} width={700}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
         {fields.map(f => (
           <div key={f.label} style={{ background: '#f9fafb', borderRadius: 8, padding: '10px 14px' }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 }}>{f.label}</div>
@@ -152,6 +167,45 @@ function ModalDetalle({ proveedor, onClose }) {
           </div>
         ))}
       </div>
+
+      {resumen && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+            <div style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#854d0e', textTransform: 'uppercase', marginBottom: 4 }}>Saldo CxP</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: resumen.saldo_cxp > 0 ? '#b45309' : '#166534' }}>{fmt(resumen.saldo_cxp)}</div>
+            </div>
+            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#166534', textTransform: 'uppercase', marginBottom: 4 }}>Total Compras</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#111827' }}>{fmt(resumen.total_compras)}</div>
+            </div>
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', marginBottom: 4 }}>N° de OCs</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#111827' }}>{resumen.num_ocs}</div>
+            </div>
+          </div>
+
+          {resumen.ultimas_ocs.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 6 }}>Últimas Órdenes de Compra</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {resumen.ultimas_ocs.map((o: any) => {
+                  const ec = ESTADO_COLORS_OC[o.estado] || { bg: '#f3f4f6', color: '#374151' }
+                  return (
+                    <div key={o.oc_id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f9fafb', borderRadius: 6, padding: '6px 12px', fontSize: 12 }}>
+                      <span style={{ fontWeight: 700, color: '#166534', minWidth: 70 }}>{o.oc_id}</span>
+                      <span style={{ color: '#6b7280', minWidth: 80 }}>{o.fecha}</span>
+                      <span style={{ fontWeight: 600, flex: 1 }}>{fmt(o.total)}</span>
+                      <span style={{ background: ec.bg, color: ec.color, borderRadius: 6, padding: '1px 8px', fontSize: 10, fontWeight: 700 }}>{o.estado}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
         <button className="btn-secondary" onClick={onClose}>Cerrar</button>
       </div>

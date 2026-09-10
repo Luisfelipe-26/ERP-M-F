@@ -275,8 +275,8 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
         }))
       }
       const { data: result } = await api.post(`/ordenes-compra/${ocId}/recepcion`, payload)
-      const asientoRef = result.asiento ? ` · Asiento: ${result.asiento}` : ''
-      toast.success(`Recepción registrada — Estado: ${result.estado}${asientoRef}`)
+      const refs = [result.asiento && `Asiento: ${result.asiento}`, result.cxp && `CxP: ${result.cxp}`].filter(Boolean).join(' · ')
+      toast.success(`Recepción registrada — Estado: ${result.estado}${refs ? ` · ${refs}` : ''}`)
       onDone()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al registrar recepción')
@@ -415,6 +415,21 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
           <span style={{ fontWeight: 700, color: '#1e40af' }}>Asiento: {data.asiento_contable.numero}</span>
           <span style={{ color: '#6b7280' }}>{data.asiento_contable.fecha} · {fmt(data.asiento_contable.total_debe)}</span>
           <span style={{ marginLeft: 'auto', background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{data.asiento_contable.estado}</span>
+        </div>
+      )}
+
+      {data.cuentas_por_pagar?.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 6 }}>Cuentas por Pagar</div>
+          {data.cuentas_por_pagar.map((c: any) => (
+            <div key={c.numero} style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, padding: '8px 14px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+              <span style={{ fontWeight: 700, color: '#854d0e' }}>{c.numero}</span>
+              {c.num_factura && <span style={{ color: '#6b7280' }}>Fact: {c.num_factura}</span>}
+              <span style={{ color: '#374151' }}>{fmt(c.total)}</span>
+              <span style={{ color: c.saldo > 0 ? '#b45309' : '#166534', fontWeight: 600 }}>Saldo: {fmt(c.saldo)}</span>
+              <span style={{ marginLeft: 'auto', background: c.estado === 'pagada' ? '#dcfce7' : c.estado === 'pendiente' ? '#fef9c3' : '#fee2e2', color: c.estado === 'pagada' ? '#166534' : c.estado === 'pendiente' ? '#854d0e' : '#991b1b', borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>{c.estado}</span>
+            </div>
+          ))}
         </div>
       )}
 
