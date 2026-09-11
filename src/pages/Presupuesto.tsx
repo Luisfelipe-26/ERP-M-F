@@ -7,7 +7,7 @@ import {
   Copy, Search, ChevronDown, ChevronRight,
   ChevronsDown, ChevronsRight, TrendingUp, Undo2, Settings, FileText,
   XCircle, BarChart3, Percent, Shield, Clock, Hash, Layers, Pencil, Filter,
-  Upload, Lock, GitBranch
+  Upload, Lock, GitBranch, Activity
 } from 'lucide-react'
 
 /* ═══════════════════════════════ constants ═══════════════════════════════ */
@@ -90,7 +90,7 @@ function Badge({ color, bg, border, children }: any) {
 
 /* ═══════════════════════════════ page ═══════════════════════════════ */
 export default function Presupuesto() {
-  const [tab, setTab] = useState<'presupuestos' | 'registros' | 'saldos' | 'control' | 'config'>('presupuestos')
+  const [tab, setTab] = useState<'presupuestos' | 'registros' | 'saldos' | 'control' | 'ejecucion' | 'config'>('presupuestos')
   const [periodo, setPeriodo] = useState<'mes' | 'trim' | 'anio'>('mes')
   const [anio, setAnio] = useState(new Date().getFullYear())
   const [loading, setLoading] = useState(true)
@@ -148,6 +148,12 @@ export default function Presupuesto() {
   const [editDocForm, setEditDocForm] = useState<any>({ nombre: '', descripcion: '', anio: 0, clase_cuentas: 'todas' })
   const [editingLinea, setEditingLinea] = useState<any>(null)
   const [editLineaForm, setEditLineaForm] = useState<any>({ cuenta_id: '', fecha: '', monto: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', descripcion: '' })
+
+  // Ejecución (Fase 4)
+  const [ejData, setEjData] = useState<any[]>([])
+  const [ejMovs, setEjMovs] = useState<any[]>([])
+  const [ejTipoFiltro, setEjTipoFiltro] = useState('')
+  const [ejCuentaFiltro, setEjCuentaFiltro] = useState('')
 
   /* ── loaders ── */
   const loadBase = useCallback(async () => {
@@ -225,6 +231,23 @@ export default function Presupuesto() {
     } catch { toast.error('Error al cargar detalle') }
   }, [])
 
+  const loadEjecucion = useCallback(async () => {
+    setLoading(true)
+    try {
+      let ejUrl = `/contabilidad/ejecucion-presupuestaria?anio=${anio}`
+      if (campoFiltro) ejUrl += `&campo_id=${campoFiltro}`
+      if (unFiltro) ejUrl += `&unidad_negocio_id=${unFiltro}`
+      if (depFiltro) ejUrl += `&departamento_id=${depFiltro}`
+      let movUrl = `/contabilidad/movimientos-presupuestarios?anio=${anio}&limit=200`
+      if (ejTipoFiltro) movUrl += `&tipo=${ejTipoFiltro}`
+      if (ejCuentaFiltro) movUrl += `&cuenta_id=${ejCuentaFiltro}`
+      const [ej, mv] = await Promise.all([api.get(ejUrl), api.get(movUrl)])
+      setEjData(ej.data)
+      setEjMovs(mv.data.items || mv.data)
+    } catch { toast.error('Error cargando ejecución') }
+    finally { setLoading(false) }
+  }, [anio, campoFiltro, unFiltro, depFiltro, ejTipoFiltro, ejCuentaFiltro])
+
   useEffect(() => { loadBase() }, [loadBase])
   useEffect(() => { loadEscenarios() }, [loadEscenarios])
   useEffect(() => { if (tab === 'saldos') loadPeriodos() }, [tab, loadPeriodos])
@@ -233,8 +256,9 @@ export default function Presupuesto() {
     else if (tab === 'registros') loadRegistros()
     else if (tab === 'saldos') loadSaldos()
     else if (tab === 'control') loadControl()
+    else if (tab === 'ejecucion') loadEjecucion()
     else setLoading(false)
-  }, [tab, loadDocumentos, loadRegistros, loadSaldos, loadControl])
+  }, [tab, loadDocumentos, loadRegistros, loadSaldos, loadControl, loadEjecucion])
 
   /* ── saldos editing ── */
   const cellVal = (row: any, mk: string) => { const e = edits[row.id]; return e && mk in e ? e[mk] : Number(row[mk] || 0) }
@@ -636,6 +660,7 @@ export default function Presupuesto() {
           { key: 'registros', label: 'Registros', Icon: FileText, desc: 'Asientos presupuestarios' },
           { key: 'saldos',    label: 'Saldos',    Icon: Table2,   desc: 'Balances por cuenta' },
           { key: 'control',   label: 'Control',   Icon: Gauge,    desc: 'Presupuesto vs Real' },
+          { key: 'ejecucion', label: 'Ejecución', Icon: Activity, desc: 'Ledger presupuestario' },
           { key: 'config',    label: 'Configuración', Icon: Settings, desc: 'Parámetros del módulo' },
         ] as const).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -728,14 +753,14 @@ export default function Presupuesto() {
               <button className="btn-secondary" style={{ height: 32 }} onClick={() => { setCopyData({anio_origen:anio-1,factor:1.0}); setShowCopy(true) }}><Copy size={14} /></button>
               <button className="btn-secondary" style={{ height: 32, color: '#7c3aed' }} onClick={() => setShowEscenarioMgmt(true)} title="Gestionar escenarios"><GitBranch size={14} /></button>
             </>}
-            <button className="btn-secondary" style={{ height: 32 }} onClick={() => tab==='registros'?loadRegistros():tab==='saldos'?loadSaldos():loadControl()}><RefreshCw size={14} /></button>
+            <button className="btn-secondary" style={{ height: 32 }} onClick={() => tab==='registros'?loadRegistros():tab==='saldos'?loadSaldos():tab==='ejecucion'?loadEjecucion():loadControl()}><RefreshCw size={14} /></button>
             {tab !== 'registros' && <button className="btn-secondary" style={{ height: 32 }} onClick={exportCSV}><Download size={14} /></button>}
           </PaneGroup>
         </div>
       )}
 
       {/* KPIs */}
-      {tab !== 'config' && tab !== 'presupuestos' && (
+      {tab !== 'config' && tab !== 'presupuestos' && tab !== 'ejecucion' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
           {tab === 'registros' && <>
             <KpiCard label="Registros" value={String(regStats.total)} color="#475569" Icon={Hash} />
@@ -1199,6 +1224,140 @@ export default function Presupuesto() {
                     <td colSpan={2} style={{...tdL,borderTop:'2px solid #cbd5e1',color:estadoPct(pctGlobal).color,fontWeight:700}}>{pctGlobal}% consumido</td>
                   </tr>
                 </tfoot>}
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : tab === 'ejecucion' ? (
+        /* ═══ EJECUCIÓN PRESUPUESTARIA (Fase 4) ═══ */
+        <div>
+          {/* KPIs de ejecución */}
+          {ejData.length > 0 && (() => {
+            const totAp = ejData.reduce((s: number, r: any) => s + (r.apropiado || 0), 0)
+            const totCo = ejData.reduce((s: number, r: any) => s + (r.comprometido || 0), 0)
+            const totDe = ejData.reduce((s: number, r: any) => s + (r.devengado || 0), 0)
+            const totPa = ejData.reduce((s: number, r: any) => s + (r.pagado || 0), 0)
+            const totDi = ejData.reduce((s: number, r: any) => s + (r.disponible || 0), 0)
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16 }}>
+                {[
+                  { label: 'APROPIADO', val: totAp, color: '#1e40af', bg: '#dbeafe' },
+                  { label: 'COMPROMETIDO', val: totCo, color: '#7c3aed', bg: '#ede9fe' },
+                  { label: 'DEVENGADO', val: totDe, color: '#b45309', bg: '#fef3c7' },
+                  { label: 'PAGADO', val: totPa, color: '#166534', bg: '#dcfce7' },
+                  { label: 'DISPONIBLE', val: totDi, color: totDi >= 0 ? '#166534' : '#dc2626', bg: totDi >= 0 ? '#f0fdf4' : '#fef2f2' },
+                ].map(k => (
+                  <div key={k.label} style={{ ...S.card, padding: '10px 14px', borderLeft: `4px solid ${k.color}` }}>
+                    <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700 }}>{k.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: k.color }}>{fmt(k.val)}</div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+
+          {/* Filtros de movimientos */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+            <select className="select" style={{ width: 160 }} value={ejTipoFiltro} onChange={e => { setEjTipoFiltro(e.target.value); setTimeout(loadEjecucion, 50) }}>
+              <option value="">Todos los tipos</option>
+              {['APROPIACION', 'COMPROMISO', 'DEVENGADO', 'PAGADO', 'TRANSFERENCIA', 'MODIFICACION', 'LIBERACION'].map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <select className="select" style={{ width: 220 }} value={ejCuentaFiltro} onChange={e => { setEjCuentaFiltro(e.target.value); setTimeout(loadEjecucion, 50) }}>
+              <option value="">Todas las cuentas</option>
+              {cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+            </select>
+          </div>
+
+          {/* Tabla resumen de ejecución */}
+          {ejData.length > 0 && (
+            <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
+                Ejecución por Cuenta — {anio}
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ minWidth: 80 }}>Código</th>
+                      <th style={{ minWidth: 150 }}>Cuenta</th>
+                      <th style={{ textAlign: 'right' }}>Apropiado</th>
+                      <th style={{ textAlign: 'right' }}>Comprometido</th>
+                      <th style={{ textAlign: 'right' }}>Devengado</th>
+                      <th style={{ textAlign: 'right' }}>Pagado</th>
+                      <th style={{ textAlign: 'right' }}>Disponible</th>
+                      <th style={{ width: 80, textAlign: 'right' }}>% Ejec.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ejData.map((r: any) => {
+                      const pctEj = r.apropiado > 0 ? Math.round(((r.comprometido + r.devengado) / r.apropiado) * 100) : 0
+                      const pctColor = pctEj >= (config.umbral_bloqueo || 100) ? '#dc2626' : pctEj >= (config.umbral_alerta || 85) ? '#d97706' : '#22c55e'
+                      return (
+                        <tr key={r.cuenta_id}>
+                          <td style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700 }}>{r.cuenta_codigo}</td>
+                          <td style={{ fontSize: 12 }}>{r.cuenta_nombre}</td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.apropiado)}</td>
+                          <td style={{ textAlign: 'right', color: '#7c3aed', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.comprometido)}</td>
+                          <td style={{ textAlign: 'right', color: '#b45309', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.devengado)}</td>
+                          <td style={{ textAlign: 'right', color: '#166534', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.pagado)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: r.disponible < 0 ? '#dc2626' : '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.disponible)}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <span style={{ background: pctColor + '18', color: pctColor, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{pctEj}%</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Movimientos (ledger) */}
+          <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
+              Movimientos Presupuestarios — {anio} {ejTipoFiltro && `(${ejTipoFiltro})`}
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: 90 }}>Fecha</th>
+                    <th style={{ width: 110 }}>Tipo</th>
+                    <th>Cuenta</th>
+                    <th style={{ textAlign: 'right' }}>Monto</th>
+                    <th>Origen</th>
+                    <th>Notas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ejMovs.length === 0 ? (
+                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin movimientos presupuestarios</td></tr>
+                  ) : ejMovs.map((m: any) => {
+                    const tipoColors: Record<string, { bg: string; color: string }> = {
+                      APROPIACION: { bg: '#dbeafe', color: '#1e40af' },
+                      COMPROMISO: { bg: '#ede9fe', color: '#7c3aed' },
+                      DEVENGADO: { bg: '#fef3c7', color: '#b45309' },
+                      PAGADO: { bg: '#dcfce7', color: '#166534' },
+                      LIBERACION: { bg: '#fee2e2', color: '#dc2626' },
+                      TRANSFERENCIA: { bg: '#e0e7ff', color: '#4338ca' },
+                      MODIFICACION: { bg: '#f3f4f6', color: '#374151' },
+                    }
+                    const tc = tipoColors[m.tipo] || { bg: '#f3f4f6', color: '#374151' }
+                    return (
+                      <tr key={m.id}>
+                        <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{m.fecha ? new Date(m.fecha).toLocaleDateString('es-DO') : '—'}</td>
+                        <td><span style={{ background: tc.bg, color: tc.color, padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>{m.tipo}</span></td>
+                        <td style={{ fontSize: 12 }}><span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{m.cuenta_codigo}</span> {m.cuenta_nombre}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: Number(m.monto) < 0 ? '#dc2626' : '#0f172a' }}>{fmt(m.monto)}</td>
+                        <td style={{ fontSize: 11, color: '#6b7280' }}>{m.origen_tipo ? `${m.origen_tipo} ${m.origen_id || ''}` : '—'}</td>
+                        <td style={{ fontSize: 11, color: '#6b7280', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.notas || '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
               </table>
             </div>
           </div>
