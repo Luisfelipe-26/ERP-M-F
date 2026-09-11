@@ -33,7 +33,8 @@ const Modal = ({ title, onClose, children, width = 600 }) => (
 
 const TABS = [
   { key: 'usuarios', label: 'Usuarios', icon: Users },
-  { key: 'perfiles', label: 'Perfiles de Acceso', icon: Shield },
+  { key: 'roles', label: 'Roles y Permisos', icon: Shield },
+  { key: 'perfiles', label: 'Perfiles de Acceso', icon: Key },
 ]
 
 const MODULOS = [
@@ -69,6 +70,7 @@ export default function Administracion() {
       </div>
 
       {tab === 'usuarios' && <TabUsuarios />}
+      {tab === 'roles' && <TabRoles />}
       {tab === 'perfiles' && <TabPerfiles />}
     </div>
   )
@@ -77,20 +79,24 @@ export default function Administracion() {
 function TabUsuarios() {
   const [usuarios, setUsuarios] = useState<any[]>([])
   const [perfiles, setPerfiles] = useState<any[]>([])
+  const [roles, setRoles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [editando, setEditando] = useState<any>(null)
   const [resetModal, setResetModal] = useState<any>(null)
+  const [asignando, setAsignando] = useState<any>(null)
   const [newPass, setNewPass] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [u, p] = await Promise.all([
+      const [u, p, r] = await Promise.all([
         api.get('/admin/usuarios'),
         api.get('/admin/perfiles'),
+        api.get('/rbac/roles'),
       ])
       setUsuarios(u.data)
       setPerfiles(p.data)
+      setRoles(r.data)
     } catch { toast.error('Error al cargar usuarios') }
     finally { setLoading(false) }
   }, [])
@@ -151,11 +157,17 @@ function TabUsuarios() {
                 <td style={{ fontWeight: 600 }}>{u.nombre}</td>
                 <td style={{ fontSize: 12, color: '#6b7280' }}>{u.email}</td>
                 <td>{u.perfil_nombre ? <Badge color="blue">{u.perfil_nombre}</Badge> : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>}</td>
-                <td><Badge color={u.rol === 'admin' ? 'green' : u.rol === 'supervisor' ? 'yellow' : 'gray'}>{u.rol}</Badge></td>
+                <td>
+                  <Badge color={u.rol === 'admin' ? 'green' : u.rol === 'supervisor' ? 'yellow' : 'gray'}>{u.rol}</Badge>
+                  {(u.roles || []).map((r: any) => (
+                    <Badge key={r.id} color="green">{r.nombre}</Badge>
+                  ))}
+                </td>
                 <td><Badge color={u.activo ? 'green' : 'red'}>{u.activo ? 'Activo' : 'Inactivo'}</Badge></td>
                 <td>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button className="btn-secondary" style={{ padding: '4px 6px' }} onClick={() => setEditando({ ...u })} title="Editar"><Edit2 size={12} /></button>
+                    <button className="btn-secondary" style={{ padding: '4px 6px' }} onClick={() => setAsignando({ ...u, rol_ids: (u.roles || []).map((r: any) => r.id) })} title="Asignar roles"><Shield size={12} /></button>
                     <button className="btn-secondary" style={{ padding: '4px 6px' }} onClick={() => setResetModal(u)} title="Reset contraseña"><Key size={12} /></button>
                   </div>
                 </td>
@@ -227,6 +239,8 @@ function TabUsuarios() {
           </form>
         </Modal>
       )}
+
+      {asignando && <AssignRoles usuario={asignando} roles={roles} onClose={() => setAsignando(null)} onSaved={load} />}
     </div>
   )
 }
@@ -376,5 +390,289 @@ function TabPerfiles() {
         </Modal>
       )}
     </div>
+  )
+}
+const ACCIONES_RBAC = ['read', 'create', 'update', 'delete']
+
+function TabRoles() {
+  const [roles, setRoles] = useState<any[]>([])
+  const [permisos, setPermisos] = useState<Record<string, any[]>>({})
+  const [loading, setLoading] = useState(true)
+  const [editando, setEditando] = useState<any>(null)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [r, p] = await Promise.all([
+        api.get('/rbac/roles'),
+        api.get('/rbac/permisos/agrupados'),
+      ])
+      setRoles(r.data)
+      setPermisos(p.data)
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Error cargando roles')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  function abrirNuevo() {
+    setEditando({ id: null, nombre: '', descripcion: '', activo: true, permiso_ids: [] })
+  }
+
+  function abrirEditar(r: any) {
+    setEditando({
+      id: r.id, nombre: r.nombre, descripcion: r.descripcion || '',
+      activo: r.activo ?? true, es_sistema: r.es_sistema,
+      permiso_ids: r.permisos.map((p: any) => p.id),
+    })
+  }
+
+  function togglePermiso(id: number) {
+    setEditando((e: any) => {
+      const ids = e.permiso_ids.includes(id)
+        ? e.permiso_ids.filter((x: number) => x !== id)
+        : [...e.permiso_ids, id]
+      return { ...e, permiso_ids: ids }
+    })
+  }
+
+  function toggleModulo(mod: string, activar: boolean) {
+    setEditando((e: any) => {
+      const modIds = (permisos[mod] || []).map((p: any) => p.id)
+      const otros = e.permiso_ids.filter((x: number) => !modIds.includes(x))
+      return { ...e, permiso_ids: activar ? [...otros, ...modIds] : otros }
+    })
+  }
+
+  async function guardar(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editando.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
+    try {
+      if (editando.id) {
+        await api.put(`/rbac/roles/${editando.id}`, {
+          nombre: editando.nombre, descripcion: editando.descripcion,
+          activo: editando.activo, permiso_ids: editando.permiso_ids,
+        })
+        toast.success('Rol actualizado')
+      } else {
+        await api.post('/rbac/roles', {
+          nombre: editando.nombre, descripcion: editando.descripcion,
+          permiso_ids: editando.permiso_ids,
+        })
+        toast.success('Rol creado')
+      }
+      setEditando(null)
+      cargar()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Error guardando rol')
+    }
+  }
+
+  async function eliminar(id: number) {
+    if (!confirm('¿Eliminar este rol?')) return
+    try {
+      await api.delete(`/rbac/roles/${id}`)
+      toast.success('Rol eliminado')
+      cargar()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Error eliminando rol')
+    }
+  }
+
+  if (loading) return <div style={{ color: '#6b7280', padding: '40px 0', textAlign: 'center' }}>Cargando…</div>
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <p style={{ color: '#6b7280', fontSize: 13, margin: 0 }}>
+          Los roles agrupan permisos a nivel de módulo y acción. Asigna roles a cada usuario.
+        </p>
+        <button className="btn-primary" onClick={abrirNuevo}><Plus size={14} style={{ marginRight: 4 }} />Nuevo Rol</button>
+      </div>
+
+      <div className="card" style={{ overflow: 'auto' }}>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Rol</th>
+              <th>Descripción</th>
+              <th>Permisos</th>
+              <th>Usuarios</th>
+              <th>Estado</th>
+              <th style={{ width: 130 }}>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roles.map(r => (
+              <tr key={r.id}>
+                <td style={{ fontWeight: 700 }}>{r.nombre}</td>
+                <td style={{ fontSize: 12, color: '#6b7280' }}>{r.descripcion || '—'}</td>
+                <td>
+                  <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                    {r.permisos.slice(0, 8).map((p: any) => (
+                      <Badge key={p.id} color="blue">{p.modulo}.{p.accion}</Badge>
+                    ))}
+                    {r.permisos.length > 8 && <Badge color="gray">+{r.permisos.length - 8}</Badge>}
+                  </div>
+                </td>
+                <td><Badge color="gray">{r.num_usuarios}</Badge></td>
+                <td><Badge color={r.activo ? 'green' : 'red'}>{r.activo ? 'Activo' : 'Inactivo'}</Badge></td>
+                <td>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn-secondary" style={{ padding: '4px 6px' }} onClick={() => abrirEditar(r)}><Edit2 size={12} /></button>
+                    <button
+                      className="btn-danger" style={{ padding: '4px 6px' }}
+                      onClick={() => eliminar(r.id)}
+                      title={r.es_sistema ? 'Rol del sistema, no se puede eliminar' : 'Eliminar'}
+                      disabled={r.es_sistema}
+                    ><Trash2 size={12} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+{editando && (
+        <Modal title={editando.id ? `Editar rol: ${editando.nombre}` : 'Nuevo Rol'} onClose={() => setEditando(null)} width={720}>
+          <form onSubmit={guardar}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <Label>Nombre *</Label>
+                <input className="input" value={editando.nombre}
+                  onChange={e => setEditando({ ...editando, nombre: e.target.value })} required />
+              </div>
+              <div>
+                <Label>Descripción</Label>
+                <input className="input" value={editando.descripcion || ''}
+                  onChange={e => setEditando({ ...editando, descripcion: e.target.value })} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <Label>Permisos</Label>
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', maxHeight: 380, overflowY: 'auto' }}>
+                <table style={{ fontSize: 12, margin: 0 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '6px 12px', width: 20 }}></th>
+                      <th style={{ padding: '6px 12px' }}>Módulo</th>
+                      {ACCIONES_RBAC.map(a => <th key={a} style={{ padding: '6px 12px', textTransform: 'capitalize' }}>{a}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(permisos).map(([mod, perms]) => {
+                      const modIds = perms.map((p: any) => p.id)
+                      const allChecked = modIds.every((id: number) => editando.permiso_ids.includes(id))
+                      const someChecked = modIds.some((id: number) => editando.permiso_ids.includes(id))
+                      return (
+                        <tr key={mod}>
+                          <td style={{ padding: '4px 12px' }}>
+                            <input
+                              type="checkbox"
+                              checked={allChecked}
+                              ref={el => { if (el) el.indeterminate = someChecked && !allChecked }}
+                              onChange={e => toggleModulo(mod, e.target.checked)}
+                            />
+                          </td>
+                          <td style={{ padding: '4px 12px', textTransform: 'capitalize', fontWeight: 600 }}>{mod.replace(/_/g, ' ')}</td>
+                          {ACCIONES_RBAC.map(a => {
+                            const perm = perms.find((p: any) => p.accion === a)
+                            const checked = perm && editando.permiso_ids.includes(perm.id)
+                            return (
+                              <td key={a} style={{ padding: '4px 12px', textAlign: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  disabled={!perm}
+                                  checked={!!checked}
+                                  onChange={() => perm && togglePermiso(perm.id)}
+                                />
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  disabled={editando.es_sistema}
+                  checked={editando.activo}
+                  onChange={e => setEditando({ ...editando, activo: e.target.checked })}
+                />
+                Activo
+              </label>
+              {editando.es_sistema && <span style={{ fontSize: 11, color: '#6b7280' }}>Rol del sistema (no puede desactivarse)</span>}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn-secondary" onClick={() => setEditando(null)}>Cancelar</button>
+              <button type="submit" className="btn-primary">Guardar</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+function AssignRoles({ usuario, roles, onClose, onSaved }) {
+  const [sel, setSel] = useState<number[]>(usuario.rol_ids || [])
+  const [guardando, setGuardando] = useState(false)
+
+  function toggle(id: number) {
+    setSel(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
+  }
+
+  async function guardar(e: React.FormEvent) {
+    e.preventDefault()
+    if (sel.length === 0) { toast.error('Selecciona al menos un rol'); return }
+    setGuardando(true)
+    try {
+      await api.put(`/rbac/usuarios/${usuario.id}/roles`, { rol_ids: sel })
+      toast.success('Roles asignados')
+      onSaved()
+      onClose()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Error asignando roles')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <Modal title={`Asignar roles a ${usuario.nombre}`} onClose={onClose} width={480}>
+      <form onSubmit={guardar}>
+        <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>Los permisos del usuario serán la unión de todos sus roles.</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+          {roles.map(r => (
+            <label key={r.id} style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+              border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer',
+              background: sel.includes(r.id) ? '#f0fdf4' : '#fff',
+            }}>
+              <input type="checkbox" checked={sel.includes(r.id)} onChange={() => toggle(r.id)} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{r.nombre}</div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>{r.descripcion || `${r.permisos.length} permisos`}</div>
+              </div>
+              <Badge color="gray">{r.permisos.length}</Badge>
+            </label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+        </div>
+      </form>
+    </Modal>
   )
 }
