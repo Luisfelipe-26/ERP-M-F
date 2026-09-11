@@ -46,6 +46,7 @@ function ModalNuevaOC({ onClose, onDone }) {
   const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
   const [form, setForm] = useState({
     fecha: new Date().toISOString().slice(0, 10),
+    proveedor_id: '',
     proveedor: '',
     campo_id: '',
     unidad_negocio_id: '',
@@ -75,7 +76,7 @@ function ModalNuevaOC({ onClose, onDone }) {
   }, [])
 
   function addLinea() {
-    setLineas([...lineas, { producto_id: '', cantidad: '', precio_unitario: '' }])
+    setLineas([...lineas, { producto_id: '', cantidad: '', precio_unitario: '', descuento_pct: '0', impuesto: 'itbis_18' }])
   }
 
   function updateLinea(i, key, val) {
@@ -83,14 +84,24 @@ function ModalNuevaOC({ onClose, onDone }) {
     updated[i] = { ...updated[i], [key]: val }
     if (key === 'producto_id') {
       const p = productos.find(p => p.id_prod === val)
-      if (p) updated[i].precio_unitario = p.costo_promedio || p.costo_unitario || ''
+      if (p) {
+        updated[i].precio_unitario = p.costo_promedio || p.costo_unitario || ''
+        updated[i].impuesto = p.impuesto_compra || 'itbis_18'
+      }
     }
     setLineas(updated)
   }
 
   function removeLinea(i) { setLineas(lineas.filter((_, idx) => idx !== i)) }
 
-  const total = lineas.reduce((s, l) => s + ((Number(l.cantidad) || 0) * (Number(l.precio_unitario) || 0)), 0)
+  function calcSubtotal(l) {
+    const cant = Number(l.cantidad) || 0
+    const precio = Number(l.precio_unitario) || 0
+    const desc = Number(l.descuento_pct) || 0
+    return cant * precio * (1 - desc / 100)
+  }
+
+  const total = lineas.reduce((s, l) => s + calcSubtotal(l), 0)
 
   async function submit(e) {
     e.preventDefault()
@@ -102,10 +113,18 @@ function ModalNuevaOC({ onClose, onDone }) {
       const { data: result } = await api.post('/ordenes-compra', {
         ...form,
         fecha: form.fecha ? new Date(form.fecha).toISOString() : undefined,
+        proveedor_id: form.proveedor_id ? Number(form.proveedor_id) : null,
+        proveedor: form.proveedor || null,
         unidad_negocio_id: form.unidad_negocio_id ? Number(form.unidad_negocio_id) : null,
         departamento_id: form.departamento_id ? Number(form.departamento_id) : null,
         almacen_id: form.almacen_id ? Number(form.almacen_id) : null,
-        lineas: lineas.map(l => ({ producto_id: l.producto_id, cantidad: Number(l.cantidad), precio_unitario: Number(l.precio_unitario) })),
+        lineas: lineas.map(l => ({
+          producto_id: l.producto_id,
+          cantidad: Number(l.cantidad),
+          precio_unitario: Number(l.precio_unitario),
+          descuento_pct: Number(l.descuento_pct) || 0,
+          impuesto: l.impuesto || 'itbis_18',
+        })),
       })
       toast.success(`Orden de Compra ${result.oc_id || nextId} creada`)
       if (result.alertas_presupuesto?.length) {
@@ -131,10 +150,14 @@ function ModalNuevaOC({ onClose, onDone }) {
           </div>
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Proveedor</label>
-            <input className="input" value={form.proveedor} onChange={e => setForm({ ...form, proveedor: e.target.value })} placeholder="Nombre del proveedor" list="proveedores-list" />
-            <datalist id="proveedores-list">
-              {proveedoresLista.map(p => <option key={p.id} value={p.nombre} />)}
-            </datalist>
+            <select className="select" value={form.proveedor_id} onChange={e => {
+              const pid = e.target.value
+              const prov = proveedoresLista.find(p => String(p.id) === pid)
+              setForm({ ...form, proveedor_id: pid, proveedor: prov?.nombre || '' })
+            }}>
+              <option value="">— Seleccionar proveedor —</option>
+              {proveedoresLista.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
           </div>
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Campo (para servicios)</label>
@@ -171,7 +194,7 @@ function ModalNuevaOC({ onClose, onDone }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {lineas.map((l, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.7fr 0.9fr 0.6fr 0.9fr 1fr auto', gap: 8, alignItems: 'end' }}>
                 <div>
                   {i === 0 && <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Producto</label>}
                   <select className="select" value={l.producto_id} onChange={e => updateLinea(i, 'producto_id', e.target.value)} required>
@@ -188,8 +211,20 @@ function ModalNuevaOC({ onClose, onDone }) {
                   <input className="input" type="number" step="0.01" min="0" value={l.precio_unitario} onChange={e => updateLinea(i, 'precio_unitario', e.target.value)} required />
                 </div>
                 <div>
+                  {i === 0 && <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Desc. %</label>}
+                  <input className="input" type="number" step="0.5" min="0" max="100" value={l.descuento_pct} onChange={e => updateLinea(i, 'descuento_pct', e.target.value)} />
+                </div>
+                <div>
+                  {i === 0 && <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Impuesto</label>}
+                  <select className="select" value={l.impuesto} onChange={e => updateLinea(i, 'impuesto', e.target.value)} style={{ fontSize: 11 }}>
+                    <option value="itbis_18">ITBIS 18%</option>
+                    <option value="itbis_0">ITBIS 0%</option>
+                    <option value="exento">Exento</option>
+                  </select>
+                </div>
+                <div>
                   {i === 0 && <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Subtotal</label>}
-                  <input className="input" value={fmt((Number(l.cantidad) || 0) * (Number(l.precio_unitario) || 0))} disabled style={{ fontWeight: 700, color: '#166534', background: '#f9fafb' }} />
+                  <input className="input" value={fmt(calcSubtotal(l))} disabled style={{ fontWeight: 700, color: '#166534', background: '#f9fafb' }} />
                 </div>
                 <button type="button" className="btn-danger" onClick={() => removeLinea(i)} style={{ marginTop: i === 0 ? 18 : 0 }}><Trash2 size={13} /></button>
               </div>
@@ -389,6 +424,7 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
         ))}
       </div>
 
+      <div style={{ overflowX: 'auto' }}>
       <table className="table" style={{ fontSize: 12, marginBottom: 20 }}>
         <thead>
           <tr>
@@ -397,6 +433,8 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
             <th style={{ textAlign: 'right' }}>Recibida</th>
             <th style={{ textAlign: 'right' }}>Pendiente</th>
             <th style={{ textAlign: 'right' }}>Precio Unit.</th>
+            <th style={{ textAlign: 'right' }}>Desc.%</th>
+            <th>Impuesto</th>
             <th style={{ textAlign: 'right' }}>Subtotal</th>
           </tr>
         </thead>
@@ -410,11 +448,14 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
                 {l.cantidad_pendiente} {l.unidad}
               </td>
               <td style={{ textAlign: 'right' }}>{fmt(l.precio_unitario)}</td>
+              <td style={{ textAlign: 'right', color: (l.descuento_pct || 0) > 0 ? '#dc2626' : '#9ca3af' }}>{l.descuento_pct || 0}%</td>
+              <td style={{ fontSize: 10, color: '#6b7280' }}>{l.impuesto === 'itbis_18' ? 'ITBIS 18%' : l.impuesto === 'exento' ? 'Exento' : l.impuesto || 'ITBIS 18%'}</td>
               <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(l.subtotal)}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
 
       {orden.observaciones && (
         <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
@@ -522,7 +563,7 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
   const [proveedoresLista, setProveedoresLista] = useState([])
   const [campos, setCampos] = useState([])
   const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
-  const [form, setForm] = useState({ fecha: '', proveedor: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', almacen_id: '', observaciones: '' })
+  const [form, setForm] = useState({ fecha: '', proveedor_id: '', proveedor: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', almacen_id: '', observaciones: '' })
   const [lineas, setLineas] = useState([])
   const [saving, setSaving] = useState(false)
 
@@ -539,6 +580,7 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
       const o = oc.data.orden
       setForm({
         fecha: o.fecha ? o.fecha.slice(0, 10) : '',
+        proveedor_id: o.proveedor_id || '',
         proveedor: o.proveedor || '',
         campo_id: o.campo_id || '',
         unidad_negocio_id: o.unidad_negocio_id || '',
@@ -551,6 +593,8 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
         producto_id: l.producto_id,
         cantidad: l.cantidad,
         precio_unitario: l.precio_unitario,
+        descuento_pct: l.descuento_pct || 0,
+        impuesto: l.impuesto || 'itbis_18',
       })))
       setProductos(p.data)
       setProveedoresLista(prov.data)
@@ -559,12 +603,19 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
       .finally(() => setLoading(false))
   }, [ocId])
 
-  function addLinea() { setLineas([...lineas, { producto_id: '', cantidad: 1, precio_unitario: 0 }]) }
+  function addLinea() { setLineas([...lineas, { producto_id: '', cantidad: 1, precio_unitario: 0, descuento_pct: 0, impuesto: 'itbis_18' }]) }
   function removeLinea(i) { setLineas(lineas.filter((_, j) => j !== i)) }
   function updateLinea(i, field, val) {
     const updated = [...lineas]
     updated[i][field] = val
     setLineas(updated)
+  }
+
+  function calcSubtotal(l) {
+    const cant = Number(l.cantidad) || 0
+    const precio = Number(l.precio_unitario) || 0
+    const desc = Number(l.descuento_pct) || 0
+    return cant * precio * (1 - desc / 100)
   }
 
   async function save(e) {
@@ -574,7 +625,8 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
     try {
       await api.put(`/ordenes-compra/${ocId}`, {
         fecha: form.fecha || null,
-        proveedor: form.proveedor,
+        proveedor_id: form.proveedor_id ? Number(form.proveedor_id) : null,
+        proveedor: form.proveedor || null,
         campo_id: form.campo_id || null,
         unidad_negocio_id: form.unidad_negocio_id ? Number(form.unidad_negocio_id) : null,
         departamento_id: form.departamento_id ? Number(form.departamento_id) : null,
@@ -584,6 +636,8 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
           producto_id: l.producto_id,
           cantidad: Number(l.cantidad),
           precio_unitario: Number(l.precio_unitario),
+          descuento_pct: Number(l.descuento_pct) || 0,
+          impuesto: l.impuesto || 'itbis_18',
         })),
       })
       toast.success('Orden actualizada')
@@ -595,7 +649,7 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
 
   if (loading) return <Modal title="Cargando..." onClose={onClose}><p style={{ color: '#9ca3af' }}>Cargando...</p></Modal>
 
-  const total = lineas.reduce((s, l) => s + (Number(l.cantidad) * Number(l.precio_unitario)), 0)
+  const total = lineas.reduce((s, l) => s + calcSubtotal(l), 0)
 
   return (
     <Modal title={`Editar — ${ocId}`} onClose={onClose} width={800}>
@@ -606,8 +660,14 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
         </div>
         <div>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Proveedor</label>
-          <input className="input" value={form.proveedor} onChange={e => setForm({ ...form, proveedor: e.target.value })} list="edit-prov-list" />
-          <datalist id="edit-prov-list">{proveedoresLista.map(p => <option key={p.id} value={p.nombre} />)}</datalist>
+          <select className="select" value={form.proveedor_id} onChange={e => {
+            const pid = e.target.value
+            const prov = proveedoresLista.find(p => String(p.id) === pid)
+            setForm({ ...form, proveedor_id: pid, proveedor: prov?.nombre || '' })
+          }}>
+            <option value="">— Seleccionar proveedor —</option>
+            {proveedoresLista.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
         </div>
         <div>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Campo</label>
@@ -638,12 +698,15 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#166534' }}>Líneas de Compra</h3>
             <button type="button" className="btn-secondary" onClick={addLinea} style={{ fontSize: 11 }}><Plus size={12} /> Agregar Línea</button>
           </div>
+          <div style={{ overflowX: 'auto' }}>
           <table className="table" style={{ fontSize: 12 }}>
             <thead>
               <tr>
                 <th>Producto</th>
-                <th style={{ width: 100 }}>Cantidad</th>
-                <th style={{ width: 120 }}>Precio Unit.</th>
+                <th style={{ width: 80 }}>Cantidad</th>
+                <th style={{ width: 100 }}>Precio Unit.</th>
+                <th style={{ width: 70 }}>Desc.%</th>
+                <th style={{ width: 100 }}>Impuesto</th>
                 <th style={{ width: 100, textAlign: 'right' }}>Subtotal</th>
                 <th style={{ width: 40 }}></th>
               </tr>
@@ -659,12 +722,21 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
                   </td>
                   <td><input className="input" type="number" step="0.01" min="0.01" value={l.cantidad} onChange={e => updateLinea(i, 'cantidad', e.target.value)} required /></td>
                   <td><input className="input" type="number" step="0.01" min="0" value={l.precio_unitario} onChange={e => updateLinea(i, 'precio_unitario', e.target.value)} required /></td>
-                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(Number(l.cantidad) * Number(l.precio_unitario))}</td>
+                  <td><input className="input" type="number" step="0.5" min="0" max="100" value={l.descuento_pct} onChange={e => updateLinea(i, 'descuento_pct', e.target.value)} /></td>
+                  <td>
+                    <select className="select" value={l.impuesto} onChange={e => updateLinea(i, 'impuesto', e.target.value)} style={{ fontSize: 11 }}>
+                      <option value="itbis_18">ITBIS 18%</option>
+                      <option value="itbis_0">ITBIS 0%</option>
+                      <option value="exento">Exento</option>
+                    </select>
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(calcSubtotal(l))}</td>
                   <td><button type="button" onClick={() => removeLinea(i)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={13} /></button></td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
           <div style={{ textAlign: 'right', fontWeight: 800, fontSize: 16, color: '#166534', marginTop: 8 }}>Total: {fmt(total)}</div>
         </div>
 
