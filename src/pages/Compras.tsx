@@ -3,8 +3,12 @@ import api from '../api'
 import toast from 'react-hot-toast'
 import {
   Plus, Search, RefreshCw, ShoppingCart, X, Trash2, Eye, ChevronRight, Download, Edit2,
-  Copy, FileText, CreditCard, CheckCircle, Calendar, AlertTriangle, DollarSign
+  Copy, FileText, CreditCard, CheckCircle, Calendar, AlertTriangle, DollarSign, BarChart3, ReceiptText
 } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell,
+} from 'recharts'
 
 const fmt = n => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-DO') : '—'
@@ -280,6 +284,10 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
   const [saving, setSaving] = useState(false)
   const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
   const [genDimsAsig, setGenDimsAsig] = useState<any[]>([])
+  const [showDevolucion, setShowDevolucion] = useState(false)
+  const [devolucion, setDevolucion] = useState([])
+  const [motivoDev, setMotivoDev] = useState('')
+  const [savingDev, setSavingDev] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -373,6 +381,47 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
     setRecepcion(updated)
   }
 
+  function iniciarDevolucion() {
+    setDevolucion(data.lineas.filter(l => (l.cantidad_recibida || 0) > 0).map(l => ({
+      linea_id: l.id,
+      producto_nombre: l.producto_nombre,
+      producto_id: l.producto_id,
+      recibida: l.cantidad_recibida,
+      unidad: l.unidad,
+      precio_unitario: l.precio_unitario,
+      cantidad_devuelta: 0,
+    })))
+    setMotivoDev('Devolución a proveedor')
+    setShowDevolucion(true)
+  }
+
+  async function submitDevolucion(e) {
+    e.preventDefault()
+    const lineas = devolucion.filter(d => Number(d.cantidad_devuelta) > 0).map(d => ({
+      linea_id: d.linea_id,
+      cantidad_devuelta: Number(d.cantidad_devuelta),
+    }))
+    if (lineas.length === 0) return toast.error('Indique al menos una cantidad a devolver')
+    setSavingDev(true)
+    try {
+      const { data: result } = await api.post(`/ordenes-compra/${ocId}/devolucion`, {
+        motivo: motivoDev || 'Devolución a proveedor',
+        lineas,
+      })
+      toast.success(`Devolución procesada — ${result.lineas_devueltas.length} líneas, ${fmt(result.total_devuelto)}` +
+        (result.nc_numero ? ` · NC ${result.nc_numero}` : '') +
+        (result.cxp_ajustada ? ` · CxP ${result.cxp_ajustada} ajustada` : ''))
+      onDone()
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error al procesar devolución') }
+    finally { setSavingDev(false) }
+  }
+
+  function updateDevQty(i, val) {
+    const updated = [...devolucion]
+    updated[i].cantidad_devuelta = val
+    setDevolucion(updated)
+  }
+
   if (loading) return <Modal title="Cargando..." onClose={onClose}><p style={{ color: '#9ca3af' }}>Cargando detalle...</p></Modal>
   if (!data) return null
 
@@ -428,6 +477,61 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
             <button type="button" className="btn-secondary" onClick={() => setShowRecepcion(false)}>Cancelar</button>
             <button type="submit" className="btn-primary" disabled={saving} style={{ background: '#166534' }}>
               {saving ? 'Registrando...' : '✓ Registrar Recepción'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+    )
+  }
+
+  if (showDevolucion) {
+    const totalDev = devolucion.reduce((s, d) => s + (Number(d.cantidad_devuelta) || 0) * d.precio_unitario, 0)
+    return (
+      <Modal title={`Devolución — ${orden.oc_id}`} subtitle={`${orden.proveedor || ''}`} onClose={() => setShowDevolucion(false)} width={800}>
+        <form onSubmit={submitDevolucion}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Motivo de Devolución</label>
+              <input className="input" value={motivoDev} onChange={e => setMotivoDev(e.target.value)} placeholder="Ej: Producto dañado, error en pedido..." />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'end' }}>
+              <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: '#991b1b' }}>
+                Total a devolver: {fmt(totalDev)}
+              </div>
+            </div>
+          </div>
+
+          <table className="table" style={{ fontSize: 12, marginBottom: 16 }}>
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th style={{ textAlign: 'right' }}>Recibida</th>
+                <th style={{ textAlign: 'right' }}>Precio Unit.</th>
+                <th style={{ textAlign: 'right', width: 120 }}>Devolver</th>
+                <th style={{ textAlign: 'right' }}>Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {devolucion.map((d, i) => (
+                <tr key={d.linea_id}>
+                  <td style={{ fontWeight: 600 }}>{d.producto_nombre} <span style={{ color: '#9ca3af', fontSize: 10 }}>({d.producto_id})</span></td>
+                  <td style={{ textAlign: 'right' }}>{d.recibida} {d.unidad}</td>
+                  <td style={{ textAlign: 'right' }}>{fmt(d.precio_unitario)}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <input className="input" type="number" step="0.01" min="0" max={d.recibida}
+                      value={d.cantidad_devuelta} onChange={e => updateDevQty(i, e.target.value)}
+                      style={{ width: 100, textAlign: 'right', fontWeight: 700, color: '#991b1b' }} />
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#991b1b' }}>{fmt((Number(d.cantidad_devuelta) || 0) * d.precio_unitario)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="btn-secondary" onClick={() => setShowDevolucion(false)}>Cancelar</button>
+            <button type="submit" className="btn-primary" disabled={savingDev} style={{ background: '#991b1b' }}>
+              {savingDev ? 'Procesando...' : 'Confirmar Devolución'}
             </button>
           </div>
         </form>
@@ -584,6 +688,11 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
         {['Aprobada', 'Parcial'].includes(orden.estado) && (
           <button className="btn-primary" onClick={iniciarRecepcion} style={{ background: '#166534' }}>
             Registrar Recepción
+          </button>
+        )}
+        {['Parcial', 'Recibida', 'Cerrada'].includes(orden.estado) && lineas.some(l => (l.cantidad_recibida || 0) > 0) && (
+          <button className="btn-secondary" onClick={iniciarDevolucion} style={{ color: '#991b1b' }}>
+            Devolver Productos
           </button>
         )}
         {['Aprobada', 'Parcial', 'Recibida'].includes(orden.estado) && (
@@ -813,9 +922,10 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
 }
 
 // ─── Modal Detalle CxP ────────────────────────────────────────────────────────
-function ModalDetalleCxP({ cxp, onClose, onPagar, onDone }) {
+function ModalDetalleCxP({ cxp, onClose, onPagar, onCrearNC, onDone }) {
   const [detail, setDetail] = useState<any>(null)
   const [pagos, setPagos] = useState<any[]>([])
+  const [ncs, setNcs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [validando, setValidando] = useState(false)
 
@@ -823,9 +933,11 @@ function ModalDetalleCxP({ cxp, onClose, onPagar, onDone }) {
     Promise.all([
       api.get(`/contabilidad/cxp/${cxp.id}`),
       api.get('/contabilidad/pagos', { params: { cxp_id: cxp.id } }),
-    ]).then(([d, p]) => {
+      api.get('/contabilidad/notas-credito', { params: { cxp_id: cxp.id } }),
+    ]).then(([d, p, nc]) => {
       setDetail(d.data)
       setPagos(p.data)
+      setNcs(nc.data?.items || [])
     }).catch(() => toast.error('Error al cargar detalle'))
       .finally(() => setLoading(false))
   }, [cxp.id])
@@ -938,6 +1050,27 @@ function ModalDetalleCxP({ cxp, onClose, onPagar, onDone }) {
         )}
       </div>
 
+      {ncs.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <h4 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 8px' }}>Notas de Crédito Aplicadas</h4>
+          <table className="table" style={{ fontSize: 12 }}>
+            <thead><tr><th>Número</th><th>Fecha</th><th>Motivo</th><th style={{ textAlign: 'right' }}>Subtotal</th><th style={{ textAlign: 'right' }}>ITBIS</th><th style={{ textAlign: 'right' }}>Total</th></tr></thead>
+            <tbody>
+              {ncs.map((nc: any) => (
+                <tr key={nc.id}>
+                  <td style={{ fontWeight: 600, color: '#6A4C93' }}>{nc.numero}</td>
+                  <td>{fmtDate(nc.fecha)}</td>
+                  <td style={{ fontSize: 11, color: '#6b7280' }}>{nc.motivo || '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{fmt(nc.subtotal)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmt(nc.itbis)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#6A4C93' }}>{fmt(nc.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {d.notas && (
         <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
           <strong>Notas:</strong> {d.notas}
@@ -948,6 +1081,11 @@ function ModalDetalleCxP({ cxp, onClose, onPagar, onDone }) {
         {d.oc_id && ['pendiente', 'parcial'].includes(d.estado) && (
           <button className="btn-secondary" onClick={validar} disabled={validando} style={{ color: '#1e40af' }}>
             <CheckCircle size={13} /> {validando ? 'Validando...' : 'Validar (3-way match)'}
+          </button>
+        )}
+        {['pendiente', 'parcial'].includes(d.estado) && (
+          <button className="btn-secondary" onClick={() => onCrearNC(d)} style={{ color: '#6A4C93' }}>
+            <ReceiptText size={13} /> Nota de Crédito
           </button>
         )}
         {['pendiente', 'parcial'].includes(d.estado) && (
@@ -1179,6 +1317,300 @@ function ModalNuevaCxP({ onClose, onDone }) {
 
 function round2(n: number) { return Math.round(n * 100) / 100 }
 
+// ─── Modal Nota de Crédito ────────────────────────────────────────────────
+function ModalNotaCredito({ cxp, onClose, onDone }) {
+  const [form, setForm] = useState({
+    fecha: new Date().toISOString().slice(0, 10),
+    motivo: '',
+    subtotal: '',
+    itbis: '',
+    ncf: '',
+  })
+  const [saving, setSaving] = useState(false)
+
+  const subtotal = Number(form.subtotal) || 0
+  const itbis = Number(form.itbis) || 0
+  const total = round2(subtotal + itbis)
+
+  async function submit(e) {
+    e.preventDefault()
+    if (subtotal <= 0) return toast.error('Subtotal debe ser mayor a 0')
+    if (total > Number(cxp.saldo_pendiente || 0)) return toast.error('El monto excede el saldo pendiente')
+    setSaving(true)
+    try {
+      const { data } = await api.post('/contabilidad/notas-credito', {
+        proveedor_id: cxp.proveedor_id,
+        cxp_id: cxp.id,
+        tipo: 'proveedor',
+        fecha: form.fecha,
+        motivo: form.motivo || null,
+        subtotal,
+        itbis,
+        ncf: form.ncf || null,
+      })
+      if (data.ok) {
+        toast.success(`Nota de Crédito ${data.numero} creada` + (data.cxp_ajustada ? ` — CxP ${data.cxp_ajustada} ajustada` : ''))
+        onDone()
+      }
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error al crear NC') }
+    finally { setSaving(false) }
+  }
+
+  const field = (label, name, type = 'text', extra = {}) => (
+    <div style={{ marginBottom: 12, ...extra }}>
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4 }}>{label}</label>
+      <input type={type} value={form[name]} onChange={e => setForm({ ...form, [name]: e.target.value })}
+        style={{ width: '100%', padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }} />
+    </div>
+  )
+
+  return (
+    <Modal title="Nueva Nota de Crédito" subtitle={`${cxp.proveedor_nombre || ''} · Saldo: ${fmt(cxp.saldo_pendiente)}`} onClose={onClose} width={500}>
+      <form onSubmit={submit}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {field('Fecha', 'fecha', 'date')}
+          {field('NCF (opcional)', 'ncf')}
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Motivo</label>
+          <textarea value={form.motivo} onChange={e => setForm({ ...form, motivo: e.target.value })} rows={2}
+            style={{ width: '100%', padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, resize: 'vertical' }}
+            placeholder="Devolución, ajuste de precio, descuento..." />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+          {field('Subtotal', 'subtotal', 'number')}
+          {field('ITBIS', 'itbis', 'number')}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Total</label>
+            <div style={{ padding: '7px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: 15, fontWeight: 800, color: '#6A4C93' }}>{fmt(total)}</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn-primary" disabled={saving} style={{ background: '#6A4C93' }}>
+            <ReceiptText size={13} /> {saving ? 'Guardando...' : 'Crear Nota de Crédito'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+// ─── Tab Reportes ────────────────────────────────────────────────────────
+const REPORT_COLORS = ['#2D6A4F', '#219EBC', '#F4A261', '#E76F51', '#6A4C93', '#1982C4', '#8AC926', '#FF595E']
+
+function TabReportesCompras() {
+  const currentYear = new Date().getFullYear()
+  const [anio, setAnio] = useState(currentYear)
+  const [campoId, setCampoId] = useState('')
+  const [unidadId, setUnidadId] = useState('')
+  const [deptoId, setDeptoId] = useState('')
+  const [dimType, setDimType] = useState('campo')
+  const [campos, setCampos] = useState<any[]>([])
+  const [unidades, setUnidades] = useState<any[]>([])
+  const [deptos, setDeptos] = useState<any[]>([])
+  const [dataPeriodo, setDataPeriodo] = useState<any[]>([])
+  const [dataProveedores, setDataProveedores] = useState<any[]>([])
+  const [dataDimension, setDataDimension] = useState<any[]>([])
+  const [dataProductos, setDataProductos] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/campos'),
+      api.get('/contabilidad/unidades-negocio'),
+      api.get('/contabilidad/departamentos'),
+    ]).then(([c, u, d]) => {
+      setCampos(c.data)
+      setUnidades(u.data)
+      setDeptos(d.data)
+    }).catch(() => {})
+  }, [])
+
+  const loadReportes = useCallback(async () => {
+    setLoading(true)
+    const dimParams: Record<string, string> = {}
+    if (campoId) dimParams.campo_id = campoId
+    if (unidadId) dimParams.unidad_negocio_id = unidadId
+    if (deptoId) dimParams.departamento_id = deptoId
+    try {
+      const [periodo, proveedores, dimension, productos] = await Promise.all([
+        api.get('/ordenes-compra/reportes/compras-periodo', { params: { anio, ...dimParams } }),
+        api.get('/ordenes-compra/reportes/top-proveedores', { params: { anio, ...dimParams } }),
+        api.get('/ordenes-compra/reportes/compras-dimension', { params: { dimension: dimType, anio } }),
+        api.get('/ordenes-compra/reportes/productos-frecuentes', { params: { anio } }),
+      ])
+      setDataPeriodo(periodo.data.datos || [])
+      setDataProveedores(proveedores.data)
+      setDataDimension(dimension.data)
+      setDataProductos(productos.data)
+    } catch { toast.error('Error al cargar reportes') }
+    finally { setLoading(false) }
+  }, [anio, campoId, unidadId, deptoId, dimType])
+
+  useEffect(() => { loadReportes() }, [loadReportes])
+
+  const totalAnual = dataPeriodo.reduce((s, d) => s + d.total_estimado, 0)
+  const totalRecibido = dataPeriodo.reduce((s, d) => s + d.total_recibido, 0)
+  const totalOcs = dataPeriodo.reduce((s, d) => s + d.num_ocs, 0)
+
+  return (
+    <div>
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'end' }}>
+        <div>
+          <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Año</label>
+          <select className="select" style={{ width: 100 }} value={anio} onChange={e => setAnio(Number(e.target.value))}>
+            {[currentYear, currentYear - 1, currentYear - 2].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Campo</label>
+          <select className="select" style={{ width: 140 }} value={campoId} onChange={e => setCampoId(e.target.value)}>
+            <option value="">Todos</option>
+            {campos.map(c => <option key={c.id_campo} value={c.id_campo}>{c.nombre_campo || c.id_campo}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Unidad Negocio</label>
+          <select className="select" style={{ width: 150 }} value={unidadId} onChange={e => setUnidadId(e.target.value)}>
+            <option value="">Todas</option>
+            {unidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Departamento</label>
+          <select className="select" style={{ width: 150 }} value={deptoId} onChange={e => setDeptoId(e.target.value)}>
+            <option value="">Todos</option>
+            {deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+          </select>
+        </div>
+        <button className="btn-secondary" onClick={loadReportes} style={{ height: 34 }}><RefreshCw size={14} /></button>
+      </div>
+
+      {/* Summary cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+        <div className="card" style={{ borderLeft: '4px solid #2D6A4F', padding: '10px 14px' }}>
+          <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Total Compras {anio}</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#2D6A4F' }}>{fmt(totalAnual)}</div>
+        </div>
+        <div className="card" style={{ borderLeft: '4px solid #219EBC', padding: '10px 14px' }}>
+          <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Total Recibido</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#219EBC' }}>{fmt(totalRecibido)}</div>
+        </div>
+        <div className="card" style={{ borderLeft: '4px solid #F4A261', padding: '10px 14px' }}>
+          <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Total OCs</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#E76F51' }}>{totalOcs}</div>
+        </div>
+      </div>
+
+      {loading ? (
+        <p style={{ color: '#9ca3af', textAlign: 'center', padding: 40 }}>Cargando reportes...</p>
+      ) : (
+        <>
+          {/* Monthly Chart */}
+          <div className="card" style={{ padding: 16, marginBottom: 20 }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>Compras Mensuales — {anio}</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={dataPeriodo}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="nombre_mes" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" height={50} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(v: number) => fmt(v)} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="total_estimado" name="Estimado" fill="#2D6A4F" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="total_recibido" name="Recibido" fill="#219EBC" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Two-column: Proveedores + Dimension */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            {/* Top Proveedores */}
+            <div className="card" style={{ padding: 16 }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700 }}>Top Proveedores</h3>
+              {dataProveedores.length === 0 ? (
+                <p style={{ color: '#9ca3af', fontSize: 13 }}>Sin datos</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={Math.max(200, dataProveedores.length * 36)}>
+                  <BarChart data={dataProveedores} layout="vertical" margin={{ left: 10, right: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis dataKey="proveedor" type="category" tick={{ fontSize: 10 }} width={110} />
+                    <Tooltip formatter={(v: number) => fmt(v)} />
+                    <Bar dataKey="total" name="Total" fill="#2D6A4F" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Dimension PieChart */}
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Distribución por</h3>
+                <select className="select" style={{ width: 150, fontSize: 12 }} value={dimType} onChange={e => setDimType(e.target.value)}>
+                  <option value="campo">Campo</option>
+                  <option value="unidad_negocio">Unidad Negocio</option>
+                  <option value="departamento">Departamento</option>
+                </select>
+              </div>
+              {dataDimension.length === 0 ? (
+                <p style={{ color: '#9ca3af', fontSize: 13 }}>Sin datos</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie data={dataDimension} dataKey="total" nameKey="nombre" cx="50%" cy="50%"
+                      outerRadius={90} label={({ nombre, porcentaje }) => `${nombre} (${porcentaje}%)`}
+                      labelLine={{ strokeWidth: 1 }} style={{ fontSize: 11 }}>
+                      {dataDimension.map((_, i) => <Cell key={i} fill={REPORT_COLORS[i % REPORT_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => fmt(v)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          {/* Productos frecuentes table */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px 0' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700 }}>Productos Más Comprados</h3>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Producto</th>
+                    <th>Unidad</th>
+                    <th style={{ textAlign: 'right' }}>Cantidad Total</th>
+                    <th style={{ textAlign: 'right' }}>Monto Total</th>
+                    <th style={{ textAlign: 'right' }}>N° OCs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dataProductos.length === 0 ? (
+                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Sin datos</td></tr>
+                  ) : dataProductos.map((p, i) => (
+                    <tr key={p.producto_id}>
+                      <td style={{ color: '#9ca3af', fontWeight: 700 }}>{i + 1}</td>
+                      <td style={{ fontWeight: 600 }}>{p.producto_nombre}</td>
+                      <td style={{ color: '#6b7280' }}>{p.unidad}</td>
+                      <td style={{ textAlign: 'right' }}>{p.total_cantidad.toLocaleString('es-DO', { maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#2D6A4F' }}>{fmt(p.total_monto)}</td>
+                      <td style={{ textAlign: 'right' }}>{p.num_ocs}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Página Principal ────────────────────────────────────────────────────────
 const TabBtn = ({ id, label, icon: Icon, active, onClick }) => (
   <button onClick={() => onClick(id)} style={{
@@ -1212,6 +1644,7 @@ export default function Compras() {
   const [cxpDetalle, setCxpDetalle] = useState<any>(null)
   const [modalPago, setModalPago] = useState<any>(null)
   const [modalNuevaCxp, setModalNuevaCxp] = useState(false)
+  const [modalNC, setModalNC] = useState<any>(null)
 
   useEffect(() => {
     Promise.all([
@@ -1278,6 +1711,7 @@ export default function Compras() {
     setCxpDetalle(null)
     setModalPago(null)
     setModalNuevaCxp(false)
+    setModalNC(null)
     loadCxp()
     api.get('/ordenes-compra/resumen-cxp').then(r => setResumenCxp(r.data)).catch(() => {})
   }
@@ -1322,6 +1756,7 @@ export default function Compras() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1px solid #e5e7eb', paddingBottom: 8 }}>
         <TabBtn id="ocs" label="Órdenes de Compra" icon={ShoppingCart} active={tab === 'ocs'} onClick={setTab} />
         <TabBtn id="cxp" label="Facturas y Pagos" icon={FileText} active={tab === 'cxp'} onClick={setTab} />
+        <TabBtn id="reportes" label="Reportes" icon={BarChart3} active={tab === 'reportes'} onClick={setTab} />
       </div>
 
       {tab === 'ocs' && <>
@@ -1567,10 +2002,13 @@ export default function Compras() {
         </div>
 
         {/* CxP Detail Modal */}
-        {cxpDetalle && <ModalDetalleCxP cxp={cxpDetalle} onClose={() => setCxpDetalle(null)} onPagar={c => { setCxpDetalle(null); setModalPago(c) }} onDone={afterCxpAction} />}
+        {cxpDetalle && <ModalDetalleCxP cxp={cxpDetalle} onClose={() => setCxpDetalle(null)} onPagar={c => { setCxpDetalle(null); setModalPago(c) }} onCrearNC={c => { setCxpDetalle(null); setModalNC(c) }} onDone={afterCxpAction} />}
         {modalPago && <ModalPago cxp={modalPago} onClose={() => setModalPago(null)} onDone={afterCxpAction} />}
+        {modalNC && <ModalNotaCredito cxp={modalNC} onClose={() => setModalNC(null)} onDone={afterCxpAction} />}
         {modalNuevaCxp && <ModalNuevaCxP onClose={() => setModalNuevaCxp(false)} onDone={afterCxpAction} />}
       </>}
+
+      {tab === 'reportes' && <TabReportesCompras />}
 
       {modalNueva && <ModalNuevaOC onClose={() => setModalNueva(false)} onDone={afterAction} />}
       {modalDetalle && <ModalDetalleOC ocId={modalDetalle} onClose={() => setModalDetalle(null)} onDone={afterAction} />}
