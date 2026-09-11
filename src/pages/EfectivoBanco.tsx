@@ -3,7 +3,7 @@ import api from '../api'
 import toast from 'react-hot-toast'
 import {
   Plus, Search, RefreshCw, Landmark, X, Edit2, Trash2, ArrowUpRight, ArrowDownLeft,
-  CreditCard, DollarSign, Eye, Building2
+  CreditCard, DollarSign, Eye, Building2, CheckCircle, AlertTriangle, FileText, Package
 } from 'lucide-react'
 
 const fmt = (n: number) => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
@@ -132,48 +132,108 @@ function ModalCuentaBancaria({ cuenta, onClose, onDone }) {
   )
 }
 
+// ─── ITBIS Rates ──────────────────────────────────────────────────────────
+const ITBIS_RATES: Record<string, number> = { itbis_18: 0.18, itbis_0: 0, exento: 0 }
+const IMPUESTO_OPTS = [
+  { value: 'itbis_18', label: 'ITBIS 18%' },
+  { value: 'itbis_0',  label: 'ITBIS 0%' },
+  { value: 'exento',   label: 'Exento' },
+]
+
 // ─── Modal Nueva CxP ───────────────────────────────────────────────────────
 function ModalNuevaCxP({ onClose, onDone }) {
-  const [proveedores, setProveedores] = useState([])
+  const [proveedores, setProveedores] = useState<any[]>([])
+  const [productos, setProductos] = useState<any[]>([])
   const [form, setForm] = useState({
     proveedor_id: '', tipo_ncf: 'E41', ncf: '', num_factura_proveedor: '',
     fecha_factura: new Date().toISOString().slice(0, 10), fecha_vencimiento: '',
-    subtotal: '', itbis: '', retencion_isr: '', notas: '',
+    notas: '',
   })
+  const [lineas, setLineas] = useState<any[]>([])
+  const [usarLineas, setUsarLineas] = useState(false)
+  const [manualTotals, setManualTotals] = useState({ subtotal: '', itbis: '', retencion_isr: '', retencion_itbis: '' })
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { api.get('/proveedores').then(r => setProveedores(r.data)).catch(() => toast.error('Error al cargar proveedores')) }, [])
+  useEffect(() => {
+    Promise.all([
+      api.get('/proveedores'),
+      api.get('/inventario/articulos'),
+    ]).then(([p, a]) => { setProveedores(p.data); setProductos(a.data) })
+      .catch(() => toast.error('Error al cargar datos'))
+  }, [])
 
-  const set = (k, v) => setForm({ ...form, [k]: v })
-  const subtotal = Number(form.subtotal) || 0
-  const itbis = Number(form.itbis) || 0
-  const retencion = Number(form.retencion_isr) || 0
-  const total = subtotal + itbis - retencion
+  const set = (k: string, v: any) => setForm({ ...form, [k]: v })
 
-  async function submit(e) {
+  const addLinea = () => setLineas([...lineas, { producto_id: '', cantidad: 1, precio_unitario: 0, descuento_pct: 0, impuesto: 'itbis_18', cuenta_contable_id: '' }])
+  const removeLinea = (i: number) => setLineas(lineas.filter((_, idx) => idx !== i))
+  const setLinea = (i: number, k: string, v: any) => {
+    const copy = [...lineas]
+    copy[i] = { ...copy[i], [k]: v }
+    setLineas(copy)
+  }
+
+  const calcLineaSub = (l: any) => {
+    const cant = Number(l.cantidad) || 0
+    const precio = Number(l.precio_unitario) || 0
+    const desc = Number(l.descuento_pct) || 0
+    return cant * precio * (1 - desc / 100)
+  }
+
+  const prov = proveedores.find(p => String(p.id) === form.proveedor_id)
+  const lineasSubtotal = lineas.reduce((s, l) => s + calcLineaSub(l), 0)
+  const lineasItbis = lineas.reduce((s, l) => s + calcLineaSub(l) * (ITBIS_RATES[l.impuesto] ?? 0.18), 0)
+  const retIsrPct = prov?.retencion_isr_pct || 0
+  const retItbisPct = prov?.retencion_itbis_pct || 0
+  const lineasRetIsr = lineasSubtotal * retIsrPct / 100
+  const lineasRetItbis = lineasItbis * retItbisPct / 100
+
+  const subtotal = usarLineas ? lineasSubtotal : (Number(manualTotals.subtotal) || 0)
+  const itbis = usarLineas ? lineasItbis : (Number(manualTotals.itbis) || 0)
+  const retIsr = usarLineas ? lineasRetIsr : (Number(manualTotals.retencion_isr) || 0)
+  const retItbis = usarLineas ? lineasRetItbis : (Number(manualTotals.retencion_itbis) || 0)
+  const total = subtotal + itbis - retIsr - retItbis
+
+  async function submit(e: any) {
     e.preventDefault()
     if (!form.proveedor_id) return toast.error('Seleccione un proveedor')
-    if (subtotal <= 0) return toast.error('El subtotal debe ser mayor a 0')
+    if (usarLineas && lineas.length === 0) return toast.error('Agregue al menos una línea')
+    if (!usarLineas && subtotal <= 0) return toast.error('El subtotal debe ser mayor a 0')
     setSaving(true)
     try {
-      await api.post('/contabilidad/cxp', {
+      const payload: any = {
         proveedor_id: Number(form.proveedor_id),
         tipo_ncf: form.tipo_ncf || null,
         ncf: form.ncf || null,
         num_factura_proveedor: form.num_factura_proveedor || null,
         fecha_factura: form.fecha_factura,
         fecha_vencimiento: form.fecha_vencimiento || null,
-        subtotal, itbis, retencion_isr: retencion, total,
         notas: form.notas || null,
-      })
+      }
+      if (usarLineas) {
+        payload.lineas = lineas.map(l => ({
+          producto_id: l.producto_id || null,
+          cantidad: Number(l.cantidad),
+          precio_unitario: Number(l.precio_unitario),
+          descuento_pct: Number(l.descuento_pct) || 0,
+          impuesto: l.impuesto,
+          cuenta_contable_id: l.cuenta_contable_id ? Number(l.cuenta_contable_id) : null,
+        }))
+      } else {
+        payload.subtotal = subtotal
+        payload.itbis = itbis
+        payload.retencion_isr = retIsr
+        payload.retencion_itbis = retItbis
+        payload.total = total
+      }
+      await api.post('/contabilidad/cxp', payload)
       toast.success('Cuenta por Pagar registrada')
       onDone()
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
     finally { setSaving(false) }
   }
 
   return (
-    <Modal title="Nueva Cuenta por Pagar" subtitle="Registrar factura de proveedor" onClose={onClose} width={700}>
+    <Modal title="Nueva Cuenta por Pagar" subtitle="Registrar factura de proveedor" onClose={onClose} width={850}>
       <form onSubmit={submit}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
           <div style={{ gridColumn: '1/-1' }}>
@@ -182,6 +242,11 @@ function ModalNuevaCxP({ onClose, onDone }) {
               <option value="">Seleccionar proveedor...</option>
               {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre} {p.rnc ? `(${p.rnc})` : ''}</option>)}
             </select>
+            {prov && (retIsrPct > 0 || retItbisPct > 0) && (
+              <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4 }}>
+                Retenciones: ISR {retIsrPct}% | ITBIS {retItbisPct}%
+              </div>
+            )}
           </div>
           <div>
             <Label>Fecha Factura *</Label>
@@ -208,35 +273,276 @@ function ModalNuevaCxP({ onClose, onDone }) {
             <Label>N° Factura Proveedor</Label>
             <input className="input" value={form.num_factura_proveedor} onChange={e => set('num_factura_proveedor', e.target.value)} />
           </div>
-          <div>
-            <Label>Subtotal *</Label>
-            <input className="input" type="number" step="0.01" min="0" value={form.subtotal} onChange={e => set('subtotal', e.target.value)} required />
+        </div>
+
+        {/* Toggle líneas vs manual */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input type="checkbox" checked={usarLineas} onChange={e => setUsarLineas(e.target.checked)} />
+            Ingresar líneas de detalle
+          </label>
+          {usarLineas && (
+            <span style={{ fontSize: 10, color: '#6b7280' }}>Los totales se calculan automáticamente desde las líneas</span>
+          )}
+        </div>
+
+        {usarLineas ? (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: 140 }}>Producto</th>
+                    <th style={{ width: 70 }}>Cant.</th>
+                    <th style={{ width: 90 }}>Precio</th>
+                    <th style={{ width: 60 }}>Desc.%</th>
+                    <th style={{ width: 110 }}>Impuesto</th>
+                    <th style={{ width: 90, textAlign: 'right' }}>Subtotal</th>
+                    <th style={{ width: 30 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineas.map((l, i) => (
+                    <tr key={i}>
+                      <td>
+                        <select className="select" style={{ fontSize: 11 }} value={l.producto_id} onChange={e => setLinea(i, 'producto_id', e.target.value)}>
+                          <option value="">— Seleccionar —</option>
+                          {productos.map(p => <option key={p.id_prod} value={p.id_prod}>{p.id_prod} — {p.nombre}</option>)}
+                        </select>
+                      </td>
+                      <td><input className="input" type="number" step="0.01" min="0" value={l.cantidad} onChange={e => setLinea(i, 'cantidad', e.target.value)} style={{ fontSize: 11 }} /></td>
+                      <td><input className="input" type="number" step="0.01" min="0" value={l.precio_unitario} onChange={e => setLinea(i, 'precio_unitario', e.target.value)} style={{ fontSize: 11 }} /></td>
+                      <td><input className="input" type="number" step="0.01" min="0" max="100" value={l.descuento_pct} onChange={e => setLinea(i, 'descuento_pct', e.target.value)} style={{ fontSize: 11 }} /></td>
+                      <td>
+                        <select className="select" style={{ fontSize: 11 }} value={l.impuesto} onChange={e => setLinea(i, 'impuesto', e.target.value)}>
+                          {IMPUESTO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(calcLineaSub(l))}</td>
+                      <td><button type="button" onClick={() => removeLinea(i)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={13} /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" className="btn-secondary" style={{ marginTop: 8, fontSize: 11 }} onClick={addLinea}>
+              <Plus size={12} /> Agregar Línea
+            </button>
           </div>
-          <div>
-            <Label>ITBIS (18%)</Label>
-            <input className="input" type="number" step="0.01" min="0" value={form.itbis} onChange={e => set('itbis', e.target.value)} />
-            <button type="button" style={{ fontSize: 10, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', marginTop: 2 }}
-              onClick={() => set('itbis', (subtotal * 0.18).toFixed(2))}>Calcular 18%</button>
-          </div>
-          <div>
-            <Label>Retención ISR</Label>
-            <input className="input" type="number" step="0.01" min="0" value={form.retencion_isr} onChange={e => set('retencion_isr', e.target.value)} />
-          </div>
-          <div style={{ gridColumn: '1/-1', display: 'flex', justifyContent: 'flex-end' }}>
-            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 20px', fontSize: 18, fontWeight: 800, color: '#166534' }}>
-              Total: {fmt(total)}
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
+            <div>
+              <Label>Subtotal *</Label>
+              <input className="input" type="number" step="0.01" min="0" value={manualTotals.subtotal} onChange={e => setManualTotals({ ...manualTotals, subtotal: e.target.value })} required={!usarLineas} />
+            </div>
+            <div>
+              <Label>ITBIS</Label>
+              <input className="input" type="number" step="0.01" min="0" value={manualTotals.itbis} onChange={e => setManualTotals({ ...manualTotals, itbis: e.target.value })} />
+              <button type="button" style={{ fontSize: 10, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', marginTop: 2 }}
+                onClick={() => setManualTotals({ ...manualTotals, itbis: ((Number(manualTotals.subtotal) || 0) * 0.18).toFixed(2) })}>Calcular 18%</button>
+            </div>
+            <div>
+              <Label>Ret. ISR</Label>
+              <input className="input" type="number" step="0.01" min="0" value={manualTotals.retencion_isr} onChange={e => setManualTotals({ ...manualTotals, retencion_isr: e.target.value })} />
+            </div>
+            <div>
+              <Label>Ret. ITBIS</Label>
+              <input className="input" type="number" step="0.01" min="0" value={manualTotals.retencion_itbis} onChange={e => setManualTotals({ ...manualTotals, retencion_itbis: e.target.value })} />
             </div>
           </div>
-          <div style={{ gridColumn: '1/-1' }}>
-            <Label>Notas</Label>
-            <input className="input" value={form.notas} onChange={e => set('notas', e.target.value)} />
+        )}
+
+        {/* Totales */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16, background: '#f9fafb', borderRadius: 8, padding: 12 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>SUBTOTAL</div>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>{fmt(subtotal)}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>ITBIS</div>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>{fmt(itbis)}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 10, color: '#dc2626', fontWeight: 700 }}>RET. ISR</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#dc2626' }}>-{fmt(retIsr)}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 10, color: '#dc2626', fontWeight: 700 }}>RET. ITBIS</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#dc2626' }}>-{fmt(retItbis)}</div>
+          </div>
+          <div style={{ textAlign: 'center', background: '#f0fdf4', borderRadius: 8, padding: '4px 8px' }}>
+            <div style={{ fontSize: 10, color: '#166534', fontWeight: 700 }}>TOTAL</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#166534' }}>{fmt(total)}</div>
           </div>
         </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <Label>Notas</Label>
+          <input className="input" value={form.notas} onChange={e => set('notas', e.target.value)} />
+        </div>
+
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Registrar CxP'}</button>
         </div>
       </form>
+    </Modal>
+  )
+}
+
+// ─── Modal Detalle CxP ─────────────────────────────────────────────────────
+function ModalDetalleCxP({ cxpId, onClose, onDone }) {
+  const [cxp, setCxp] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [validando, setValidando] = useState(false)
+  const [validacion, setValidacion] = useState<any>(null)
+
+  useEffect(() => {
+    api.get(`/contabilidad/cxp/${cxpId}`).then(r => { setCxp(r.data); setLoading(false) })
+      .catch(() => { toast.error('Error al cargar detalle'); onClose() })
+  }, [cxpId])
+
+  async function validar() {
+    setValidando(true)
+    try {
+      const r = await api.post(`/contabilidad/cxp/${cxpId}/validar`)
+      setValidacion(r.data)
+      if (r.data.ok) {
+        toast.success(r.data.mensaje || 'Validación exitosa')
+        onDone()
+      }
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error al validar') }
+    finally { setValidando(false) }
+  }
+
+  if (loading || !cxp) return <Modal title="Detalle CxP" onClose={onClose}><p style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Cargando...</p></Modal>
+
+  const lineas = cxp.lineas || []
+
+  return (
+    <Modal title={`CxP ${cxp.numero}`} subtitle={cxp.proveedor_nombre || ''} onClose={onClose} width={800}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
+        <div>
+          <Label>Fecha Factura</Label>
+          <div style={{ fontSize: 13 }}>{fmtDate(cxp.fecha_factura)}</div>
+        </div>
+        <div>
+          <Label>Vencimiento</Label>
+          <div style={{ fontSize: 13 }}>{fmtDate(cxp.fecha_vencimiento)}</div>
+        </div>
+        <div>
+          <Label>NCF</Label>
+          <div style={{ fontSize: 13 }}>{cxp.ncf || cxp.tipo_ncf || '—'}</div>
+        </div>
+        <div>
+          <Label>Estado</Label>
+          <Badge estado={cxp.estado} />
+        </div>
+      </div>
+
+      {/* Totales */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 16, background: '#f9fafb', borderRadius: 8, padding: 12 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>SUBTOTAL</div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>{fmt(cxp.subtotal)}</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>ITBIS</div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>{fmt(cxp.itbis)}</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 10, color: '#dc2626', fontWeight: 700 }}>RET. ISR</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#dc2626' }}>-{fmt(cxp.retencion_isr)}</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 10, color: '#dc2626', fontWeight: 700 }}>RET. ITBIS</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#dc2626' }}>-{fmt(cxp.retencion_itbis)}</div>
+        </div>
+        <div style={{ textAlign: 'center', background: '#f0fdf4', borderRadius: 8, padding: '4px 8px' }}>
+          <div style={{ fontSize: 10, color: '#166534', fontWeight: 700 }}>TOTAL</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: '#166534' }}>{fmt(cxp.total)}</div>
+        </div>
+      </div>
+
+      {/* Líneas */}
+      {lineas.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <Label>Líneas de Factura ({lineas.length})</Label>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ fontSize: 12 }}>
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th style={{ textAlign: 'right' }}>Cant.</th>
+                  <th style={{ textAlign: 'right' }}>Precio</th>
+                  <th style={{ textAlign: 'right' }}>Desc.%</th>
+                  <th>Impuesto</th>
+                  <th style={{ textAlign: 'right' }}>ITBIS</th>
+                  <th style={{ textAlign: 'right' }}>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lineas.map((l: any) => (
+                  <tr key={l.id}>
+                    <td>{l.producto_id || '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{l.cantidad}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(l.precio_unitario)}</td>
+                    <td style={{ textAlign: 'right' }}>{l.descuento_pct}%</td>
+                    <td>{IMPUESTO_OPTS.find(o => o.value === l.impuesto)?.label || l.impuesto}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(l.monto_itbis)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(l.subtotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Validación three-way match */}
+      {validacion && (
+        <div style={{ marginBottom: 16, borderRadius: 8, padding: 14, background: validacion.ok ? '#f0fdf4' : '#fef2f2', border: `1px solid ${validacion.ok ? '#86efac' : '#fca5a5'}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            {validacion.ok
+              ? <><CheckCircle size={16} style={{ color: '#166534' }} /> <span style={{ fontWeight: 700, color: '#166534' }}>Validación exitosa</span></>
+              : <><AlertTriangle size={16} style={{ color: '#dc2626' }} /> <span style={{ fontWeight: 700, color: '#dc2626' }}>Validación con errores</span></>
+            }
+          </div>
+          {validacion.errores?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', marginBottom: 4 }}>Errores (bloquean):</div>
+              {validacion.errores.map((e: string, i: number) => (
+                <div key={i} style={{ fontSize: 11, color: '#991b1b', paddingLeft: 8 }}>• {e}</div>
+              ))}
+            </div>
+          )}
+          {validacion.alertas?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginBottom: 4 }}>Alertas (informativas):</div>
+              {validacion.alertas.map((a: string, i: number) => (
+                <div key={i} style={{ fontSize: 11, color: '#92400e', paddingLeft: 8 }}>• {a}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {cxp.notas && (
+        <div style={{ marginBottom: 16 }}>
+          <Label>Notas</Label>
+          <div style={{ fontSize: 12, color: '#6b7280' }}>{cxp.notas}</div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        {cxp.oc_id && cxp.estado === 'pendiente' && (
+          <button type="button" className="btn-primary" style={{ background: '#7c3aed' }}
+            onClick={validar} disabled={validando}>
+            {validando ? 'Validando...' : <><CheckCircle size={14} /> Validar (Three-Way Match)</>}
+          </button>
+        )}
+        <button type="button" className="btn-secondary" onClick={onClose}>Cerrar</button>
+      </div>
     </Modal>
   )
 }
@@ -541,6 +847,7 @@ export default function EfectivoBanco() {
   const [modalCuenta, setModalCuenta] = useState<any>(false)
   const [modalCxP, setModalCxP] = useState(false)
   const [modalPago, setModalPago] = useState<any>(null)
+  const [modalDetalleCxP, setModalDetalleCxP] = useState<number | null>(null)
   const [modalCxC, setModalCxC] = useState(false)
   const [modalCobro, setModalCobro] = useState<any>(null)
 
@@ -563,7 +870,7 @@ export default function EfectivoBanco() {
 
   function afterAction() {
     setModalCuenta(false); setModalCxP(false); setModalPago(null)
-    setModalCxC(false); setModalCobro(null)
+    setModalDetalleCxP(null); setModalCxC(false); setModalCobro(null)
     load()
   }
 
@@ -691,48 +998,61 @@ export default function EfectivoBanco() {
       {/* ─── Tab: CxP ──────────────────────────────────────── */}
       {tab === 'cxp' && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table>
-            <thead>
-              <tr>
-                <th>N°</th>
-                <th>Proveedor</th>
-                <th>Fecha</th>
-                <th>Vencimiento</th>
-                <th>NCF</th>
-                <th style={{ textAlign: 'right' }}>Total</th>
-                <th style={{ textAlign: 'right' }}>Saldo</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
-              ) : cxpList.filter(c => (c.proveedor_nombre || '').toLowerCase().includes(buscar.toLowerCase()) || (c.numero || '').toLowerCase().includes(buscar.toLowerCase())).length === 0 ? (
-                <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin cuentas por pagar</td></tr>
-              ) : cxpList.filter(c => (c.proveedor_nombre || '').toLowerCase().includes(buscar.toLowerCase()) || (c.numero || '').toLowerCase().includes(buscar.toLowerCase())).map(c => (
-                <tr key={c.id}
-                  onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
-                  onMouseLeave={e => e.currentTarget.style.background = ''}>
-                  <td style={{ fontWeight: 700, color: '#dc2626' }}>{c.numero}</td>
-                  <td style={{ fontWeight: 600 }}>{c.proveedor_nombre || '—'}</td>
-                  <td style={{ fontSize: 12 }}>{fmtDate(c.fecha_factura)}</td>
-                  <td style={{ fontSize: 12 }}>{fmtDate(c.fecha_vencimiento)}</td>
-                  <td style={{ fontSize: 11, color: '#6b7280' }}>{c.ncf || c.tipo_ncf || '—'}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(c.total)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 800, color: c.saldo_pendiente > 0 ? '#dc2626' : '#166534' }}>{fmt(c.saldo_pendiente)}</td>
-                  <td><Badge estado={c.estado} /></td>
-                  <td>
-                    {c.estado === 'pendiente' || c.estado === 'parcial' ? (
-                      <button className="btn-primary" style={{ padding: '4px 10px', fontSize: 11, background: '#166534' }} onClick={() => setModalPago(c)}>
-                        <DollarSign size={12} /> Pagar
-                      </button>
-                    ) : null}
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>N°</th>
+                  <th>Proveedor</th>
+                  <th>Fecha</th>
+                  <th>NCF</th>
+                  <th style={{ textAlign: 'right' }}>Subtotal</th>
+                  <th style={{ textAlign: 'right' }}>ITBIS</th>
+                  <th style={{ textAlign: 'right' }}>Ret.</th>
+                  <th style={{ textAlign: 'right' }}>Total</th>
+                  <th style={{ textAlign: 'right' }}>Saldo</th>
+                  <th>Estado</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+                ) : cxpList.filter(c => (c.proveedor_nombre || '').toLowerCase().includes(buscar.toLowerCase()) || (c.numero || '').toLowerCase().includes(buscar.toLowerCase())).length === 0 ? (
+                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin cuentas por pagar</td></tr>
+                ) : cxpList.filter(c => (c.proveedor_nombre || '').toLowerCase().includes(buscar.toLowerCase()) || (c.numero || '').toLowerCase().includes(buscar.toLowerCase())).map(c => (
+                  <tr key={c.id}
+                    onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                    onMouseLeave={e => e.currentTarget.style.background = ''}>
+                    <td style={{ fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>{c.numero}</td>
+                    <td style={{ fontWeight: 600 }}>{c.proveedor_nombre || '—'}</td>
+                    <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDate(c.fecha_factura)}</td>
+                    <td style={{ fontSize: 11, color: '#6b7280' }}>{c.ncf || c.tipo_ncf || '—'}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12 }}>{fmt(c.subtotal)}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12 }}>{fmt(c.itbis)}</td>
+                    <td style={{ textAlign: 'right', fontSize: 12, color: '#dc2626' }}>
+                      {(c.retencion_isr || 0) + (c.retencion_itbis || 0) > 0 ? fmt((c.retencion_isr || 0) + (c.retencion_itbis || 0)) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(c.total)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 800, color: c.saldo_pendiente > 0 ? '#dc2626' : '#166534' }}>{fmt(c.saldo_pendiente)}</td>
+                    <td><Badge estado={c.estado} /></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn-secondary" style={{ padding: '4px 8px' }} title="Ver detalle" onClick={() => setModalDetalleCxP(c.id)}>
+                          <Eye size={12} />
+                        </button>
+                        {(c.estado === 'pendiente' || c.estado === 'parcial') && (
+                          <button className="btn-primary" style={{ padding: '4px 10px', fontSize: 11, background: '#166534' }} onClick={() => setModalPago(c)}>
+                            <DollarSign size={12} /> Pagar
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -787,6 +1107,7 @@ export default function EfectivoBanco() {
       {/* Modals */}
       {modalCuenta && <ModalCuentaBancaria cuenta={modalCuenta === true ? null : modalCuenta} onClose={() => setModalCuenta(false)} onDone={afterAction} />}
       {modalCxP && <ModalNuevaCxP onClose={() => setModalCxP(false)} onDone={afterAction} />}
+      {modalDetalleCxP && <ModalDetalleCxP cxpId={modalDetalleCxP} onClose={() => setModalDetalleCxP(null)} onDone={afterAction} />}
       {modalPago && <ModalPago cxp={modalPago} onClose={() => setModalPago(null)} onDone={afterAction} />}
       {modalCxC && <ModalNuevaCxC onClose={() => setModalCxC(false)} onDone={afterAction} />}
       {modalCobro && <ModalCobro cxc={modalCobro} onClose={() => setModalCobro(null)} onDone={afterAction} />}
