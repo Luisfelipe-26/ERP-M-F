@@ -44,6 +44,8 @@ function ModalNuevaOC({ onClose, onDone }) {
   const [proveedoresLista, setProveedoresLista] = useState([])
   const [campos, setCampos] = useState([])
   const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
+  const [genDims, setGenDims] = useState<any[]>([])
+  const [dimSelections, setDimSelections] = useState<Record<number, number>>({})
   const [form, setForm] = useState({
     fecha: new Date().toISOString().slice(0, 10),
     proveedor_id: '',
@@ -66,12 +68,14 @@ function ModalNuevaOC({ onClose, onDone }) {
       api.get('/contabilidad/unidades-negocio'),
       api.get('/contabilidad/departamentos'),
       api.get('/contabilidad/almacenes'),
-    ]).then(([n, p, prov, c, un, dep, alm]) => {
+      api.get('/contabilidad/dimensiones', { params: { entidad_tipo: 'OC' } }),
+    ]).then(([n, p, prov, c, un, dep, alm, gd]) => {
       setNextId(n.data.next_oc_id)
       setProductos(p.data)
       setProveedoresLista(prov.data)
       setCampos(c.data)
       setDims({ unidades: un.data, deptos: dep.data, almacenes: alm.data })
+      setGenDims(gd.data.filter((d: any) => d.activo))
     })
   }, [])
 
@@ -126,7 +130,14 @@ function ModalNuevaOC({ onClose, onDone }) {
           impuesto: l.impuesto || 'itbis_18',
         })),
       })
-      toast.success(`Orden de Compra ${result.oc_id || nextId} creada`)
+      const ocId = result.oc_id || nextId
+      const assigns = Object.entries(dimSelections)
+        .filter(([, vid]) => vid)
+        .map(([did, vid]) => ({ dimension_id: Number(did), valor_id: vid }))
+      if (assigns.length > 0) {
+        try { await api.post(`/contabilidad/entidad-dimensiones/OC/${ocId}`, assigns) } catch {}
+      }
+      toast.success(`Orden de Compra ${ocId} creada`)
       if (result.alertas_presupuesto?.length) {
         result.alertas_presupuesto.forEach((a: string) => toast(a, { icon: '⚠️', duration: 6000 }))
       }
@@ -178,6 +189,18 @@ function ModalNuevaOC({ onClose, onDone }) {
             <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Almacén</label>
             <select className="select" value={form.almacen_id} onChange={e => setForm({ ...form, almacen_id: e.target.value })}><option value="">—</option>{dims.almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select>
           </div>
+          {genDims.map(dim => (
+            <div key={dim.id}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>
+                {dim.nombre}{dim.obligatoria ? ' *' : ''}
+              </label>
+              <select className="select" value={dimSelections[dim.id] || ''} onChange={e => setDimSelections({ ...dimSelections, [dim.id]: Number(e.target.value) || 0 })}
+                      required={dim.obligatoria}>
+                <option value="">—</option>
+                {(dim.valores || []).filter((v: any) => v.activo).map((v: any) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+              </select>
+            </div>
+          ))}
           <div style={{ gridColumn: '1/-1' }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Observaciones</label>
             <input className="input" value={form.observaciones} onChange={e => setForm({ ...form, observaciones: e.target.value })} />
@@ -255,6 +278,7 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
   const [numFactura, setNumFactura] = useState('')
   const [saving, setSaving] = useState(false)
   const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
+  const [genDimsAsig, setGenDimsAsig] = useState<any[]>([])
 
   useEffect(() => {
     Promise.all([
@@ -262,9 +286,11 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
       api.get('/contabilidad/unidades-negocio'),
       api.get('/contabilidad/departamentos'),
       api.get('/contabilidad/almacenes'),
-    ]).then(([oc, un, dep, alm]) => {
+      api.get(`/contabilidad/entidad-dimensiones/OC/${ocId}`),
+    ]).then(([oc, un, dep, alm, gda]) => {
       setData(oc.data)
       setDims({ unidades: un.data, deptos: dep.data, almacenes: alm.data })
+      setGenDimsAsig(gda.data)
     }).catch(() => toast.error('Error al cargar'))
       .finally(() => setLoading(false))
   }, [ocId])
@@ -496,7 +522,7 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
         </div>
       )}
 
-      {(orden.num_factura || orden.campo_id || orden.unidad_negocio_id || orden.departamento_id || orden.almacen_id) && (
+      {(orden.num_factura || orden.campo_id || orden.unidad_negocio_id || orden.departamento_id || orden.almacen_id || genDimsAsig.length > 0) && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
           {orden.num_factura && (
             <div style={{ background: '#eff6ff', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#1e40af' }}>
@@ -523,6 +549,11 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
               <strong>Almacén:</strong> {dimLabel('almacenes', orden.almacen_id)}
             </div>
           )}
+          {genDimsAsig.map((gd: any) => (
+            <div key={gd.id} style={{ background: '#f5f3ff', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#5b21b6', border: '1px solid #c4b5fd' }}>
+              <strong>{gd.dimension_nombre}:</strong> {gd.valor_nombre}
+            </div>
+          ))}
         </div>
       )}
 
@@ -563,6 +594,8 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
   const [proveedoresLista, setProveedoresLista] = useState([])
   const [campos, setCampos] = useState([])
   const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
+  const [genDims, setGenDims] = useState<any[]>([])
+  const [dimSelections, setDimSelections] = useState<Record<number, number>>({})
   const [form, setForm] = useState({ fecha: '', proveedor_id: '', proveedor: '', campo_id: '', unidad_negocio_id: '', departamento_id: '', almacen_id: '', observaciones: '' })
   const [lineas, setLineas] = useState([])
   const [saving, setSaving] = useState(false)
@@ -576,7 +609,9 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
       api.get('/contabilidad/unidades-negocio'),
       api.get('/contabilidad/departamentos'),
       api.get('/contabilidad/almacenes'),
-    ]).then(([oc, p, prov, c, un, dep, alm]) => {
+      api.get('/contabilidad/dimensiones', { params: { entidad_tipo: 'OC' } }),
+      api.get(`/contabilidad/entidad-dimensiones/OC/${ocId}`),
+    ]).then(([oc, p, prov, c, un, dep, alm, gd, gda]) => {
       const o = oc.data.orden
       setForm({
         fecha: o.fecha ? o.fecha.slice(0, 10) : '',
@@ -589,6 +624,10 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
         observaciones: o.observaciones || '',
       })
       setDims({ unidades: un.data, deptos: dep.data, almacenes: alm.data })
+      setGenDims(gd.data.filter((d: any) => d.activo))
+      const sel: Record<number, number> = {}
+      gda.data.forEach((a: any) => { sel[a.dimension_id] = a.valor_id })
+      setDimSelections(sel)
       setLineas(oc.data.lineas.map(l => ({
         producto_id: l.producto_id,
         cantidad: l.cantidad,
@@ -640,6 +679,10 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
           impuesto: l.impuesto || 'itbis_18',
         })),
       })
+      const assigns = Object.entries(dimSelections)
+        .filter(([, vid]) => vid)
+        .map(([did, vid]) => ({ dimension_id: Number(did), valor_id: vid }))
+      try { await api.post(`/contabilidad/entidad-dimensiones/OC/${ocId}`, assigns) } catch {}
       toast.success('Orden actualizada')
       onDone()
     } catch (err) {
@@ -688,6 +731,18 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
           <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Almacén</label>
           <select className="select" value={form.almacen_id} onChange={e => setForm({ ...form, almacen_id: e.target.value })}><option value="">—</option>{dims.almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select>
         </div>
+        {genDims.map(dim => (
+          <div key={dim.id}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>
+              {dim.nombre}{dim.obligatoria ? ' *' : ''}
+            </label>
+            <select className="select" value={dimSelections[dim.id] || ''} onChange={e => setDimSelections({ ...dimSelections, [dim.id]: Number(e.target.value) || 0 })}
+                    required={dim.obligatoria}>
+              <option value="">—</option>
+              {(dim.valores || []).filter((v: any) => v.activo).map((v: any) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+            </select>
+          </div>
+        ))}
         <div style={{ gridColumn: '1/-1' }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Observaciones</label>
           <textarea className="input" rows={2} value={form.observaciones} onChange={e => setForm({ ...form, observaciones: e.target.value })} />

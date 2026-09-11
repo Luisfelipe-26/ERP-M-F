@@ -2658,12 +2658,22 @@ const DIM_SECTIONS: { key: DimType; label: string; fields: string[]; apiBase?: s
   { key: 'campos', label: 'Centros de Costo', fields: ['id_campo', 'nombre', 'ubicacion', 'hectareas'], apiBase: '/campos', idField: 'id_campo' },
 ]
 
+const ENTIDAD_TIPOS_LABELS: Record<string, string> = {
+  OT: 'Orden Trabajo', OC: 'Orden Compra', ASIENTO: 'Asiento', CXP: 'Cuenta por Pagar',
+  PRESUPUESTO: 'Presupuesto', NOMINA: 'Nómina', INVENTARIO: 'Inventario',
+}
+
 function TabDimensiones() {
   const [data, setData] = useState<Record<DimType, any[]>>({ 'unidades-negocio': [], departamentos: [], almacenes: [], campos: [] })
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editType, setEditType] = useState<DimType>('unidades-negocio')
   const [editing, setEditing] = useState<any>(null)
+  const [dims, setDims] = useState<any[]>([])
+  const [showDimModal, setShowDimModal] = useState(false)
+  const [editingDim, setEditingDim] = useState<any>(null)
+  const [expandedDim, setExpandedDim] = useState<number | null>(null)
+  const [newValor, setNewValor] = useState({ codigo: '', nombre: '' })
 
   function apiUrl(type: DimType) {
     const sec = DIM_SECTIONS.find(s => s.key === type)
@@ -2678,13 +2688,15 @@ function TabDimensiones() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [un, dep, alm, cam] = await Promise.all([
+      const [un, dep, alm, cam, dimRes] = await Promise.all([
         api.get('/contabilidad/unidades-negocio'),
         api.get('/contabilidad/departamentos'),
         api.get('/contabilidad/almacenes'),
         api.get('/campos'),
+        api.get('/contabilidad/dimensiones'),
       ])
       setData({ 'unidades-negocio': un.data, departamentos: dep.data, almacenes: alm.data, campos: cam.data })
+      setDims(dimRes.data)
     } catch { toast.error('Error cargando dimensiones') }
     finally { setLoading(false) }
   }, [])
@@ -2722,6 +2734,46 @@ function TabDimensiones() {
     if (!confirm('¿Eliminar este registro?')) return
     try { await api.delete(`${apiUrl(type)}/${itemId}`); toast.success('Eliminado'); load() }
     catch (err: any) { toast.error(err.response?.data?.detail || 'Error al eliminar') }
+  }
+
+  const openNewDim = () => {
+    setEditingDim({ codigo: '', nombre: '', descripcion: '', entidades_aplica: [], obligatoria: false })
+    setShowDimModal(true)
+  }
+  const openEditDim = (dim: any) => {
+    setEditingDim({ ...dim })
+    setShowDimModal(true)
+  }
+  const handleSaveDim = async (e: any) => {
+    e.preventDefault()
+    try {
+      const payload = { codigo: editingDim.codigo, nombre: editingDim.nombre, descripcion: editingDim.descripcion,
+        entidades_aplica: editingDim.entidades_aplica, obligatoria: editingDim.obligatoria }
+      if (editingDim.id) await api.put(`/contabilidad/dimensiones/${editingDim.id}`, payload)
+      else await api.post('/contabilidad/dimensiones', payload)
+      toast.success(editingDim.id ? 'Actualizado' : 'Creado')
+      setShowDimModal(false); load()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+  const handleDeleteDim = async (id: number) => {
+    if (!confirm('¿Desactivar esta dimensión?')) return
+    try { await api.delete(`/contabilidad/dimensiones/${id}`); toast.success('Desactivada'); load() }
+    catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+  const handleAddValor = async (dimId: number) => {
+    if (!newValor.codigo || !newValor.nombre) return
+    try {
+      await api.post(`/contabilidad/dimensiones/${dimId}/valores`, newValor)
+      setNewValor({ codigo: '', nombre: '' }); load()
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+  const handleDeleteValor = async (valId: number) => {
+    try { await api.delete(`/contabilidad/dimension-valores/${valId}`); load() }
+    catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+  }
+  const toggleEntidad = (tipo: string) => {
+    const arr = editingDim.entidades_aplica || []
+    setEditingDim({ ...editingDim, entidades_aplica: arr.includes(tipo) ? arr.filter((t: string) => t !== tipo) : [...arr, tipo] })
   }
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Cargando...</div>
@@ -2778,6 +2830,98 @@ function TabDimensiones() {
         ))}
       </div>
 
+      {/* ── Dimensiones Genéricas ── */}
+      <div style={{ marginTop: 24, borderTop: '1px solid #e5e7eb', paddingTop: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Dimensiones Personalizadas</h3>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>Cree dimensiones adicionales y asígnelas a entidades (OC, OT, Asientos, etc.)</p>
+          </div>
+          <button className="btn-primary" style={{ fontSize: 12, padding: '6px 14px' }} onClick={openNewDim}><Plus size={13} /> Nueva Dimensión</button>
+        </div>
+
+        {dims.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>
+            No hay dimensiones personalizadas. Cree una para comenzar.
+          </div>
+        ) : dims.map((dim: any) => (
+          <div key={dim.id} className="card" style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+                   onClick={() => setExpandedDim(expandedDim === dim.id ? null : dim.id)}>
+                {expandedDim === dim.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#6b7280' }}>{dim.codigo}</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{dim.nombre}</span>
+                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10,
+                  background: dim.activo ? '#dcfce7' : '#fee2e2', color: dim.activo ? '#166534' : '#991b1b' }}>
+                  {dim.activo ? 'Activo' : 'Inactivo'}
+                </span>
+                {dim.obligatoria && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: '#fef3c7', color: '#92400e' }}>Obligatoria</span>}
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{dim.valores?.length || 0} valores</span>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', padding: 3 }} onClick={() => openEditDim(dim)}><Edit2 size={13} /></button>
+                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 3 }} onClick={() => handleDeleteDim(dim.id)}><Trash2 size={13} /></button>
+              </div>
+            </div>
+
+            {dim.entidades_aplica?.length > 0 && (
+              <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
+                {dim.entidades_aplica.map((t: string) => (
+                  <span key={t} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8' }}>
+                    {ENTIDAD_TIPOS_LABELS[t] || t}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {expandedDim === dim.id && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb' }}>
+                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>Código</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>Nombre</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'center', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>Estado</th>
+                      <th style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(dim.valores || []).filter((v: any) => v.activo).map((v: any) => (
+                      <tr key={v.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{v.codigo}</td>
+                        <td style={{ padding: '6px 8px' }}>{v.nombre}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                          <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: '#dcfce7', color: '#166534' }}>Activo</span>
+                        </td>
+                        <td style={{ padding: '6px 4px', textAlign: 'right' }}>
+                          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 3 }} onClick={() => handleDeleteValor(v.id)}><Trash2 size={12} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td style={{ padding: '4px 8px' }}>
+                        <input className="input" placeholder="Código" value={newValor.codigo} onChange={e => setNewValor({ ...newValor, codigo: e.target.value })}
+                               style={{ fontSize: 11, padding: '4px 6px' }} />
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        <input className="input" placeholder="Nombre" value={newValor.nombre} onChange={e => setNewValor({ ...newValor, nombre: e.target.value })}
+                               style={{ fontSize: 11, padding: '4px 6px' }} />
+                      </td>
+                      <td colSpan={2} style={{ padding: '4px 8px', textAlign: 'center' }}>
+                        <button className="btn-primary" style={{ fontSize: 10, padding: '3px 10px' }} onClick={() => handleAddValor(dim.id)}>
+                          <Plus size={11} /> Agregar
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
       {showModal && editing && (
         <Modal title={`${editing.id ? 'Editar' : 'Nuevo'} — ${section.label}`} onClose={() => setShowModal(false)}>
           <form onSubmit={handleSave}>
@@ -2796,6 +2940,45 @@ function TabDimensiones() {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
               <button type="submit" className="btn-primary">{editing.id ? 'Guardar' : 'Crear'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {showDimModal && editingDim && (
+        <Modal title={editingDim.id ? 'Editar Dimensión' : 'Nueva Dimensión'} onClose={() => setShowDimModal(false)}>
+          <form onSubmit={handleSaveDim}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div><Label>Código</Label><input className="input" value={editingDim.codigo} onChange={e => setEditingDim({ ...editingDim, codigo: e.target.value })} required /></div>
+              <div><Label>Nombre</Label><input className="input" value={editingDim.nombre} onChange={e => setEditingDim({ ...editingDim, nombre: e.target.value })} required /></div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Label>Descripción</Label>
+              <input className="input" value={editingDim.descripcion || ''} onChange={e => setEditingDim({ ...editingDim, descripcion: e.target.value })} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Label>Aplica a entidades</Label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                {Object.entries(ENTIDAD_TIPOS_LABELS).map(([k, label]) => (
+                  <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer',
+                    padding: '4px 10px', borderRadius: 6, border: '1px solid', borderColor: (editingDim.entidades_aplica || []).includes(k) ? '#2563eb' : '#d1d5db',
+                    background: (editingDim.entidades_aplica || []).includes(k) ? '#eff6ff' : '#fff', color: (editingDim.entidades_aplica || []).includes(k) ? '#1d4ed8' : '#6b7280' }}>
+                    <input type="checkbox" checked={(editingDim.entidades_aplica || []).includes(k)} onChange={() => toggleEntidad(k)} style={{ display: 'none' }} />
+                    {(editingDim.entidades_aplica || []).includes(k) && <Check size={11} />}
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" checked={editingDim.obligatoria || false} onChange={e => setEditingDim({ ...editingDim, obligatoria: e.target.checked })} />
+                Obligatoria
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowDimModal(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary">{editingDim.id ? 'Guardar' : 'Crear'}</button>
             </div>
           </form>
         </Modal>
