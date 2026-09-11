@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import {
   Plus, Search, Download, RefreshCw, AlertTriangle, TrendingUp, TrendingDown,
   Package, DollarSign, Edit2, Trash2, BarChart2, ArrowDownCircle, ArrowUpCircle,
-  ClipboardList, X, Eye, Clock
+  ClipboardList, X, Eye, Clock, RotateCcw, ChevronDown
 } from 'lucide-react'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -15,12 +15,13 @@ const fmtDate = d => d ? new Date(d).toLocaleDateString('es-DO') : '—'
 const TIPOS_PROD = ['FERTILIZANTE','FUNGICIDAS','INSECTICIDAS','HERBICIDA','BIOESTIMULANTE','PBZ','REGULADOR HORMONAL','OTRO']
 // El consumo por OT se registra desde el módulo de Órdenes de Trabajo, no como GI manual
 const MOTIVOS_GI = ['Merma','Vencimiento','Devolucion Proveedor','Muestra','Uso No Productivo','Otro']
-const DOC_LABELS = { GR: 'Entrada', GI: 'Salida', AJ: 'Ajuste', OT: 'Consumo OT' }
+const DOC_LABELS = { GR: 'Entrada', GI: 'Salida', AJ: 'Ajuste', OT: 'Consumo OT', 'DEV-GI': 'Devolución GI' }
 const DOC_COLORS = {
   GR: { bg: '#dcfce7', color: '#166534', border: '#86efac' },
   GI: { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
   AJ: { bg: '#fef9c3', color: '#854d0e', border: '#fde047' },
   OT: { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd' },
+  'DEV-GI': { bg: '#ede9fe', color: '#5b21b6', border: '#c4b5fd' },
 }
 
 const Badge = ({ tipo_doc }) => {
@@ -593,6 +594,9 @@ export default function Inventario() {
   const [tab, setTab] = useState('articulos')
   const [articulos, setArticulos] = useState([])
   const [movimientos, setMovimientos] = useState([])
+  const [movTotal, setMovTotal] = useState(0)
+  const [movHasMore, setMovHasMore] = useState(false)
+  const [movOffset, setMovOffset] = useState(0)
   const [valoracion, setValoracion] = useState(null)
   const [loading, setLoading] = useState(false)
   const [almacenes, setAlmacenes] = useState([])
@@ -624,11 +628,15 @@ export default function Inventario() {
     finally { setLoading(false) }
   }, [])
 
-  const loadMovimientos = useCallback(async () => {
+  const loadMovimientos = useCallback(async (appendFrom?: number) => {
     setLoading(true)
     try {
-      const { data } = await api.get('/inventario/movimientos', { params: { producto_id: filtroMovProd || undefined, tipo_doc: filtroMovDoc || undefined, fecha_desde: filtroMovDesde || undefined, fecha_hasta: filtroMovHasta || undefined, limit: 500 } })
-      setMovimientos(data)
+      const off = appendFrom ?? 0
+      const { data } = await api.get('/inventario/movimientos', { params: { producto_id: filtroMovProd || undefined, tipo_doc: filtroMovDoc || undefined, fecha_desde: filtroMovDesde || undefined, fecha_hasta: filtroMovHasta || undefined, limit: 500, offset: off } })
+      setMovimientos(prev => appendFrom != null ? [...prev, ...data.items] : data.items)
+      setMovTotal(data.total)
+      setMovHasMore(data.has_more)
+      setMovOffset(off + data.items.length)
     } catch { toast.error('Error al cargar movimientos') }
     finally { setLoading(false) }
   }, [filtroMovProd, filtroMovDoc, filtroMovDesde, filtroMovHasta])
@@ -761,6 +769,19 @@ export default function Inventario() {
           <button onClick={() => setModalAJ(true)} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:10, border:'none', background:'#854d0e', color:'white', cursor:'pointer', fontWeight:600, fontSize:13 }}>
             <ClipboardList size={14} /> AJ — Ajuste
           </button>
+          <button onClick={async () => {
+            if (!confirm('Recalcular costo promedio de TODOS los productos inventariables desde los movimientos GR? Esta acción es irreversible.')) return
+            try {
+              const { data } = await api.post('/inventario/recalcular-costos')
+              if (data.productos_ajustados > 0) {
+                toast.success(`${data.productos_ajustados} productos ajustados`)
+                loadArticulos()
+                if (tab === 'valoracion') loadValoracion()
+              } else toast.success('Todos los costos ya están correctos')
+            } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
+          }} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:10, border:'1px solid #6366f1', background:'#eef2ff', color:'#4338ca', cursor:'pointer', fontWeight:600, fontSize:13 }} title="Admin: Recalcular costo promedio desde GRs">
+            <RefreshCw size={14} /> Recalcular costos
+          </button>
         </div>
       </div>
 
@@ -880,7 +901,7 @@ export default function Inventario() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 16 }}>
             {[
-              { label: 'Movimientos', value: movimientos.length, icon: ClipboardList, color: '#374151', bg: '#f3f4f6' },
+              { label: 'Movimientos', value: movTotal > movimientos.length ? `${movimientos.length} / ${movTotal}` : movimientos.length, icon: ClipboardList, color: '#374151', bg: '#f3f4f6' },
               { label: `Entradas (${movsIn.length})`, value: fmt(valEntradas), icon: ArrowDownCircle, color: '#166534', bg: '#dcfce7' },
               { label: `Salidas (${movsOut.length})`, value: fmt(valSalidas), icon: ArrowUpCircle, color: '#dc2626', bg: '#fee2e2' },
               { label: 'Neto', value: fmt(valEntradas - valSalidas), icon: DollarSign, color: '#1e40af', bg: '#dbeafe' },
@@ -908,6 +929,7 @@ export default function Inventario() {
               <option value="GI">GI — Salida</option>
               <option value="AJ">AJ — Ajuste</option>
               <option value="OT">OT — Consumo</option>
+              <option value="DEV-GI">DEV — Devolución GI</option>
             </select>
             <input className="input" type="date" style={{ width: 150 }} value={filtroMovDesde} onChange={e => setFiltroMovDesde(e.target.value)} title="Desde" />
             <input className="input" type="date" style={{ width: 150 }} value={filtroMovHasta} onChange={e => setFiltroMovHasta(e.target.value)} title="Hasta" />
@@ -929,13 +951,14 @@ export default function Inventario() {
                   <th style={{ textAlign: 'right' }}>Salidas</th>
                   <th style={{ textAlign: 'right' }}>Saldo</th>
                   <th style={{ textAlign: 'right' }}>C. Unit.</th>
+                  <th style={{ width: 40 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
-                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+                {loading && movimientos.length === 0 ? (
+                  <tr><td colSpan={12} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
                 ) : movimientos.length === 0 ? (
-                  <tr><td colSpan={11} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin movimientos en el período</td></tr>
+                  <tr><td colSpan={12} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin movimientos en el período</td></tr>
                 ) : movimientos.map(m => {
                   const isIn = m.tipo === 'entrada'
                   return (
@@ -956,6 +979,20 @@ export default function Inventario() {
                       <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>{!isIn ? `${fmtN(m.cantidad)} ${m.producto_unidad || ''}` : ''}</td>
                       <td style={{ textAlign: 'right', fontWeight: 800, color: '#111827' }}>{m.stock_post != null ? `${fmtN(m.stock_post)} ${m.producto_unidad || ''}` : '—'}</td>
                       <td style={{ textAlign: 'right', color: '#6b7280', fontSize: 12 }}>{m.costo_unitario ? fmt(m.costo_unitario) : '—'}</td>
+                      <td>
+                        {m.tipo_doc === 'GI' && (
+                          <button title="Devolver" onClick={async () => {
+                            if (!confirm(`Devolver ${fmtN(m.cantidad)} ${m.producto_unidad || ''} de ${m.producto_nombre || m.producto_id}?`)) return
+                            try {
+                              await api.post(`/inventario/gi/${m.id}/devolucion`)
+                              toast.success('Devolución registrada')
+                              afterAction()
+                            } catch (err) { toast.error(err.response?.data?.detail || 'Error al devolver') }
+                          }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: 2 }}>
+                            <RotateCcw size={14} />
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   )
                 })}
@@ -963,7 +1000,7 @@ export default function Inventario() {
               {movimientos.length > 0 && (
                 <tfoot>
                   <tr style={{ background: '#f9fafb', fontWeight: 700 }}>
-                    <td colSpan={7} style={{ textAlign: 'right', fontSize: 12, color: '#374151' }}>TOTALES ({movimientos.length} mov.)</td>
+                    <td colSpan={7} style={{ textAlign: 'right', fontSize: 12, color: '#374151' }}>TOTALES ({movimientos.length}{movTotal > movimientos.length ? ` de ${movTotal}` : ''} mov.)</td>
                     <td style={{ textAlign: 'right', color: '#166534', fontSize: 13 }}>
                       <div>{fmtN(qtyEntradas)}</div>
                       <div style={{ fontSize: 11, fontWeight: 600 }}>{fmt(valEntradas)}</div>
@@ -974,11 +1011,20 @@ export default function Inventario() {
                     </td>
                     <td style={{ textAlign: 'right', color: '#1e40af', fontSize: 13 }}>—</td>
                     <td style={{ textAlign: 'right', color: '#1e40af', fontSize: 13, fontWeight: 800 }}>{fmt(valEntradas - valSalidas)}</td>
+                    <td></td>
                   </tr>
                 </tfoot>
               )}
             </table>
           </div>
+          {movHasMore && (
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
+              <button className="btn-secondary" onClick={() => loadMovimientos(movOffset)} disabled={loading}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <ChevronDown size={14} /> Cargar más ({movTotal - movimientos.length} restantes)
+              </button>
+            </div>
+          )}
         </>
         )
       })()}
