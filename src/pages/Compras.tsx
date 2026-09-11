@@ -9,9 +9,11 @@ const fmt = n => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFraction
 const fmtDate = d => d ? new Date(d).toLocaleDateString('es-DO') : '—'
 
 const ESTADO_COLORS = {
-  Pendiente: { bg: '#fef9c3', color: '#854d0e', border: '#fde047' },
+  Borrador:  { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' },
+  Aprobada:  { bg: '#fef9c3', color: '#854d0e', border: '#fde047' },
   Parcial:   { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd' },
   Recibida:  { bg: '#dcfce7', color: '#166534', border: '#86efac' },
+  Cerrada:   { bg: '#e0e7ff', color: '#3730a3', border: '#a5b4fc' },
   Cancelada: { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
 }
 
@@ -248,6 +250,26 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
     }
   }
 
+  async function aprobarOC() {
+    try {
+      await api.post(`/ordenes-compra/${ocId}/aprobar`)
+      toast.success('OC aprobada — compromiso presupuestario creado')
+      onDone()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al aprobar')
+    }
+  }
+
+  async function cerrarOC() {
+    try {
+      await api.post(`/ordenes-compra/${ocId}/cerrar`)
+      toast.success('OC cerrada')
+      onDone()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al cerrar')
+    }
+  }
+
   function iniciarRecepcion() {
     setRecepcion(data.lineas.map(l => ({
       linea_id: l.id,
@@ -463,14 +485,29 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
         </div>
       )}
 
+      {orden.aprobado_por && (
+        <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>
+          Aprobada por <strong>{orden.aprobado_por}</strong> el {fmtDate(orden.fecha_aprobacion)}
+          {orden.cerrado_por && <> | Cerrada por <strong>{orden.cerrado_por}</strong> el {fmtDate(orden.fecha_cierre)}</>}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        {orden.estado === 'Pendiente' && (
+        {['Borrador', 'Aprobada', 'Parcial'].includes(orden.estado) && (
           <button className="btn-secondary" onClick={() => cambiarEstado('Cancelada')} style={{ color: '#dc2626' }}>Cancelar OC</button>
         )}
-        {['Pendiente', 'Parcial'].includes(orden.estado) && (
-          <button className="btn-primary" onClick={iniciarRecepcion} style={{ background: '#166534' }}>
-            📦 Registrar Recepción
+        {orden.estado === 'Borrador' && (
+          <button className="btn-primary" onClick={aprobarOC} style={{ background: '#854d0e' }}>
+            Aprobar OC
           </button>
+        )}
+        {['Aprobada', 'Parcial'].includes(orden.estado) && (
+          <button className="btn-primary" onClick={iniciarRecepcion} style={{ background: '#166534' }}>
+            Registrar Recepción
+          </button>
+        )}
+        {['Aprobada', 'Parcial', 'Recibida'].includes(orden.estado) && (
+          <button className="btn-secondary" onClick={cerrarOC} style={{ color: '#3730a3' }}>Cerrar OC</button>
         )}
         <button className="btn-secondary" onClick={onClose}>Cerrar</button>
       </div>
@@ -695,14 +732,14 @@ export default function Compras() {
   }
 
   const totalEstimado = ocs.reduce((s, o) => s + (o.total_estimado || 0), 0)
-  const pendientes = ocs.filter(o => o.estado === 'Pendiente').length
+  const borradores = ocs.filter(o => o.estado === 'Borrador').length
   const parciales = ocs.filter(o => o.estado === 'Parcial').length
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <p style={{ margin: 0, color: '#6b7280', fontSize: 13 }}>
-          {ocs.length} órdenes · {pendientes} pendientes · {parciales} parciales
+          {ocs.length} órdenes · {borradores} borradores · {parciales} parciales
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={load}><RefreshCw size={14} /></button>
@@ -719,8 +756,8 @@ export default function Compras() {
           <div style={{ fontSize: 20, fontWeight: 800, color: '#111827' }}>{fmt(totalEstimado)}</div>
         </div>
         <div className="card" style={{ borderLeft: '4px solid #fde047', padding: '10px 14px' }}>
-          <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Pendientes</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: '#854d0e' }}>{pendientes}</div>
+          <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Borradores</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#854d0e' }}>{borradores}</div>
         </div>
         <div className="card" style={{ borderLeft: '4px solid #93c5fd', padding: '10px 14px' }}>
           <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Parciales</div>
@@ -736,9 +773,11 @@ export default function Compras() {
         </div>
         <select className="select" style={{ width: 160 }} value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
           <option value="">Todos los estados</option>
-          <option value="Pendiente">Pendiente</option>
+          <option value="Borrador">Borrador</option>
+          <option value="Aprobada">Aprobada</option>
           <option value="Parcial">Parcial</option>
           <option value="Recibida">Recibida</option>
+          <option value="Cerrada">Cerrada</option>
           <option value="Cancelada">Cancelada</option>
         </select>
       </div>
