@@ -136,7 +136,7 @@ function ModalCuentaBancaria({ cuenta, onClose, onDone }) {
 function ModalNuevaCxP({ onClose, onDone }) {
   const [proveedores, setProveedores] = useState([])
   const [form, setForm] = useState({
-    proveedor_id: '', tipo_ncf: 'B11', ncf: '', num_factura_proveedor: '',
+    proveedor_id: '', tipo_ncf: 'E41', ncf: '', num_factura_proveedor: '',
     fecha_factura: new Date().toISOString().slice(0, 10), fecha_vencimiento: '',
     subtotal: '', itbis: '', retencion_isr: '', notas: '',
   })
@@ -194,15 +194,15 @@ function ModalNuevaCxP({ onClose, onDone }) {
           <div>
             <Label>Tipo NCF</Label>
             <select className="select" value={form.tipo_ncf} onChange={e => set('tipo_ncf', e.target.value)}>
-              <option value="B11">B11 — Compras</option>
-              <option value="B01">B01 — Crédito Fiscal</option>
-              <option value="B14">B14 — Régimen Especial</option>
-              <option value="B15">B15 — Gubernamental</option>
+              <option value="E31">E31 — Crédito Fiscal</option>
+              <option value="E41">E41 — Compras</option>
+              <option value="E44">E44 — Régimen Especial</option>
+              <option value="E45">E45 — Gubernamental</option>
             </select>
           </div>
           <div>
             <Label>NCF</Label>
-            <input className="input" value={form.ncf} onChange={e => set('ncf', e.target.value)} placeholder="B1100000001" />
+            <input className="input" value={form.ncf} onChange={e => set('ncf', e.target.value)} placeholder="E4100000001" />
           </div>
           <div>
             <Label>N° Factura Proveedor</Label>
@@ -319,7 +319,7 @@ function ModalPago({ cxp, onClose, onDone }) {
 function ModalNuevaCxC({ onClose, onDone }) {
   const [clientesLista, setClientesLista] = useState([])
   const [form, setForm] = useState({
-    cliente_id: '', tipo_ncf: 'B01',
+    cliente_id: '', tipo_ncf: 'E31',
     fecha: new Date().toISOString().slice(0, 10), fecha_vencimiento: '',
     moneda: 'DOP', tasa_cambio: '1',
     subtotal: '', itbis: '',
@@ -387,10 +387,10 @@ function ModalNuevaCxC({ onClose, onDone }) {
           <div>
             <Label>Tipo NCF</Label>
             <select className="select" value={form.tipo_ncf} onChange={e => set('tipo_ncf', e.target.value)}>
-              <option value="B01">B01 — Crédito Fiscal</option>
-              <option value="B02">B02 — Consumidor Final</option>
-              <option value="B14">B14 — Régimen Especial</option>
-              <option value="B15">B15 — Gubernamental</option>
+              <option value="E31">E31 — Crédito Fiscal</option>
+              <option value="E32">E32 — Consumidor Final</option>
+              <option value="E44">E44 — Régimen Especial</option>
+              <option value="E45">E45 — Gubernamental</option>
             </select>
           </div>
           <div>

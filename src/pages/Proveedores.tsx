@@ -23,16 +23,40 @@ const Label = ({ children }) => (
   <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>{children}</label>
 )
 
-const NCF_TIPOS = [
-  { value: 'B11', label: 'B11 — Compras' },
-  { value: 'B01', label: 'B01 — Crédito Fiscal' },
-  { value: 'B14', label: 'B14 — Régimen Especial' },
-  { value: 'B15', label: 'B15 — Gubernamental' },
+const ECF_TIPOS = [
+  { value: 'E31', label: 'E31 — Crédito Fiscal' },
+  { value: 'E41', label: 'E41 — Compras (informales/físicas)' },
+  { value: 'E44', label: 'E44 — Régimen Especial' },
+  { value: 'E45', label: 'E45 — Gubernamental' },
 ]
+
+const TIPO_PERSONA_OPTS = [
+  { value: 'juridica', label: 'Persona Jurídica' },
+  { value: 'fisica', label: 'Persona Física' },
+]
+
+const TIPO_CONTRIBUYENTE_OPTS = [
+  { value: 'formal', label: 'Contribuyente Formal' },
+  { value: 'informal', label: 'Informal (sin RNC)' },
+]
+
+const MONEDA_OPTS = [
+  { value: 'DOP', label: 'DOP — Peso Dominicano' },
+  { value: 'USD', label: 'USD — Dólar Americano' },
+]
+
+const RETENCIONES_DEFAULT = {
+  'juridica-formal':   { isr: 0,  itbis: 30,  ncf: 'E31' },
+  'juridica-informal': { isr: 2,  itbis: 0,   ncf: 'E41' },
+  'fisica-formal':     { isr: 15, itbis: 100, ncf: 'E41' },
+  'fisica-informal':   { isr: 2,  itbis: 0,   ncf: 'E41' },
+}
 
 const emptyForm = {
   nombre: '', rnc: '', email: '', telefono: '', contacto: '', direccion: '',
-  condicion_pago_dias: 30, tipo_ncf_default: 'B11', cuenta_cxp_id: '',
+  tipo_persona: 'juridica', tipo_contribuyente: 'formal', moneda_default: 'DOP',
+  retencion_isr_pct: 0, retencion_itbis_pct: 30,
+  condicion_pago_dias: 30, tipo_ncf_default: 'E31', cuenta_cxp_id: '',
 }
 
 function ModalProveedor({ proveedor, onClose, onDone }) {
@@ -44,8 +68,13 @@ function ModalProveedor({ proveedor, onClose, onDone }) {
     telefono: proveedor.telefono || '',
     contacto: proveedor.contacto || '',
     direccion: proveedor.direccion || '',
+    tipo_persona: proveedor.tipo_persona || 'juridica',
+    tipo_contribuyente: proveedor.tipo_contribuyente || 'formal',
+    moneda_default: proveedor.moneda_default || 'DOP',
+    retencion_isr_pct: proveedor.retencion_isr_pct ?? 0,
+    retencion_itbis_pct: proveedor.retencion_itbis_pct ?? 30,
     condicion_pago_dias: proveedor.condicion_pago_dias || 30,
-    tipo_ncf_default: proveedor.tipo_ncf_default || 'B11',
+    tipo_ncf_default: proveedor.tipo_ncf_default || 'E31',
     cuenta_cxp_id: proveedor.cuenta_cxp_id || '',
   } : { ...emptyForm })
   const [saving, setSaving] = useState(false)
@@ -55,14 +84,31 @@ function ModalProveedor({ proveedor, onClose, onDone }) {
     api.get('/contabilidad/cuentas').then(r => setCuentasGL(r.data.filter(c => c.acepta_movimientos && c.tipo === 'pasivo'))).catch(() => toast.error('Error al cargar cuentas contables'))
   }, [])
 
-  const set = (k, v) => setForm({ ...form, [k]: v })
+  const set = (k, v) => setForm(prev => {
+    const next = { ...prev, [k]: v }
+    if (k === 'tipo_persona' || k === 'tipo_contribuyente') {
+      const key = `${k === 'tipo_persona' ? v : prev.tipo_persona}-${k === 'tipo_contribuyente' ? v : prev.tipo_contribuyente}`
+      const defaults = RETENCIONES_DEFAULT[key]
+      if (defaults) {
+        next.retencion_isr_pct = defaults.isr
+        next.retencion_itbis_pct = defaults.itbis
+        next.tipo_ncf_default = defaults.ncf
+      }
+    }
+    return next
+  })
 
   async function submit(e) {
     e.preventDefault()
     if (!form.nombre.trim()) return toast.error('El nombre es obligatorio')
     setSaving(true)
     try {
-      const payload = { ...form, cuenta_cxp_id: form.cuenta_cxp_id ? Number(form.cuenta_cxp_id) : null }
+      const payload = {
+        ...form,
+        cuenta_cxp_id: form.cuenta_cxp_id ? Number(form.cuenta_cxp_id) : null,
+        retencion_isr_pct: Number(form.retencion_isr_pct),
+        retencion_itbis_pct: Number(form.retencion_itbis_pct),
+      }
       if (isEdit) {
         await api.put(`/proveedores/${proveedor.id}`, payload)
         toast.success('Proveedor actualizado')
@@ -103,15 +149,53 @@ function ModalProveedor({ proveedor, onClose, onDone }) {
             <Label>Dirección</Label>
             <input className="input" value={form.direccion} onChange={e => set('direccion', e.target.value)} />
           </div>
+
+          <div style={{ gridColumn: '1/-1', borderTop: '1px solid #e5e7eb', paddingTop: 14, marginTop: 4 }}>
+            <Label style={{ fontWeight: 700, fontSize: 13 }}>Clasificación Fiscal</Label>
+          </div>
+          <div>
+            <Label>Tipo de Persona</Label>
+            <select className="select" value={form.tipo_persona} onChange={e => set('tipo_persona', e.target.value)}>
+              {TIPO_PERSONA_OPTS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label>Tipo de Contribuyente</Label>
+            <select className="select" value={form.tipo_contribuyente} onChange={e => set('tipo_contribuyente', e.target.value)}>
+              {TIPO_CONTRIBUYENTE_OPTS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label>Moneda por Defecto</Label>
+            <select className="select" value={form.moneda_default} onChange={e => set('moneda_default', e.target.value)}>
+              {MONEDA_OPTS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label>e-CF por Defecto</Label>
+            <select className="select" value={form.tipo_ncf_default} onChange={e => set('tipo_ncf_default', e.target.value)}>
+              {ECF_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+
+          <div style={{ gridColumn: '1/-1', borderTop: '1px solid #e5e7eb', paddingTop: 14, marginTop: 4 }}>
+            <Label style={{ fontWeight: 700, fontSize: 13 }}>Retenciones (Ley 30-26)</Label>
+          </div>
+          <div>
+            <Label>Retención ISR (%)</Label>
+            <input className="input" type="number" min="0" max="100" step="0.01" value={form.retencion_isr_pct} onChange={e => set('retencion_isr_pct', e.target.value)} />
+          </div>
+          <div>
+            <Label>Retención ITBIS (%)</Label>
+            <input className="input" type="number" min="0" max="100" step="0.01" value={form.retencion_itbis_pct} onChange={e => set('retencion_itbis_pct', e.target.value)} />
+          </div>
+
+          <div style={{ gridColumn: '1/-1', borderTop: '1px solid #e5e7eb', paddingTop: 14, marginTop: 4 }}>
+            <Label style={{ fontWeight: 700, fontSize: 13 }}>Contabilidad</Label>
+          </div>
           <div>
             <Label>Condición de Pago (días)</Label>
             <input className="input" type="number" min="0" value={form.condicion_pago_dias} onChange={e => set('condicion_pago_dias', Number(e.target.value))} />
-          </div>
-          <div>
-            <Label>Tipo NCF por Defecto</Label>
-            <select className="select" value={form.tipo_ncf_default} onChange={e => set('tipo_ncf_default', e.target.value)}>
-              {NCF_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
           </div>
           <div>
             <Label>Cuenta CxP (Contable)</Label>
@@ -223,14 +307,20 @@ function ModalDetalle({ proveedor, onClose }) {
 
   useEffect(() => { loadResumen() }, [loadResumen])
 
+  const tipoPersonaLabel = proveedor.tipo_persona === 'fisica' ? 'Persona Física' : 'Persona Jurídica'
+  const tipoContribLabel = proveedor.tipo_contribuyente === 'informal' ? 'Informal' : 'Formal'
   const fields = [
     { label: 'RNC', value: proveedor.rnc || '—' },
+    { label: 'Tipo', value: `${tipoPersonaLabel} — ${tipoContribLabel}` },
     { label: 'Teléfono', value: proveedor.telefono || '—' },
     { label: 'Email', value: proveedor.email || '—' },
     { label: 'Contacto', value: proveedor.contacto || '—' },
     { label: 'Dirección', value: proveedor.direccion || '—' },
+    { label: 'Moneda', value: proveedor.moneda_default || 'DOP' },
     { label: 'Condición Pago', value: `${proveedor.condicion_pago_dias || 30} días` },
-    { label: 'NCF Default', value: proveedor.tipo_ncf_default || 'B11' },
+    { label: 'e-CF Default', value: proveedor.tipo_ncf_default || 'E31' },
+    { label: 'Ret. ISR', value: `${proveedor.retencion_isr_pct ?? 0}%` },
+    { label: 'Ret. ITBIS', value: `${proveedor.retencion_itbis_pct ?? 30}%` },
   ]
   return (
     <Modal title={proveedor.nombre} onClose={onClose} width={750}>
@@ -295,7 +385,7 @@ function ModalDetalle({ proveedor, onClose }) {
                         <div style={{ marginLeft: 24, padding: '6px 12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, marginTop: 2 }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, fontSize: 11, marginBottom: 6 }}>
                             <div><span style={{ color: '#9ca3af' }}>Factura:</span> {c.num_factura || '—'}</div>
-                            <div><span style={{ color: '#9ca3af' }}>NCF:</span> {c.ncf || '—'} ({c.tipo_ncf})</div>
+                            <div><span style={{ color: '#9ca3af' }}>e-CF:</span> {c.ncf || '—'} ({c.tipo_ncf})</div>
                             <div><span style={{ color: '#9ca3af' }}>Vence:</span> {c.fecha_vencimiento || '—'}</div>
                           </div>
                           {c.pagos?.length > 0 ? (
@@ -412,7 +502,7 @@ function TabProveedores() {
               <th>RNC</th>
               <th>Teléfono</th>
               <th>Contacto</th>
-              <th>NCF</th>
+              <th>e-CF</th>
               <th>Pago</th>
               <th></th>
             </tr>
@@ -431,7 +521,7 @@ function TabProveedores() {
                 <td style={{ fontSize: 12, color: '#6b7280' }}>{p.rnc || '—'}</td>
                 <td style={{ fontSize: 12 }}>{p.telefono || '—'}</td>
                 <td style={{ fontSize: 12 }}>{p.contacto || '—'}</td>
-                <td><span style={{ background: '#eff6ff', color: '#1e40af', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{p.tipo_ncf_default || 'B11'}</span></td>
+                <td><span style={{ background: '#eff6ff', color: '#1e40af', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{p.tipo_ncf_default || 'E31'}</span></td>
                 <td style={{ fontSize: 12 }}>{p.condicion_pago_dias || 30}d</td>
                 <td onClick={e => e.stopPropagation()}>
                   <div style={{ display: 'flex', gap: 4 }}>

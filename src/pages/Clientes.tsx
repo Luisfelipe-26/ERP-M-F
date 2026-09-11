@@ -22,18 +22,17 @@ const Label = ({ children }) => (
   <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>{children}</label>
 )
 
-const NCF_TIPOS = [
-  { value: 'B01', label: 'B01 — Crédito Fiscal' },
-  { value: 'B02', label: 'B02 — Consumidor Final' },
-  { value: 'B04', label: 'B04 — Notas de Crédito' },
-  { value: 'B11', label: 'B11 — Compras' },
-  { value: 'B14', label: 'B14 — Régimen Especial' },
-  { value: 'B15', label: 'B15 — Gubernamental' },
+const ECF_TIPOS = [
+  { value: 'E31', label: 'E31 — Crédito Fiscal' },
+  { value: 'E32', label: 'E32 — Consumidor Final' },
+  { value: 'E34', label: 'E34 — Nota de Crédito' },
+  { value: 'E44', label: 'E44 — Régimen Especial' },
+  { value: 'E45', label: 'E45 — Gubernamental' },
 ]
 
 const emptyForm = {
   nombre: '', rnc_cedula: '', tipo_rnc: 'RNC', direccion: '', telefono: '',
-  email: '', contacto: '', condicion_pago_dias: 30, tipo_ncf_default: 'B01',
+  email: '', contacto: '', condicion_pago_dias: 30, tipo_ncf_default: 'E31',
   cuenta_cxc_id: '', notas: '',
 }
 
@@ -48,7 +47,7 @@ function ModalCliente({ cliente, onClose, onDone }) {
     email: cliente.email || '',
     contacto: cliente.contacto || '',
     condicion_pago_dias: cliente.condicion_pago_dias || 30,
-    tipo_ncf_default: cliente.tipo_ncf_default || 'B01',
+    tipo_ncf_default: cliente.tipo_ncf_default || 'E31',
     cuenta_cxc_id: cliente.cuenta_cxc_id || '',
     notas: cliente.notas || '',
   } : { ...emptyForm })
@@ -123,7 +122,7 @@ function ModalCliente({ cliente, onClose, onDone }) {
           <div>
             <Label>Tipo NCF por Defecto</Label>
             <select className="select" value={form.tipo_ncf_default} onChange={e => set('tipo_ncf_default', e.target.value)}>
-              {NCF_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {ECF_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
           <div>
