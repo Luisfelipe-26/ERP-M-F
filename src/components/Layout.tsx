@@ -1,7 +1,7 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import {
-  LayoutDashboard, MapPin, Users, Package, Wrench, ClipboardList, LogOut, Leaf,
+  LayoutDashboard, MapPin, Users, Package, Wrench, ClipboardList, LogOut, Leaf, Menu,
   DollarSign, TrendingUp, Warehouse, CloudSun, Bug, Droplets, BarChart3,
   UserCheck, Landmark, Truck, BookOpen, Building2, PiggyBank, Bell, X, Settings, Shield
 } from 'lucide-react'
@@ -9,36 +9,57 @@ import { useAuth } from '../contexts/AuthContext'
 import api from '../api'
 
 const nav: any[] = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  { to: '/ordenes', icon: ClipboardList, label: 'Órdenes de Trabajo' },
-  { to: '/costos', icon: TrendingUp, label: 'Costos por Campo' },
-  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-  { to: '/nomina', icon: DollarSign, label: 'Nómina' },
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true, modulo: 'dashboard' },
+  { to: '/ordenes', icon: ClipboardList, label: 'Órdenes de Trabajo', modulo: 'ordenes' },
+  { to: '/costos', icon: TrendingUp, label: 'Costos por Campo', modulo: 'costos' },
+  { to: '/analytics', icon: BarChart3, label: 'Analytics', modulo: 'analytics' },
+  { to: '/nomina', icon: DollarSign, label: 'Nómina', modulo: 'nomina' },
   { divider: true, label: 'AGRONÓMICO' },
-  { to: '/clima', icon: CloudSun, label: 'Clima' },
-  { to: '/sanidad', icon: Bug, label: 'Sanidad (MIP)' },
-  { to: '/riego', icon: Droplets, label: 'Riego' },
+  { to: '/clima', icon: CloudSun, label: 'Clima', modulo: 'clima' },
+  { to: '/sanidad', icon: Bug, label: 'Sanidad (MIP)', modulo: 'sanidad' },
+  { to: '/riego', icon: Droplets, label: 'Riego', modulo: 'riego' },
   { divider: true, label: 'FINANZAS' },
-  { to: '/contabilidad', icon: BookOpen, label: 'Contabilidad' },
-  { to: '/activos-fijos', icon: Building2, label: 'Activos Fijos' },
-  { to: '/presupuesto', icon: PiggyBank, label: 'Presupuesto' },
-  { to: '/clientes', icon: UserCheck, label: 'Clientes' },
-  { to: '/proveedores', icon: Truck, label: 'Proveedores' },
-  { to: '/efectivo-banco', icon: Landmark, label: 'Efectivo y Banco' },
+  { to: '/contabilidad', icon: BookOpen, label: 'Contabilidad', modulo: 'contabilidad' },
+  { to: '/activos-fijos', icon: Building2, label: 'Activos Fijos', modulo: 'activos_fijos' },
+  { to: '/presupuesto', icon: PiggyBank, label: 'Presupuesto', modulo: 'presupuesto' },
+  { to: '/clientes', icon: UserCheck, label: 'Clientes', modulo: 'clientes' },
+  { to: '/proveedores', icon: Truck, label: 'Proveedores', modulo: 'proveedores' },
+  { to: '/efectivo-banco', icon: Landmark, label: 'Efectivo y Banco', modulo: 'efectivo_banco' },
   { divider: true, label: 'MAESTROS' },
-  { to: '/campos', icon: MapPin, label: 'Campos' },
-  { to: '/trabajadores', icon: Users, label: 'Trabajadores' },
-  { to: '/productos', icon: Package, label: 'Productos' },
-  { to: '/inventario', icon: Warehouse, label: 'Inventario' },
-  { to: '/actividades', icon: Wrench, label: 'Actividades' },
+  { to: '/campos', icon: MapPin, label: 'Campos', modulo: 'campos' },
+  { to: '/trabajadores', icon: Users, label: 'Trabajadores', modulo: 'trabajadores' },
+  { to: '/productos', icon: Package, label: 'Productos', modulo: 'productos' },
+  { to: '/inventario', icon: Warehouse, label: 'Inventario', modulo: 'inventario' },
+  { to: '/actividades', icon: Wrench, label: 'Actividades', modulo: 'actividades' },
   { divider: true, label: 'ADMIN' },
-  { to: '/configuracion', icon: Settings, label: 'Configuración' },
-  { to: '/admin', icon: Shield, label: 'Usuarios y Perfiles' },
+  { to: '/configuracion', icon: Settings, label: 'Configuración', modulo: 'configuracion' },
+  { to: '/admin', icon: Shield, label: 'Usuarios y Perfiles', modulo: 'admin' },
 ]
 
 export default function Layout() {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const location = useLocation()
+  const { user, hasModule, logout } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  // Cierra el drawer móvil al cambiar de ruta
+  useEffect(() => { setMenuOpen(false) }, [location.pathname])
+
+  // Bloquea el scroll del body mientras el drawer está abierto (solo móvil)
+  useEffect(() => {
+    if (menuOpen && window.innerWidth < 1024) {
+      const prev = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => { document.body.style.overflow = prev }
+    }
+  }, [menuOpen])
+
+  const visibleNav = nav.filter(item => {
+    if (item.divider) return true
+    // Always show Dashboard so users always have a landing page
+    if (item.end) return true
+    return hasModule(item.modulo)
+  })
 
   function handleLogout() {
     logout()
@@ -47,12 +68,27 @@ export default function Layout() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
+      {/* Botón menú (solo móvil/tablet) */}
+      <button
+        className={`menu-toggle${menuOpen ? ' open' : ''}`}
+        onClick={() => setMenuOpen(v => !v)}
+        aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
+      >
+        {menuOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
+      {/* Backdrop (solo móvil/tablet) */}
+      {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
+
       {/* Sidebar */}
-      <aside style={{
-        width: 240, background: 'linear-gradient(180deg, #14532d 0%, #166534 100%)',
-        display: 'flex', flexDirection: 'column', padding: '24px 12px', flexShrink: 0,
-        position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 10, overflowY: 'auto'
-      }}>
+      <aside
+        className={`app-sidebar${menuOpen ? ' open' : ''}`}
+        style={{
+          width: 240, background: 'linear-gradient(180deg, #14532d 0%, #166534 100%)',
+          display: 'flex', flexDirection: 'column', padding: '24px 12px', flexShrink: 0,
+          position: 'fixed', top: 0, left: 0, height: '100vh', overflowY: 'auto'
+        }}
+      >
         <div style={{ padding: '0 8px 28px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
             <div style={{
@@ -69,14 +105,14 @@ export default function Layout() {
         </div>
 
         <nav style={{ flex: 1, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {nav.map((item, i) =>
+          {visibleNav.map((item, i) =>
             item.divider ? (
               <div key={i} style={{
                 color: '#86efac', fontSize: 10, fontWeight: 700, letterSpacing: 1,
                 padding: '14px 16px 4px', textTransform: 'uppercase', opacity: 0.7
               }}>{item.label}</div>
             ) : (
-              <NavLink key={item.to} to={item.to} end={item.end}
+              <NavLink key={item.to} to={item.to} end={item.end} onClick={() => setMenuOpen(false)}
                 className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
                 <item.icon size={18} />
                 {item.label}
@@ -98,9 +134,9 @@ export default function Layout() {
       </aside>
 
       {/* Main */}
-      <div style={{ marginLeft: 240, flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="app-main" style={{ flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         <NotificationBar />
-        <main style={{ flex: 1, padding: '32px' }}>
+        <main className="main-content" style={{ flex: 1 }}>
           <Outlet />
         </main>
       </div>
@@ -133,7 +169,7 @@ function NotificationBar() {
   const typeLabels: Record<string, string> = { cxp_vencida: 'CxP Vencida', cxc_vencida: 'CxC Vencida', inventario_bajo: 'Stock Bajo', periodo_abierto: 'Período' }
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'flex', justifyContent: 'flex-end', padding: '10px 32px 0' }}>
+    <div ref={ref} style={{ position: 'relative', display: 'flex', justifyContent: 'flex-end', padding: '10px clamp(16px, 4vw, 32px) 0' }}>
       <button onClick={() => setOpen(!open)} style={{
         position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 6,
       }}>
@@ -148,7 +184,7 @@ function NotificationBar() {
       </button>
       {open && (
         <div style={{
-          position: 'absolute', top: 42, right: 32, width: 360, maxHeight: 420, overflowY: 'auto',
+          position: 'absolute', top: 42, right: 16, width: 'min(360px, calc(100vw - 32px))', maxHeight: 420, overflowY: 'auto',
           background: '#fff', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
           border: '1px solid #e5e7eb', zIndex: 100,
         }}>
