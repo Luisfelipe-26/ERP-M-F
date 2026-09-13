@@ -1560,7 +1560,7 @@ function TabReportesCompras() {
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
                     <Pie data={dataDimension} dataKey="total" nameKey="nombre" cx="50%" cy="50%"
-                      outerRadius={90} label={({ nombre, porcentaje }) => `${nombre} (${porcentaje}%)`}
+                      outerRadius={90} label={(p: any) => `${p.nombre} (${p.porcentaje}%)`}
                       labelLine={{ strokeWidth: 1 }} style={{ fontSize: 11 }}>
                       {dataDimension.map((_, i) => <Cell key={i} fill={REPORT_COLORS[i % REPORT_COLORS.length]} />)}
                     </Pie>

@@ -1041,7 +1041,7 @@ export default function Presupuesto() {
                             )} return <td key={c.label} style={tdR}>{fmt(c.idx.reduce((s:number,i:number)=>s+cellVal(p,MK[i]),0))}</td>
                           })}
                           <td style={{ ...tdR, fontWeight: 700, color: '#0f172a' }}>{fmt(rowTotal(p))}</td>
-                          <td style={{ ...S.td, textAlign: 'center' }}>{p.estado !== 'aprobado' ? <button className="btn-icon" onClick={() => del(p.id)}><Trash2 size={13} /></button> : <Lock size={12} color="#94a3b8" title="Aprobado" />}</td>
+                          <td style={{ ...S.td, textAlign: 'center' }}>{p.estado !== 'aprobado' ? <button className="btn-icon" onClick={() => del(p.id)}><Trash2 size={13} /></button> : <span title="Aprobado"><Lock size={12} color="#94a3b8" /></span>}</td>
                         </tr>
                       )
                     }) : [])
