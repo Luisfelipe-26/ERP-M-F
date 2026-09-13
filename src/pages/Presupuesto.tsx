@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import api from '../api'
+import api, { apiError } from '../api'
 import toast from 'react-hot-toast'
 import {
   PiggyBank, Plus, Trash2, X, RefreshCw, Save, Download,
@@ -197,7 +197,7 @@ export default function Presupuesto() {
       if (unFiltro) url += `&unidad_negocio_id=${unFiltro}`
       if (depFiltro) url += `&departamento_id=${depFiltro}`
       setVsReal((await api.get(url)).data)
-    } catch { toast.error('Error cargando control') }
+    } catch (err) { toast.error(apiError(err, 'Error cargando control'), { duration: 6000 }) }
     finally { setLoading(false) }
   }, [anio, campoFiltro, unFiltro, depFiltro, escenario])
 
@@ -248,7 +248,7 @@ export default function Presupuesto() {
       const [ej, mv] = await Promise.all([api.get(ejUrl), api.get(movUrl)])
       setEjData(ej.data)
       setEjMovs(mv.data.items || mv.data)
-    } catch { toast.error('Error cargando ejecución') }
+    } catch (err) { toast.error(apiError(err, 'Error cargando ejecución'), { duration: 6000 }) }
     finally { setLoading(false) }
   }, [anio, ejMes, ejAgrupar, campoFiltro, unFiltro, depFiltro, ejTipoFiltro, ejCuentaFiltro])
 
