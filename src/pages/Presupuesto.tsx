@@ -154,6 +154,9 @@ export default function Presupuesto() {
   const [ejMovs, setEjMovs] = useState<any[]>([])
   const [ejTipoFiltro, setEjTipoFiltro] = useState('')
   const [ejCuentaFiltro, setEjCuentaFiltro] = useState('')
+  const [ejMes, setEjMes] = useState('')
+  const [ejAgrupar, setEjAgrupar] = useState('linea')
+  const [ejDetalle, setEjDetalle] = useState<any>(null)
 
   /* ── loaders ── */
   const loadBase = useCallback(async () => {
@@ -234,7 +237,8 @@ export default function Presupuesto() {
   const loadEjecucion = useCallback(async () => {
     setLoading(true)
     try {
-      let ejUrl = `/contabilidad/ejecucion-presupuestaria?anio=${anio}`
+      let ejUrl = `/contabilidad/ejecucion-presupuestaria?anio=${anio}&agrupar=${ejAgrupar}`
+      if (ejMes) ejUrl += `&mes=${ejMes}`
       if (campoFiltro) ejUrl += `&campo_id=${campoFiltro}`
       if (unFiltro) ejUrl += `&unidad_negocio_id=${unFiltro}`
       if (depFiltro) ejUrl += `&departamento_id=${depFiltro}`
@@ -246,7 +250,37 @@ export default function Presupuesto() {
       setEjMovs(mv.data.items || mv.data)
     } catch { toast.error('Error cargando ejecución') }
     finally { setLoading(false) }
-  }, [anio, campoFiltro, unFiltro, depFiltro, ejTipoFiltro, ejCuentaFiltro])
+  }, [anio, ejMes, ejAgrupar, campoFiltro, unFiltro, depFiltro, ejTipoFiltro, ejCuentaFiltro])
+
+  async function abrirDetalleLinea(r: any) {
+    try {
+      const p = new URLSearchParams({ anio: String(anio), cuenta_id: String(r.cuenta_id) })
+      if (ejMes) p.set('mes', ejMes)
+      if (r.campo_id) p.set('campo_id', r.campo_id)
+      if (r.unidad_negocio_id) p.set('unidad_negocio_id', String(r.unidad_negocio_id))
+      if (r.departamento_id) p.set('departamento_id', String(r.departamento_id))
+      const { data } = await api.get(`/contabilidad/ejecucion-presupuestaria/detalle?${p}`)
+      setEjDetalle({ linea: r, ...data })
+    } catch { toast.error('Error cargando el detalle de la línea') }
+  }
+
+  async function exportarEjecucion() {
+    try {
+      const p = new URLSearchParams({ anio: String(anio), agrupar: ejAgrupar })
+      if (ejMes) p.set('mes', ejMes)
+      if (campoFiltro) p.set('campo_id', campoFiltro)
+      if (unFiltro) p.set('unidad_negocio_id', unFiltro)
+      if (depFiltro) p.set('departamento_id', depFiltro)
+      const { data } = await api.get(`/contabilidad/ejecucion-presupuestaria/export?${p}`,
+                                     { responseType: 'blob' })
+      const url = URL.createObjectURL(data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `ejecucion_presupuestaria_${anio}${ejMes ? '_m' + ejMes : ''}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { toast.error('Error al exportar') }
+  }
 
   useEffect(() => { loadBase() }, [loadBase])
   useEffect(() => { loadEscenarios() }, [loadEscenarios])
@@ -1256,8 +1290,31 @@ export default function Presupuesto() {
             )
           })()}
 
+          {/* Período, agrupación y export */}
+          <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select className="select" style={{ width: 190 }} value={ejMes} onChange={e => setEjMes(e.target.value)}>
+              <option value="">Año completo</option>
+              {['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+                'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'].map((m, i) => (
+                <option key={m} value={i + 1}>Acumulado a {m}</option>
+              ))}
+            </select>
+            <select className="select" style={{ width: 200 }} value={ejAgrupar} onChange={e => setEjAgrupar(e.target.value)}>
+              <option value="linea">Por línea presupuestaria</option>
+              <option value="cuenta">Consolidado por cuenta</option>
+            </select>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              <button className="btn-secondary" onClick={exportarEjecucion} disabled={!ejData.length}>
+                Exportar Excel
+              </button>
+              <button className="btn-secondary" onClick={() => window.print()} disabled={!ejData.length}>
+                Imprimir / PDF
+              </button>
+            </div>
+          </div>
+
           {/* Filtros de movimientos */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
             <select className="select" style={{ width: 160 }} value={ejTipoFiltro} onChange={e => { setEjTipoFiltro(e.target.value); setTimeout(loadEjecucion, 50) }}>
               <option value="">Todos los tipos</option>
               {['APROPIACION', 'COMPROMISO', 'DEVENGADO', 'PAGADO', 'TRANSFERENCIA', 'MODIFICACION', 'LIBERACION'].map(t => (
@@ -1274,7 +1331,13 @@ export default function Presupuesto() {
           {ejData.length > 0 && (
             <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
-                Ejecución por Cuenta — {anio}
+                Ejecución presupuestaria {anio} — {ejMes
+                  ? `acumulado a ${['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                      'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][Number(ejMes)]}`
+                  : 'año completo'}
+                <span className="no-print" style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 8, fontSize: 11 }}>
+                  · clic en una fila para ver sus documentos
+                </span>
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table>
@@ -1282,22 +1345,36 @@ export default function Presupuesto() {
                     <tr>
                       <th style={{ minWidth: 80 }}>Código</th>
                       <th style={{ minWidth: 150 }}>Cuenta</th>
-                      <th style={{ textAlign: 'right' }}>Apropiado</th>
+                      {ejAgrupar === 'linea' && <th style={{ minWidth: 130 }}>Centro de costo</th>}
+                      <th style={{ textAlign: 'right' }}>Presupuestado</th>
                       <th style={{ textAlign: 'right' }}>Comprometido</th>
-                      <th style={{ textAlign: 'right' }}>Devengado</th>
+                      <th style={{ textAlign: 'right' }}>Ejecutado</th>
                       <th style={{ textAlign: 'right' }}>Pagado</th>
                       <th style={{ textAlign: 'right' }}>Disponible</th>
                       <th style={{ width: 80, textAlign: 'right' }}>% Ejec.</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {ejData.map((r: any) => {
-                      const pctEj = r.apropiado > 0 ? Math.round(((r.comprometido + r.devengado) / r.apropiado) * 100) : 0
+                    {ejData.map((r: any, i: number) => {
+                      const pctEj = Math.round(r.pct_ejecucion ?? 0)
                       const pctColor = pctEj >= (config.umbral_bloqueo || 100) ? '#dc2626' : pctEj >= (config.umbral_alerta || 85) ? '#d97706' : '#22c55e'
+                      const dims = [r.campo_nombre || r.campo_id, r.unidad_negocio_nombre, r.departamento_nombre].filter(Boolean)
                       return (
-                        <tr key={r.cuenta_id}>
+                        <tr key={`${r.cuenta_id}-${r.campo_id || ''}-${r.unidad_negocio_id || ''}-${r.departamento_id || ''}-${i}`}
+                            onClick={() => abrirDetalleLinea(r)} style={{ cursor: 'pointer' }}
+                            title="Ver las OC y facturas de esta línea">
                           <td style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700 }}>{r.cuenta_codigo}</td>
-                          <td style={{ fontSize: 12 }}>{r.cuenta_nombre}</td>
+                          <td style={{ fontSize: 12 }}>
+                            {r.cuenta_nombre}
+                            {r.sin_presupuesto && (
+                              <span style={{ marginLeft: 6, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 5, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
+                                sin presupuesto
+                              </span>
+                            )}
+                          </td>
+                          {ejAgrupar === 'linea' && (
+                            <td style={{ fontSize: 11, color: '#64748b' }}>{dims.length ? dims.join(' · ') : '—'}</td>
+                          )}
                           <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.apropiado)}</td>
                           <td style={{ textAlign: 'right', color: '#7c3aed', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.comprometido)}</td>
                           <td style={{ textAlign: 'right', color: '#b45309', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.devengado)}</td>
@@ -2049,6 +2126,81 @@ export default function Presupuesto() {
           )}
         </Modal>
       )}
+
+      {ejDetalle && (() => {
+        const L = ejDetalle.linea
+        const dims = [L.campo_nombre || L.campo_id, L.unidad_negocio_nombre, L.departamento_nombre].filter(Boolean)
+        const COLOR: Record<string, string> = {
+          COMPROMISO: '#7c3aed', LIBERACION: '#94a3b8', DEVENGADO: '#b45309',
+          PAGADO: '#166534', APROPIACION: '#1e40af',
+        }
+        return (
+          <Modal title={`${L.cuenta_codigo} — ${L.cuenta_nombre}`}
+                 subtitle={`${dims.length ? dims.join(' · ') + ' — ' : ''}${ejDetalle.total} movimiento${ejDetalle.total === 1 ? '' : 's'}`}
+                 onClose={() => setEjDetalle(null)} width={860}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
+              {[
+                { l: 'Presupuestado', v: L.apropiado, c: '#1e40af' },
+                { l: 'Comprometido', v: ejDetalle.comprometido, c: '#7c3aed' },
+                { l: 'Ejecutado', v: ejDetalle.devengado, c: '#b45309' },
+                { l: 'Disponible', v: L.disponible, c: L.disponible < 0 ? '#dc2626' : '#166534' },
+              ].map(k => (
+                <div key={k.l} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', borderLeft: `3px solid ${k.c}` }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>{k.l}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: k.c, fontVariantNumeric: 'tabular-nums' }}>{fmt(k.v)}</div>
+                </div>
+              ))}
+            </div>
+
+            {ejDetalle.items.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                Esta línea no tiene movimientos en el período
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead><tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
+                    <th style={thL}>Fecha</th>
+                    <th style={thL}>Tipo</th>
+                    <th style={thL}>Documento</th>
+                    <th style={thL}>Proveedor</th>
+                    <th style={thL}>Estado</th>
+                    <th style={thR}>Monto</th>
+                  </tr></thead>
+                  <tbody>
+                    {ejDetalle.items.map((it: any) => (
+                      <tr key={it.id}>
+                        <td style={{ ...tdL, whiteSpace: 'nowrap' }}>{it.fecha ? new Date(it.fecha).toLocaleDateString('es-DO') : '—'}</td>
+                        <td style={tdL}>
+                          <span style={{ fontSize: 9, background: (COLOR[it.tipo] || '#475569') + '18', color: COLOR[it.tipo] || '#475569', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>{it.tipo}</span>
+                        </td>
+                        <td style={{ ...tdL, fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color: '#166534' }}>
+                          {it.documento || '—'}
+                          {it.oc_vinculada && <span style={{ color: '#94a3b8', fontWeight: 400 }}> ← {it.oc_vinculada}</span>}
+                        </td>
+                        <td style={{ ...tdL, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.proveedor || '—'}</td>
+                        <td style={{ ...tdL, fontSize: 11, color: '#64748b' }}>{it.estado_documento || '—'}</td>
+                        <td style={{ ...tdR, fontWeight: 700, color: it.monto < 0 ? '#94a3b8' : '#0f172a' }}>{fmt(it.monto)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Modal>
+        )
+      })()}
+
+      <style>{`
+        @media print {
+          aside, button, select, .no-print { display: none !important; }
+          main { margin-left: 0 !important; padding: 0 !important; }
+          table { font-size: 10px !important; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; }
+          @page { size: landscape; margin: 12mm; }
+        }
+      `}</style>
     </div>
   )
 }
