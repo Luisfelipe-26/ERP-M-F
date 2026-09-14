@@ -50,7 +50,9 @@ function PrivateRoute({ children }) {
 function PermissionRoute({ children, modulo = '', permisos = [] }: { children: any; modulo?: string; permisos?: string[] }) {
   const { isAuthenticated, hasModule, hasPermission } = useAuth()
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  const allowed = permisos
+  // `permisos` tiene default [] y un array vacío es truthy: comprobar la longitud,
+  // no la verdad del valor, o toda ruta declarada solo con `modulo=` queda denegada.
+  const allowed = permisos.length > 0
     ? permisos.some((p) => hasPermission(p))
     : modulo
       ? hasModule(modulo)
