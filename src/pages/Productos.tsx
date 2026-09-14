@@ -3,7 +3,12 @@ import api from '../api'
 import toast from 'react-hot-toast'
 import { Plus, Edit2, Trash2, ArrowDown, ArrowUp, AlertTriangle, Search } from 'lucide-react'
 
-const empty = { id_prod: '', producto: '', tipo: '', unidad: 'L', costo_unitario: '', stock_actual: 0, stock_minimo: 0, proveedor: '', concentracion: '' }
+const empty: Record<string, any> = { id_prod: '', producto: '', tipo: '', unidad: 'L', costo_unitario: '', stock_actual: 0, stock_minimo: 0, proveedor: '', proveedor_id: '', concentracion: '', impuesto_compra: 'itbis_18', categoria_id: '' }
+const REGIMENES_ITBIS = [
+  { v: 'itbis_18', l: 'ITBIS 18%' },
+  { v: 'itbis_0', l: 'ITBIS 0%' },
+  { v: 'exento', l: 'Exento' },
+]
 
 const TIPOS = ['FERTILIZANTE', 'FUNGICIDAS', 'INSECTICIDAS', 'HERBICIDA', 'BIOESTIMULANTE', 'PBZ', 'REGULADOR HORMONAL', 'OTRO']
 
@@ -19,12 +24,20 @@ export default function Productos() {
   const [filtroTipo, setFiltroTipo] = useState('')
   const [buscar, setBuscar] = useState('')
 
-  useEffect(() => { load() }, [])
+  const [categorias, setCategorias] = useState<any[]>([])
+  const [proveedores, setProveedores] = useState<any[]>([])
+
+  useEffect(() => { load(); loadCatalogos() }, [])
   async function load() {
     try {
       const { data } = await api.get('/productos')
       setItems(data)
     } catch { toast.error('Error al cargar productos') }
+  }
+  async function loadCatalogos() {
+    const [c, p] = await Promise.allSettled([api.get('/categorias-producto'), api.get('/proveedores')])
+    if (c.status === 'fulfilled') setCategorias(c.value.data)
+    if (p.status === 'fulfilled') setProveedores(p.value.data)
   }
 
   function openNew() { setForm(empty); setEditing(null); setModal(true) }
@@ -34,7 +47,14 @@ export default function Productos() {
   async function save(e) {
     e.preventDefault()
     try {
-      const payload = { ...form, costo_unitario: Number(form.costo_unitario) || null, stock_actual: Number(form.stock_actual), stock_minimo: Number(form.stock_minimo) }
+      const payload = {
+        ...form,
+        costo_unitario: Number(form.costo_unitario) || null,
+        stock_actual: Number(form.stock_actual),
+        stock_minimo: Number(form.stock_minimo),
+        proveedor_id: form.proveedor_id ? Number(form.proveedor_id) : null,
+        categoria_id: form.categoria_id ? Number(form.categoria_id) : null,
+      }
       if (editing) await api.put(`/productos/${editing}`, payload)
       else await api.post('/productos', payload)
       toast.success(editing ? 'Producto actualizado' : 'Producto creado')
@@ -174,9 +194,35 @@ export default function Productos() {
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Stock Mínimo</label>
                 <input className="input" type="number" step="0.01" value={form.stock_minimo} onChange={e => setForm({ ...form, stock_minimo: e.target.value })} />
               </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Régimen ITBIS en compras</label>
+                <select className="select" value={form.impuesto_compra || 'itbis_18'} onChange={e => setForm({ ...form, impuesto_compra: e.target.value })}>
+                  {REGIMENES_ITBIS.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}
+                </select>
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>Con este régimen nacen sus líneas en las órdenes de compra</p>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Categoría</label>
+                <select className="select" value={form.categoria_id || ''} onChange={e => setForm({ ...form, categoria_id: e.target.value })}>
+                  <option value="">Sin categoría</option>
+                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Proveedor</label>
-                <input className="input" value={form.proveedor || ''} onChange={e => setForm({ ...form, proveedor: e.target.value })} />
+                <select className="select" value={form.proveedor_id || ''}
+                  onChange={e => {
+                    const p = proveedores.find(x => String(x.id) === e.target.value)
+                    setForm({ ...form, proveedor_id: e.target.value, proveedor: p ? p.nombre : '' })
+                  }}>
+                  <option value="">Sin proveedor habitual</option>
+                  {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+                {form.proveedor && !form.proveedor_id && (
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#b45309' }}>
+                    Registrado como "{form.proveedor}" sin vínculo — elige uno de la lista para vincularlo
+                  </p>
+                )}
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
                 <button type="button" className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>
