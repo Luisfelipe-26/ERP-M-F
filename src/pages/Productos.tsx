@@ -15,7 +15,7 @@ export default function Productos() {
   const [movModal, setMovModal] = useState(null)
   const [form, setForm] = useState(empty)
   const [editing, setEditing] = useState(null)
-  const [movForm, setMovForm] = useState({ tipo: 'entrada', cantidad: '', referencia: '', observacion: '' })
+  const [movForm, setMovForm] = useState({ tipo: 'entrada', cantidad: '', costo_unitario: '', motivo: 'Merma', referencia: '', observacion: '' })
   const [filtroTipo, setFiltroTipo] = useState('')
   const [buscar, setBuscar] = useState('')
 
@@ -29,7 +29,7 @@ export default function Productos() {
 
   function openNew() { setForm(empty); setEditing(null); setModal(true) }
   function openEdit(p) { setForm({ ...p }); setEditing(p.id_prod); setModal(true) }
-  function openMov(p) { setMovModal(p); setMovForm({ tipo: 'entrada', cantidad: '', referencia: '', observacion: '' }) }
+  function openMov(p) { setMovModal(p); setMovForm({ tipo: 'entrada', cantidad: '', costo_unitario: '', motivo: 'Merma', referencia: '', observacion: '' }) }
 
   async function save(e) {
     e.preventDefault()
@@ -45,7 +45,11 @@ export default function Productos() {
   async function registrarMov(e) {
     e.preventDefault()
     try {
-      await api.post(`/productos/${movModal.id_prod}/movimiento`, { ...movForm, cantidad: Number(movForm.cantidad) })
+      await api.post(`/productos/${movModal.id_prod}/movimiento`, {
+        ...movForm,
+        cantidad: Number(movForm.cantidad),
+        costo_unitario: movForm.costo_unitario === '' ? null : Number(movForm.costo_unitario),
+      })
       toast.success(`${movForm.tipo === 'entrada' ? 'Entrada' : 'Salida'} registrada`)
       setMovModal(null); load()
     } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
@@ -211,6 +215,25 @@ export default function Productos() {
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Cantidad ({movModal.unidad}) *</label>
                 <input className="input" type="number" step="0.01" min="0.01" value={movForm.cantidad} onChange={e => setMovForm({ ...movForm, cantidad: e.target.value })} required />
               </div>
+              {movForm.tipo === 'entrada' ? (
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Costo unitario de compra</label>
+                  <input className="input" type="number" step="0.01" min="0" value={movForm.costo_unitario}
+                    onChange={e => setMovForm({ ...movForm, costo_unitario: e.target.value })}
+                    placeholder={`Vacío = costo promedio actual (${movModal.costo_promedio ?? movModal.costo_unitario ?? 0})`} />
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>Recalcula el costo promedio ponderado del artículo</p>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Motivo de salida *</label>
+                  <select className="select" value={movForm.motivo} onChange={e => setMovForm({ ...movForm, motivo: e.target.value })} required>
+                    {['Merma', 'Vencimiento', 'Devolucion Proveedor', 'Muestra', 'Uso No Productivo', 'Otro'].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>El consumo por orden de trabajo se registra desde la OT, no aquí</p>
+                </div>
+              )}
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Referencia (OT / Factura)</label>
                 <input className="input" value={movForm.referencia} onChange={e => setMovForm({ ...movForm, referencia: e.target.value })} placeholder="Ej: OT-100, FAC-001" />
