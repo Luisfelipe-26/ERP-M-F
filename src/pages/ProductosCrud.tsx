@@ -13,13 +13,20 @@ const StockBadge = ({ stock, minimo }) => {
   return <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>OK</span>
 }
 
-const empty = {
+const empty: Record<string, any> = {
   id_prod: '', producto: '', tipo: '', unidad: 'L',
   costo_unitario: '', stock_actual: 0, stock_minimo: 0,
   stock_maximo: '', proveedor: '', proveedor_id: '',
   concentracion: '', es_inventariable: true,
   cuenta_inventario_id: '', cuenta_costo_id: '', cuenta_ingreso_id: '',
+  categoria_id: '', impuesto_compra: 'itbis_18',
 }
+
+const REGIMENES_ITBIS = [
+  { v: 'itbis_18', l: 'ITBIS 18%' },
+  { v: 'itbis_0', l: 'ITBIS 0%' },
+  { v: 'exento', l: 'Exento' },
+]
 
 export default function ProductosCrud() {
   const [items, setItems] = useState([])
@@ -37,8 +44,13 @@ export default function ProductosCrud() {
   const [editingTipo, setEditingTipo] = useState(null)
   const [editTipoNombre, setEditTipoNombre] = useState('')
   const [cuentasGL, setCuentasGL] = useState([])
+  const [categorias, setCategorias] = useState<any[]>([])
 
-  useEffect(() => { load(); loadTipos(); loadProveedores(); loadCuentasGL() }, [])
+  useEffect(() => { load(); loadTipos(); loadProveedores(); loadCuentasGL(); loadCategorias() }, [])
+
+  async function loadCategorias() {
+    try { setCategorias((await api.get('/categorias-producto')).data) } catch { /* opcional */ }
+  }
 
   async function loadTipos() {
     try { const { data } = await api.get('/tipos-producto'); setTipos(data) }
@@ -109,6 +121,8 @@ export default function ProductosCrud() {
       cuenta_inventario_id: p.cuenta_inventario_id || '',
       cuenta_costo_id: p.cuenta_costo_id || '',
       cuenta_ingreso_id: p.cuenta_ingreso_id || '',
+      categoria_id: p.categoria_id || '',
+      impuesto_compra: p.impuesto_compra || 'itbis_18',
     })
     setEditing(p.id_prod); setModal(true)
   }
@@ -127,6 +141,7 @@ export default function ProductosCrud() {
         cuenta_inventario_id: form.cuenta_inventario_id ? Number(form.cuenta_inventario_id) : null,
         cuenta_costo_id: form.cuenta_costo_id ? Number(form.cuenta_costo_id) : null,
         cuenta_ingreso_id: form.cuenta_ingreso_id ? Number(form.cuenta_ingreso_id) : null,
+        categoria_id: form.categoria_id ? Number(form.categoria_id) : null,
       }
       if (editing) await api.put(`/inventario/articulos/${editing}`, payload)
       else await api.post('/inventario/articulos', payload)
@@ -378,6 +393,27 @@ export default function ProductosCrud() {
                   <option value="">Seleccionar...</option>
                   {proveedoresLista.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
                 </select>
+              </div>
+              {/* Compras */}
+              <div style={{ gridColumn: '1/-1', borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#166534', textTransform: 'uppercase', marginBottom: 8 }}>Compras</div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Régimen ITBIS en compras</label>
+                <select className="select" value={form.impuesto_compra || 'itbis_18'} onChange={e => setForm({ ...form, impuesto_compra: e.target.value })}>
+                  {REGIMENES_ITBIS.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}
+                </select>
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>Con este régimen nacen sus líneas en las órdenes de compra</p>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Categoría</label>
+                <select className="select" value={form.categoria_id || ''} onChange={e => setForm({ ...form, categoria_id: e.target.value })}>
+                  <option value="">— Sin categoría —</option>
+                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+                {categorias.length === 0 && (
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>Aún no hay categorías creadas</p>
+                )}
               </div>
               {/* Cuentas Contables */}
               <div style={{ gridColumn: '1/-1', borderTop: '1px solid #e5e7eb', paddingTop: 12, marginTop: 4 }}>
