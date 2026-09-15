@@ -40,10 +40,14 @@ export function apiError(err: any, contexto: string): string {
   if (!status) return `${contexto}: el servidor no respondió`
 
   const detail = err?.response?.data?.detail
-  const msg = typeof detail === 'string' ? detail : detail?.detail
+  // FastAPI devuelve un array en los 422 de validación: [{loc: [...], msg: '...'}]
+  const msg = typeof detail === 'string' ? detail
+    : Array.isArray(detail) ? detail.map((d: any) => `${(d.loc || []).slice(1).join('.')}: ${d.msg}`).join(' · ')
+    : detail?.detail
   if (status >= 500) return `${contexto}: el servidor falló (HTTP ${status}) — puede estar desactualizado`
   if (status === 403) return `${contexto}: no tienes permiso`
   if (status === 404) return `${contexto}: la ruta no existe en el servidor (HTTP 404)`
+  if (status === 422) return `${contexto}: datos inválidos — ${msg}`
   return msg ? `${contexto}: ${msg}` : `${contexto} (HTTP ${status})`
 }
 

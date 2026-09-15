@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import api from '../api'
+import api, { apiError } from '../api'
 import toast from 'react-hot-toast'
 import {
   Plus, Search, RefreshCw, ShoppingCart, X, Trash2, Eye, ChevronRight, Download, Edit2,
@@ -148,7 +148,7 @@ function ModalNuevaOC({ onClose, onDone }) {
       }
       onDone()
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al crear OC')
+      toast.error(apiError(err, 'No se pudo crear la OC'), { duration: 8000 })
     } finally { setSaving(false) }
   }
 
