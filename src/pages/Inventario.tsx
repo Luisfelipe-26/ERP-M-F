@@ -463,8 +463,8 @@ const ModalKardex = ({ producto, onClose }) => {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
                 <tr>
-                  {['N° Doc.','Fecha','Tipo','Motivo','Referencia/Lote','Entradas','Salidas','Saldo','Costo Unit.','Valor Total'].map(h => (
-                    <th key={h} style={{ padding: '8px 10px', textAlign: h === 'Entradas' || h === 'Salidas' || h === 'Saldo' || h === 'Costo Unit.' || h === 'Valor Total' ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                  {['N° Doc.','Fecha','Tipo','Motivo','Referencia/Lote','Entradas','Salidas','Saldo','C. Promedio','Valor Total'].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: h === 'Entradas' || h === 'Salidas' || h === 'Saldo' || h === 'C. Promedio' || h === 'Valor Total' ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -693,9 +693,13 @@ export default function Inventario() {
       })
       filename = `articulos_${new Date().toISOString().slice(0, 10)}.csv`
     } else if (tab === 'movimientos') {
-      csv = 'N° Doc,Actividad,Fecha,Tipo Doc,Artículo,Motivo,Cantidad,Tipo,Costo Unit.,Saldo\n'
+      // Valor = Cantidad × Costo Unit. con signo: su suma es el Neto de pantalla.
+      // Valor Inv. = Saldo × C. Promedio: lo que vale el inventario tras el movimiento.
+      csv = 'N° Doc,Actividad,Fecha,Tipo Doc,Artículo,Motivo,Cantidad,Tipo,Costo Unit.,Valor,Saldo,C. Promedio,Valor Inv.\n'
       movimientos.forEach(m => {
-        csv += `${m.num_documento},${csvEsc(m.actividad || '')},${m.fecha?.slice(0, 10) || ''},${m.tipo_doc},${csvEsc(m.producto_nombre || m.producto_id)},${csvEsc(m.motivo)},${m.cantidad},${m.tipo},${m.costo_unitario || ''},${m.stock_post ?? ''}\n`
+        const valor = m.costo_unitario ? ((m.tipo === 'entrada' ? 1 : -1) * m.cantidad * m.costo_unitario).toFixed(2) : ''
+        const valorInv = m.stock_post != null && m.costo_promedio_post != null ? (m.stock_post * m.costo_promedio_post).toFixed(2) : ''
+        csv += `${m.num_documento},${csvEsc(m.actividad || '')},${m.fecha?.slice(0, 10) || ''},${m.tipo_doc},${csvEsc(m.producto_nombre || m.producto_id)},${csvEsc(m.motivo)},${m.cantidad},${m.tipo},${m.costo_unitario || ''},${valor},${m.stock_post ?? ''},${m.costo_promedio_post ?? ''},${valorInv}\n`
       })
       filename = `movimientos_${new Date().toISOString().slice(0, 10)}.csv`
     } else if (tab === 'valoracion' && valoracion) {
@@ -949,16 +953,19 @@ export default function Inventario() {
                   <th>Ref / Lote / Factura</th>
                   <th style={{ textAlign: 'right' }}>Entradas</th>
                   <th style={{ textAlign: 'right' }}>Salidas</th>
-                  <th style={{ textAlign: 'right' }}>Saldo</th>
                   <th style={{ textAlign: 'right' }}>C. Unit.</th>
+                  <th style={{ textAlign: 'right' }} title="Cantidad × C. Unit. — su suma con signo es el Neto">Valor</th>
+                  <th style={{ textAlign: 'right' }}>Saldo</th>
+                  <th style={{ textAlign: 'right' }} title="Costo promedio ponderado tras el movimiento">C. Prom.</th>
+                  <th style={{ textAlign: 'right' }} title="Saldo × C. Prom.">Valor Inv.</th>
                   <th style={{ width: 40 }}></th>
                 </tr>
               </thead>
               <tbody>
                 {loading && movimientos.length === 0 ? (
-                  <tr><td colSpan={12} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
+                  <tr><td colSpan={15} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Cargando...</td></tr>
                 ) : movimientos.length === 0 ? (
-                  <tr><td colSpan={12} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin movimientos en el período</td></tr>
+                  <tr><td colSpan={15} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Sin movimientos en el período</td></tr>
                 ) : movimientos.map(m => {
                   const isIn = m.tipo === 'entrada'
                   return (
@@ -977,8 +984,15 @@ export default function Inventario() {
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 700, color: '#166534' }}>{isIn ? `${fmtN(m.cantidad)} ${m.producto_unidad || ''}` : ''}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>{!isIn ? `${fmtN(m.cantidad)} ${m.producto_unidad || ''}` : ''}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 800, color: '#111827' }}>{m.stock_post != null ? `${fmtN(m.stock_post)} ${m.producto_unidad || ''}` : '—'}</td>
                       <td style={{ textAlign: 'right', color: '#6b7280', fontSize: 12 }}>{m.costo_unitario ? fmt(m.costo_unitario) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 12, color: isIn ? '#166534' : '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+                        {m.costo_unitario ? `${isIn ? '+' : '−'}${fmt(m.cantidad * m.costo_unitario)}` : '—'}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 800, color: '#111827' }}>{m.stock_post != null ? `${fmtN(m.stock_post)} ${m.producto_unidad || ''}` : '—'}</td>
+                      <td style={{ textAlign: 'right', color: '#6b7280', fontSize: 12 }}>{m.costo_promedio_post != null ? fmt(m.costo_promedio_post) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontSize: 12, color: '#1e40af', fontVariantNumeric: 'tabular-nums' }}>
+                        {m.stock_post != null && m.costo_promedio_post != null ? fmt(m.stock_post * m.costo_promedio_post) : '—'}
+                      </td>
                       <td>
                         {m.tipo_doc === 'GI' && (
                           <button title="Devolver" onClick={async () => {
