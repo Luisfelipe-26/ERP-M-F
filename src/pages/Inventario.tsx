@@ -937,7 +937,7 @@ export default function Inventario() {
             </select>
             <input className="input" type="date" style={{ width: 150 }} value={filtroMovDesde} onChange={e => setFiltroMovDesde(e.target.value)} title="Desde" />
             <input className="input" type="date" style={{ width: 150 }} value={filtroMovHasta} onChange={e => setFiltroMovHasta(e.target.value)} title="Hasta" />
-            <button className="btn-secondary" onClick={loadMovimientos}><Search size={14} /> Buscar</button>
+            <button className="btn-secondary" onClick={() => loadMovimientos()}><Search size={14} /> Buscar</button>
           </div>
 
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
