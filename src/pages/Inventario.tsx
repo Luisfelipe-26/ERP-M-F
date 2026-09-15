@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import {
   Plus, Search, Download, RefreshCw, AlertTriangle, TrendingUp, TrendingDown,
   Package, DollarSign, Edit2, Trash2, BarChart2, ArrowDownCircle, ArrowUpCircle,
-  ClipboardList, X, Eye, Clock, RotateCcw, ChevronDown
+  ClipboardList, X, Eye, Clock, RotateCcw, ChevronDown, Calendar
 } from 'lucide-react'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -607,6 +607,7 @@ export default function Inventario() {
   const [buscar, setBuscar] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroStock, setFiltroStock] = useState('todos')
+  const [fechaCorte, setFechaCorte] = useState('')
 
   // Filtros movimientos
   const [filtroMovProd, setFiltroMovProd] = useState('')
@@ -623,10 +624,10 @@ export default function Inventario() {
 
   const loadArticulos = useCallback(async () => {
     setLoading(true)
-    try { const { data } = await api.get('/inventario/articulos'); setArticulos(data) }
+    try { const { data } = await api.get('/inventario/articulos', { params: { hasta: fechaCorte || undefined } }); setArticulos(data) }
     catch { toast.error('Error al cargar artículos') }
     finally { setLoading(false) }
-  }, [])
+  }, [fechaCorte])
 
   const loadMovimientos = useCallback(async (appendFrom?: number) => {
     setLoading(true)
@@ -691,7 +692,7 @@ export default function Inventario() {
       articulosFiltrados.forEach(p => {
         csv += `${p.id_prod},${csvEsc(p.producto)},${p.tipo || ''},${p.unidad},${p.stock_actual},${p.stock_minimo},${p.costo_promedio},${p.valor_inventario}\n`
       })
-      filename = `articulos_${new Date().toISOString().slice(0, 10)}.csv`
+      filename = fechaCorte ? `inventario_al_${fechaCorte}.csv` : `articulos_${new Date().toISOString().slice(0, 10)}.csv`
     } else if (tab === 'movimientos') {
       // Valor = Cantidad × Costo Unit. con signo: su suma es el Neto de pantalla.
       // Valor Inv. = Saldo × C. Promedio: lo que vale el inventario tras el movimiento.
@@ -815,14 +816,30 @@ export default function Inventario() {
               <option value="bajo">Bajo mínimo</option>
               <option value="sin">Sin stock</option>
             </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Stock y valor según el último movimiento hasta esta fecha">
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>Al día</label>
+              <input className="input" type="date" value={fechaCorte} onChange={e => setFechaCorte(e.target.value)} style={{ width: 150 }} />
+              {fechaCorte && (
+                <button type="button" onClick={() => setFechaCorte('')} title="Volver al inventario actual"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 2, lineHeight: 0 }}>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
             <button onClick={() => setModalArticulo('new')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: 'none', background: '#1e40af', color: 'white', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
               <Plus size={14} /> Nuevo Artículo
             </button>
           </div>
 
+          {fechaCorte && (
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 13, color: '#1e40af', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Calendar size={14} />
+              <span>Inventario <strong>al {new Date(fechaCorte + 'T12:00:00').toLocaleDateString('es-DO', { day: 'numeric', month: 'long', year: 'numeric' })}</strong> — stock y valor reconstruidos desde el kardex. Los mínimos y las alertas son los actuales.</span>
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
             {[
-              { label: 'Valor Total Inventario', value: fmt(totalValor), icon: DollarSign, color: '#166534', bg: '#dcfce7' },
+              { label: fechaCorte ? 'Valor Inventario al corte' : 'Valor Total Inventario', value: fmt(totalValor), icon: DollarSign, color: '#166534', bg: '#dcfce7' },
               { label: 'Artículos Activos', value: articulos.length, icon: Package, color: '#1e40af', bg: '#dbeafe' },
               { label: 'Bajo Mínimo', value: bajosMinimo, icon: AlertTriangle, color: '#b45309', bg: '#fef9c3' },
               { label: 'Sin Stock', value: sinStock, icon: TrendingDown, color: '#dc2626', bg: '#fee2e2' },
