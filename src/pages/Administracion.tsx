@@ -38,7 +38,7 @@ const TABS = [
 ]
 
 const MODULOS = [
-  'contabilidad', 'inventario', 'ordenes', 'compras', 'nomina',
+  'contabilidad', 'inventario', 'ordenes', 'compras', 'cosecha', 'nomina',
   'sanidad', 'riego', 'campos', 'trabajadores', 'productos',
   'clientes', 'proveedores', 'activos_fijos', 'presupuesto',
   'configuracion', 'admin',

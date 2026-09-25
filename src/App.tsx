@@ -19,6 +19,7 @@ const CostosCampo = lazy(() => import('./pages/CostosCampo'))
 
 const Clima = lazy(() => import('./pages/Clima'))
 const Sanidad = lazy(() => import('./pages/Sanidad'))
+const Cosecha = lazy(() => import('./pages/Cosecha'))
 const Riego = lazy(() => import('./pages/Riego'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Clientes = lazy(() => import('./pages/Clientes'))
@@ -97,6 +98,7 @@ export default function App() {
 
           <Route path="clima" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="clima"><Clima /></PermissionRoute></Suspense>} />
           <Route path="sanidad" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="sanidad"><Sanidad /></PermissionRoute></Suspense>} />
+          <Route path="cosecha" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="cosecha"><Cosecha /></PermissionRoute></Suspense>} />
           <Route path="riego" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="riego"><Riego /></PermissionRoute></Suspense>} />
           <Route path="analytics" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="analytics"><Analytics /></PermissionRoute></Suspense>} />
           <Route path="clientes" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="clientes"><Clientes /></PermissionRoute></Suspense>} />

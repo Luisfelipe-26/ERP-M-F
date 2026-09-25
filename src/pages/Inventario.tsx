@@ -14,7 +14,7 @@ const fmtDate = d => d ? new Date(d).toLocaleDateString('es-DO') : '—'
 
 const TIPOS_PROD = ['FERTILIZANTE','FUNGICIDAS','INSECTICIDAS','HERBICIDA','BIOESTIMULANTE','PBZ','REGULADOR HORMONAL','OTRO']
 // El consumo por OT se registra desde el módulo de Órdenes de Trabajo, no como GI manual
-const MOTIVOS_GI = ['Merma','Vencimiento','Devolucion Proveedor','Muestra','Uso No Productivo','Otro']
+const MOTIVOS_GI = ['Venta','Merma','Vencimiento','Devolucion Proveedor','Muestra','Uso No Productivo','Otro']
 const DOC_LABELS = { GR: 'Entrada', GI: 'Salida', AJ: 'Ajuste', OT: 'Consumo OT', 'DEV-GI': 'Devolución GI' }
 const DOC_COLORS = {
   GR: { bg: '#dcfce7', color: '#166534', border: '#86efac' },
