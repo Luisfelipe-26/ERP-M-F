@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import api, { apiError } from '../api'
+import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import {
   Plus, Search, RefreshCw, ShoppingCart, X, Trash2, Eye, ChevronRight, Download, Edit2,
@@ -315,6 +316,10 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
   const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
   const [genDimsAsig, setGenDimsAsig] = useState<any[]>([])
   const [showDevolucion, setShowDevolucion] = useState(false)
+  const [showFactura, setShowFactura] = useState(false)
+  const [conFactura, setConFactura] = useState(false)
+  const [factRec, setFactRec] = useState(facturaVacia())
+  const [ncfDev, setNcfDev] = useState('')
   const [devolucion, setDevolucion] = useState([])
   const [motivoDev, setMotivoDev] = useState('')
   const [savingDev, setSavingDev] = useState(false)
@@ -389,19 +394,23 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
     e.preventDefault()
     const excedida = recepcion.find(r => Number(r.cantidad_recibida) > Number(r.pendiente) + 1e-6)
     if (excedida) return toast.error(`${excedida.producto_nombre}: quedan ${excedida.pendiente} por recibir. No se puede recibir más de lo pedido.`)
+    if (conFactura && !ncfValido(factRec.ncf)) return toast.error('Revise el NCF de la factura')
     setSaving(true)
     try {
       const payload = {
         num_factura: numFactura || null,
         fecha: fechaRec || null,
+        factura: conFactura ? facturaPayload(factRec) : null,
         lineas: recepcion.filter(r => r.cantidad_recibida > 0).map(r => ({
           linea_id: r.linea_id,
           cantidad_recibida: Number(r.cantidad_recibida),
         }))
       }
       const { data: result } = await api.post(`/ordenes-compra/${ocId}/recepcion`, payload)
-      const refs = [result.asiento && `Asiento: ${result.asiento}`, result.cxp && `CxP: ${result.cxp}`].filter(Boolean).join(' · ')
-      toast.success(`Recepción registrada — Estado: ${result.estado}${refs ? ` · ${refs}` : ''}`)
+      const refs = [result.asiento && `Asiento: ${result.asiento}`, result.cxp && `Factura: ${result.cxp}`].filter(Boolean).join(' · ')
+      toast.success(result.cxp
+        ? `Recepción y factura registradas — ${refs}`
+        : `Recepción registrada — Estado: ${result.estado} · pendiente de facturar${refs ? ` · ${refs}` : ''}`, { duration: 6000 })
       onDone()
     } catch (err) {
       toast.error(apiError(err, 'Error al registrar recepción'), { duration: 8000 })
@@ -439,6 +448,7 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
     try {
       const { data: result } = await api.post(`/ordenes-compra/${ocId}/devolucion`, {
         motivo: motivoDev || 'Devolución a proveedor',
+        ncf: ncfDev ? ncfLimpio(ncfDev) : null,
         lineas,
       })
       toast.success(`Devolución procesada — ${result.lineas_devueltas.length} líneas, ${fmt(result.total_devuelto)}` +
@@ -472,14 +482,24 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
               <input className="input" type="date" value={fechaRec} max={new Date().toISOString().slice(0, 10)} onChange={e => setFechaRec(e.target.value)} required />
             </div>
             <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>N° Factura del Proveedor</label>
-              <input className="input" value={numFactura} onChange={e => setNumFactura(e.target.value)} placeholder="Ej: FAC-001234" />
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>N° conduce o factura</label>
+              <input className="input" value={numFactura} onChange={e => setNumFactura(e.target.value)} placeholder="Ej: CON-001234" />
             </div>
             <div style={{ display: 'flex', alignItems: 'end' }}>
               <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: '#166534' }}>
                 Pendiente: {fmt(totalPendiente)}
               </div>
             </div>
+          </div>
+
+          <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <input type="checkbox" checked={conFactura} onChange={e => setConFactura(e.target.checked)} />
+              La factura del proveedor llegó con la mercancía (recibir y facturar)
+            </label>
+            {conFactura
+              ? <div style={{ marginTop: 10 }}><CamposFactura value={factRec} onChange={setFactRec} /></div>
+              : <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Si no, la mercancía queda recibida sin facturar y la factura se registra después desde la OC.</div>}
           </div>
 
           <table className="table" style={{ fontSize: 12, marginBottom: 16 }}>
@@ -521,6 +541,10 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
     )
   }
 
+  if (showFactura) {
+    return <ModalFacturaOC data={data} onClose={() => setShowFactura(false)} onDone={onDone} />
+  }
+
   if (showDevolucion) {
     const totalDev = devolucion.reduce((s, d) => s + (Number(d.cantidad_devuelta) || 0) * d.precio_unitario, 0)
     return (
@@ -530,6 +554,9 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Motivo de Devolución</label>
               <input className="input" value={motivoDev} onChange={e => setMotivoDev(e.target.value)} placeholder="Ej: Producto dañado, error en pedido..." />
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, marginTop: 10, textTransform: 'uppercase' }}>NCF de la nota de crédito del proveedor (si ya la envió)</label>
+              <input className="input" value={ncfDev} onChange={e => setNcfDev(e.target.value)} placeholder="B0400000123" style={{ fontFamily: 'monospace' }} />
+              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Lo que aún no estaba facturado solo revierte la recepción. Lo ya facturado genera una nota de crédito que reduce la factura, su ITBIS y sus retenciones.</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'end' }}>
               <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: '#991b1b' }}>
@@ -600,6 +627,7 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
             <th style={{ textAlign: 'right' }}>Cantidad</th>
             <th style={{ textAlign: 'right' }}>Recibida</th>
             <th style={{ textAlign: 'right' }}>Pendiente</th>
+            <th style={{ textAlign: 'right' }}>Facturada</th>
             <th style={{ textAlign: 'right' }}>Precio Unit.</th>
             <th style={{ textAlign: 'right' }}>Desc.%</th>
             <th>Impuesto</th>
@@ -614,6 +642,10 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
               <td style={{ textAlign: 'right', color: '#166534', fontWeight: 700 }}>{l.cantidad_recibida} {l.unidad}</td>
               <td style={{ textAlign: 'right', color: l.cantidad_pendiente > 0 ? '#b45309' : '#166534', fontWeight: 700 }}>
                 {l.cantidad_pendiente} {l.unidad}
+              </td>
+              <td style={{ textAlign: 'right', color: l.pendiente_facturar > 0 ? '#4338ca' : '#6b7280', fontWeight: l.pendiente_facturar > 0 ? 700 : 400 }}
+                title={l.pendiente_facturar > 0 ? `${l.pendiente_facturar} recibidas sin facturar` : ''}>
+                {l.cantidad_facturada} {l.unidad}
               </td>
               <td style={{ textAlign: 'right' }}>{fmt(l.precio_unitario)}</td>
               <td style={{ textAlign: 'right', color: (l.descuento_pct || 0) > 0 ? '#dc2626' : '#9ca3af' }}>{l.descuento_pct || 0}%</td>
@@ -655,12 +687,25 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
           {data.cuentas_por_pagar.map((c: any) => (
             <div key={c.numero} style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, padding: '8px 14px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
               <span style={{ fontWeight: 700, color: '#854d0e' }}>{c.numero}</span>
+              {c.ncf && <span style={{ color: '#374151', fontFamily: 'monospace' }}>NCF {c.ncf}</span>}
               {c.num_factura && <span style={{ color: '#6b7280' }}>Fact: {c.num_factura}</span>}
               <span style={{ color: '#374151' }}>{fmt(c.total)}</span>
               <span style={{ color: c.saldo > 0 ? '#b45309' : '#166534', fontWeight: 600 }}>Saldo: {fmt(c.saldo)}</span>
               <span style={{ marginLeft: 'auto', background: c.estado === 'pagada' ? '#dcfce7' : c.estado === 'pendiente' ? '#fef9c3' : '#fee2e2', color: c.estado === 'pagada' ? '#166534' : c.estado === 'pendiente' ? '#854d0e' : '#991b1b', borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>{c.estado}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {data.por_facturar > 0 && (
+        <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+          <span style={{ fontWeight: 700, color: '#3730a3' }}>Recibido sin facturar: {fmt(data.por_facturar)}</span>
+          <span style={{ color: '#6b7280', fontSize: 12 }}>La deuda con el proveedor se registra cuando llegue su factura.</span>
+          {['Parcial', 'Recibida', 'Cerrada'].includes(orden.estado) && (
+            <button className="btn-primary" onClick={() => setShowFactura(true)} style={{ marginLeft: 'auto', background: '#3730a3' }}>
+              <FileText size={13} /> Registrar factura
+            </button>
+          )}
         </div>
       )}
 
@@ -738,6 +783,218 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
         <button className="btn-secondary" onClick={onClose}>Cerrar</button>
       </div>
     </Modal>
+  )
+}
+
+// ─── Factura de proveedor (modelo Dynamics 365) ───────────────────────────────
+// La recepción deja la mercancía contra "Compras recibidas por facturar"; la factura del
+// proveedor, con su NCF, se registra contra lo recibido y reconoce la deuda, el ITBIS y
+// las retenciones.
+const NCF_TIPOS: Record<string, string> = {
+  B01: 'Crédito fiscal', E31: 'Crédito fiscal',
+  B02: 'Consumo: su ITBIS no es crédito fiscal y va al costo', E32: 'Consumo: su ITBIS no es crédito fiscal y va al costo',
+  B11: 'Comprobante de compras', E41: 'Comprobante de compras',
+  B13: 'Gastos menores', E43: 'Gastos menores',
+  B14: 'Régimen especial', E44: 'Régimen especial',
+  B15: 'Gubernamental', E45: 'Gubernamental',
+}
+const ncfLimpio = (s: string) => (s || '').toUpperCase().replace(/[\s-]/g, '')
+const ncfValido = (s: string) => /^(B\d{10}|E\d{12})$/.test(ncfLimpio(s)) && !!NCF_TIPOS[ncfLimpio(s).slice(0, 3)]
+const hoyISO = () => new Date().toISOString().slice(0, 10)
+
+function CamposFactura({ value, onChange }: any) {
+  const tipo = NCF_TIPOS[ncfLimpio(value.ncf).slice(0, 3)]
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 1fr', gap: 12 }}>
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>NCF de la factura *</label>
+        <input className="input" value={value.ncf} onChange={e => onChange({ ...value, ncf: e.target.value })}
+          placeholder="B0100000123 o E310000000123" style={{ fontFamily: 'monospace' }} required />
+        <div style={{ fontSize: 10, marginTop: 3, color: value.ncf && !ncfValido(value.ncf) ? '#dc2626' : '#6b7280' }}>
+          {!value.ncf ? 'B + 10 dígitos, o E + 12 si es electrónico' : ncfValido(value.ncf) ? tipo : 'NCF inválido o de un tipo que no es de compra'}
+        </div>
+      </div>
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>N° factura</label>
+        <input className="input" value={value.num_factura} onChange={e => onChange({ ...value, num_factura: e.target.value })} />
+      </div>
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Fecha factura *</label>
+        <input className="input" type="date" max={hoyISO()} value={value.fecha_factura} onChange={e => onChange({ ...value, fecha_factura: e.target.value })} required />
+      </div>
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Vencimiento</label>
+        <input className="input" type="date" value={value.fecha_vencimiento} onChange={e => onChange({ ...value, fecha_vencimiento: e.target.value })} title="Vacío: según la condición de pago del proveedor" />
+      </div>
+    </div>
+  )
+}
+
+const facturaVacia = () => ({ ncf: '', num_factura: '', fecha_factura: hoyISO(), fecha_vencimiento: '' })
+const facturaPayload = (f: any) => ({
+  ncf: ncfLimpio(f.ncf), num_factura: f.num_factura || null,
+  fecha_factura: f.fecha_factura || null, fecha_vencimiento: f.fecha_vencimiento || null,
+})
+
+function ModalFacturaOC({ data, onClose, onDone }: any) {
+  const { isAdmin } = useAuth()
+  const { orden, lineas } = data
+  const [fact, setFact] = useState(facturaVacia())
+  const [items, setItems] = useState(lineas.filter((l: any) => l.pendiente_facturar > 0).map((l: any) => ({
+    linea_id: l.id, nombre: l.producto_nombre, unidad: l.unidad, pendiente: l.pendiente_facturar,
+    precio_oc: Number(l.precio_neto), cantidad: l.pendiente_facturar, precio: Number(l.precio_neto),
+  })))
+  const [aceptarDif, setAceptarDif] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const difPct = (it: any) => it.precio_oc > 0 ? (Number(it.precio) - it.precio_oc) / it.precio_oc : 0
+  const fueraTol = items.some((it: any) => Number(it.cantidad) > 0 && Math.abs(difPct(it)) > 0.02)
+  const subtotal = items.reduce((s: number, it: any) => s + (Number(it.cantidad) || 0) * (Number(it.precio) || 0), 0)
+  const upd = (i: number, k: string, v: any) => setItems(items.map((it: any, j: number) => j === i ? { ...it, [k]: v } : it))
+
+  async function submit(e: any) {
+    e.preventDefault()
+    if (!ncfValido(fact.ncf)) return toast.error('Revise el NCF')
+    const excedida = items.find((it: any) => Number(it.cantidad) > it.pendiente + 1e-6)
+    if (excedida) return toast.error(`${excedida.nombre}: solo hay ${excedida.pendiente} recibidas sin facturar`)
+    const lineasPay = items.filter((it: any) => Number(it.cantidad) > 0).map((it: any) => ({
+      linea_id: it.linea_id, cantidad: Number(it.cantidad), precio_unitario: Number(it.precio),
+    }))
+    if (!lineasPay.length) return toast.error('Indique al menos una cantidad')
+    setSaving(true)
+    try {
+      const { data: r } = await api.post(`/ordenes-compra/${orden.oc_id}/factura`, {
+        ...facturaPayload(fact), lineas: lineasPay, aceptar_diferencia: aceptarDif,
+      })
+      const ret = r.retencion_isr + r.retencion_itbis
+      toast.success(`Factura ${r.cxp} registrada — total ${fmt(r.total)} (ITBIS ${fmt(r.itbis)}${ret ? `, retenciones ${fmt(ret)}` : ''})`, { duration: 7000 })
+      onDone()
+    } catch (err) { toast.error(apiError(err, 'No se pudo registrar la factura'), { duration: 9000 }) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <Modal title={`Registrar factura — ${orden.oc_id}`} subtitle={`${orden.proveedor || ''} · se compara contra lo recibido y aún no facturado`} onClose={onClose} width={860}>
+      <form onSubmit={submit}>
+        <div style={{ marginBottom: 16 }}><CamposFactura value={fact} onChange={setFact} /></div>
+        <table className="table" style={{ fontSize: 12, marginBottom: 12 }}>
+          <thead><tr>
+            <th>Producto</th>
+            <th style={{ textAlign: 'right' }}>Recibido sin facturar</th>
+            <th style={{ textAlign: 'right', width: 110 }}>Cantidad</th>
+            <th style={{ textAlign: 'right', width: 130 }}>Precio factura</th>
+            <th style={{ textAlign: 'right' }}>Precio OC</th>
+            <th style={{ textAlign: 'right' }}>Subtotal</th>
+          </tr></thead>
+          <tbody>
+            {items.map((it: any, i: number) => {
+              const d = difPct(it)
+              return (
+                <tr key={it.linea_id}>
+                  <td style={{ fontWeight: 600 }}>{it.nombre}</td>
+                  <td style={{ textAlign: 'right' }}>{it.pendiente} {it.unidad}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <input className="input" type="number" step="0.01" min="0" max={it.pendiente} value={it.cantidad}
+                      onChange={e => upd(i, 'cantidad', e.target.value)} style={{ width: 95, textAlign: 'right' }} />
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <input className="input" type="number" step="0.0001" min="0" value={it.precio}
+                      onChange={e => upd(i, 'precio', e.target.value)} style={{ width: 115, textAlign: 'right' }} />
+                    {Math.abs(d) > 0.0001 && (
+                      <div style={{ fontSize: 10, color: Math.abs(d) > 0.02 ? '#dc2626' : '#b45309' }}>
+                        {d > 0 ? '+' : ''}{(d * 100).toFixed(1)}% vs OC
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right', color: '#6b7280' }}>{fmt(it.precio_oc)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt((Number(it.cantidad) || 0) * (Number(it.precio) || 0))}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {fueraTol && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#991b1b', marginBottom: 12 }}>
+            Hay precios con más de 2% de diferencia contra la OC.
+            {isAdmin
+              ? <label style={{ display: 'block', marginTop: 6, fontWeight: 600 }}><input type="checkbox" checked={aceptarDif} onChange={e => setAceptarDif(e.target.checked)} /> Acepto la diferencia (se registra como costo)</label>
+              : ' Solo un administrador puede aceptarla.'}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 13, color: '#374151' }}>Subtotal: <strong>{fmt(subtotal)}</strong> <span style={{ color: '#9ca3af', fontSize: 11 }}>· ITBIS y retenciones se calculan según el proveedor y el NCF</span></div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn-primary" disabled={saving} style={{ background: '#1e40af' }}>{saving ? 'Registrando...' : 'Registrar factura'}</button>
+          </div>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function PanelPorFacturar({ onVerOC }: any) {
+  const { isAdmin } = useAuth()
+  const [data, setData] = useState<any>(null)
+  const [abierto, setAbierto] = useState(false)
+  const [ajustando, setAjustando] = useState(false)
+  const cargar = useCallback(() => {
+    api.get('/ordenes-compra/reportes/por-facturar').then(r => setData(r.data)).catch(() => {})
+  }, [])
+  useEffect(() => { cargar() }, [cargar])
+
+  async function ajustar() {
+    setAjustando(true)
+    try {
+      const { data: p } = await api.post('/ordenes-compra/ajuste-asientos-recepciones', null, { params: { dry_run: true } })
+      if (!p.facturas) { toast.success('No hay facturas anteriores que ajustar'); return }
+      const ok = confirm(`Se completará el asiento de ${p.facturas} factura(s) creadas por recepciones anteriores:\n\n` +
+        `ITBIS crédito fiscal: ${fmt(p.itbis)}\nRetención ISR: ${fmt(p.retencion_isr)}\nRetención ITBIS: ${fmt(p.retencion_itbis)}\n` +
+        `Ajuste a CxP proveedores: ${fmt(p.ajuste_cxp)}\n\nLos asientos se fechan hoy. ¿Continuar?`)
+      if (!ok) return
+      const { data: r } = await api.post('/ordenes-compra/ajuste-asientos-recepciones', null, { params: { dry_run: false } })
+      toast.success(`Asientos completados: ${r.facturas} factura(s)`)
+    } catch (err) { toast.error(apiError(err, 'No se pudo ajustar'), { duration: 8000 }) }
+    finally { setAjustando(false) }
+  }
+
+  if (!data) return null
+  const cuadra = data.diferencia === null || Math.abs(data.diferencia) < 0.01
+  return (
+    <div className="card" style={{ padding: '12px 16px', marginBottom: 16, borderLeft: `4px solid ${cuadra ? '#6366f1' : '#dc2626'}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Recibido sin facturar</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#3730a3' }}>{fmt(data.total)}</div>
+        </div>
+        <div style={{ fontSize: 12, color: cuadra ? '#6b7280' : '#991b1b' }}>
+          {data.saldo_mayor === null ? 'Cuenta puente sin configurar'
+            : cuadra ? `Cuadra con la cuenta puente (${fmt(data.saldo_mayor)})`
+            : `No cuadra con la cuenta puente: mayor ${fmt(data.saldo_mayor)}, diferencia ${fmt(data.diferencia)}`}
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          {data.items.length > 0 && <button className="btn-secondary" onClick={() => setAbierto(!abierto)}>{abierto ? 'Ocultar' : `Ver ${data.items.length} línea(s)`}</button>}
+          {isAdmin && <button className="btn-secondary" onClick={ajustar} disabled={ajustando} title="Completa ITBIS y retenciones en los asientos de facturas que creaba la recepción antes de separar recepción y factura">{ajustando ? 'Revisando...' : 'Completar asientos anteriores'}</button>}
+        </div>
+      </div>
+      {abierto && (
+        <table className="table" style={{ fontSize: 12, marginTop: 10 }}>
+          <thead><tr><th>OC</th><th>Proveedor</th><th>Producto</th><th>Recibida</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>Valor</th></tr></thead>
+          <tbody>
+            {data.items.map((f: any) => (
+              <tr key={f.linea_id} style={{ cursor: 'pointer' }} onClick={() => onVerOC(f.oc_id)}>
+                <td style={{ fontWeight: 700, color: '#166534' }}>{f.oc_id}</td>
+                <td>{f.proveedor}</td>
+                <td>{f.producto}</td>
+                <td>{fmtDate(f.fecha_recepcion)}</td>
+                <td style={{ textAlign: 'right' }}>{f.cantidad}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(f.valor)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   )
 }
 
@@ -998,6 +1255,27 @@ function ModalDetalleCxP({ cxp, onClose, onPagar, onCrearNC, onDone }) {
       .finally(() => setLoading(false))
   }, [cxp.id])
 
+  async function registrarNcf() {
+    const ncf = prompt(`NCF de la factura ${cxp.numero} (B + 10 dígitos, o E + 12 si es electrónico):`)
+    if (!ncf) return
+    if (!ncfValido(ncf)) return toast.error('NCF inválido o de un tipo que no es de compra')
+    try {
+      await api.put(`/contabilidad/cxp/${cxp.id}/datos-fiscales`, { ncf: ncfLimpio(ncf) })
+      toast.success(`NCF registrado en ${cxp.numero}`)
+      onDone()
+    } catch (err) { toast.error(apiError(err, 'No se pudo registrar el NCF'), { duration: 8000 }) }
+  }
+
+  async function anular() {
+    const motivo = prompt(`Anular la factura ${cxp.numero}. Si venía de una OC, lo recibido vuelve a quedar pendiente de facturar.\n\nMotivo:`)
+    if (!motivo) return
+    try {
+      await api.post(`/contabilidad/cxp/${cxp.id}/anular`, null, { params: { motivo } })
+      toast.success(`Factura ${cxp.numero} anulada`)
+      onDone()
+    } catch (err) { toast.error(apiError(err, 'No se pudo anular'), { duration: 8000 }) }
+  }
+
   async function validar() {
     setValidando(true)
     try {
@@ -1134,6 +1412,12 @@ function ModalDetalleCxP({ cxp, onClose, onPagar, onCrearNC, onDone }) {
       )}
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        {d.estado === 'pendiente' && pagos.length === 0 && ncs.length === 0 && (
+          <button className="btn-secondary" onClick={anular} style={{ color: '#991b1b', marginRight: 'auto' }}>Anular factura</button>
+        )}
+        {!d.ncf && d.estado !== 'anulada' && (
+          <button className="btn-secondary" onClick={registrarNcf} style={{ color: '#b45309' }} title="Sin NCF la DGII rechaza esta factura en el 606">Registrar NCF</button>
+        )}
         {d.oc_id && ['pendiente', 'parcial'].includes(d.estado) && (
           <button className="btn-secondary" onClick={validar} disabled={validando} style={{ color: '#1e40af' }}>
             <CheckCircle size={13} /> {validando ? 'Validando...' : 'Validar (3-way match)'}
@@ -1271,7 +1555,7 @@ function ModalNuevaCxP({ onClose, onDone }) {
     try {
       const { data } = await api.post('/contabilidad/cxp', {
         proveedor_id: Number(form.proveedor_id),
-        oc_id: form.oc_id || null,
+        oc_id: null,
         tipo_ncf: form.tipo_ncf || null,
         ncf: form.ncf || null,
         num_factura_proveedor: form.num_factura_proveedor || null,
@@ -1325,9 +1609,8 @@ function ModalNuevaCxP({ onClose, onDone }) {
             <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>N° Factura Proveedor</label>
             <input className="input" value={form.num_factura_proveedor} onChange={e => setForm({ ...form, num_factura_proveedor: e.target.value })} />
           </div>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>OC Vinculada</label>
-            <input className="input" value={form.oc_id} onChange={e => setForm({ ...form, oc_id: e.target.value })} placeholder="OC-0001" />
+          <div style={{ display: 'flex', alignItems: 'end', fontSize: 11, color: '#6b7280' }}>
+            La factura de una orden de compra se registra desde la OC (Registrar factura), para compararla con lo recibido.
           </div>
           <div style={{ gridColumn: '1/-1' }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Subtotal (sin ITBIS) *</label>
@@ -1981,6 +2264,8 @@ export default function Compras() {
             <div style={{ fontSize: 18, fontWeight: 800, color: '#dc2626' }}>{fmt(resumenCxp.monto_vencido)}</div>
           </div>
         </div>
+
+        <PanelPorFacturar onVerOC={(id: string) => setModalDetalle(id)} />
 
         {/* CxP Filters */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>

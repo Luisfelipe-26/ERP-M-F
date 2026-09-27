@@ -575,6 +575,7 @@ function TabAsientos() {
           <option value="borrador">Borrador</option>
           <option value="contabilizado">Contabilizado</option>
           <option value="anulado">Anulado</option>
+          <option value="revertido">Revertido</option>
         </select>
         <select className="select" style={{ width: 130 }} value={filtroOrigen} onChange={e => { setFiltroOrigen(e.target.value); setPage(0) }}>
           <option value="">Todo origen</option>
@@ -638,7 +639,7 @@ function TabAsientos() {
                 <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(a.total_debe)}</td>
                 <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(a.total_haber)}</td>
                 <td>
-                  <Badge color={a.estado === 'contabilizado' ? 'green' : a.estado === 'borrador' ? 'yellow' : 'red'}>{a.estado}</Badge>
+                  <Badge color={a.estado === 'contabilizado' ? 'green' : a.estado === 'borrador' ? 'yellow' : a.estado === 'revertido' ? 'gray' : 'red'}>{a.estado}</Badge>
                 </td>
                 <td onClick={e => e.stopPropagation()}>
                   <div style={{ display: 'flex', gap: 4 }}>
@@ -646,7 +647,7 @@ function TabAsientos() {
                     {a.estado === 'borrador' && (
                       <button className="btn-primary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => contabilizar(a.numero)}><Check size={12} /></button>
                     )}
-                    {a.estado !== 'anulado' && (
+                    {!['anulado', 'revertido'].includes(a.estado) && (
                       <button className="btn-danger" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => anular(a.numero)}><X size={12} /></button>
                     )}
                   </div>
