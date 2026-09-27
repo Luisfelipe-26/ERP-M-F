@@ -42,8 +42,27 @@ const Modal = ({ title, subtitle = '', onClose, children, width = 700 }) => (
   </div>
 )
 
+// Cuentas de costo y gasto (clases 4-6): contra ellas consume presupuesto cada línea.
+function useCuentasGasto() {
+  const [cuentas, setCuentas] = useState<any[]>([])
+  useEffect(() => {
+    api.get('/contabilidad/cuentas').then(r => setCuentas((r.data || []).filter((c: any) =>
+      c.acepta_movimientos && /^[4-6]/.test(c.codigo || '')))).catch(() => {})
+  }, [])
+  return cuentas
+}
+
+const CuentaLinea = ({ value, onChange, cuentas }: any) => (
+  <select className="select" value={value || ''} onChange={e => onChange(e.target.value)} style={{ fontSize: 11 }}
+    title="Cuenta de costo o gasto contra la que esta línea consume presupuesto. En un servicio es también la cuenta del gasto.">
+    <option value="">Automática (cuenta de costo del producto)</option>
+    {cuentas.map((c: any) => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+  </select>
+)
+
 // ─── Modal Nueva OC ────────────────────────────────────────────────────────
 function ModalNuevaOC({ onClose, onDone }) {
+  const cuentas = useCuentasGasto()
   const [nextId, setNextId] = useState('')
   const [productos, setProductos] = useState([])
   const [proveedoresLista, setProveedoresLista] = useState([])
@@ -85,7 +104,7 @@ function ModalNuevaOC({ onClose, onDone }) {
   }, [])
 
   function addLinea() {
-    setLineas([...lineas, { producto_id: '', cantidad: '', precio_unitario: '', descuento_pct: '0', impuesto: 'itbis_18' }])
+    setLineas([...lineas, { producto_id: '', cantidad: '', precio_unitario: '', descuento_pct: '0', impuesto: 'itbis_18', cuenta_contable_id: '' }])
   }
 
   function updateLinea(i, key, val) {
@@ -133,6 +152,10 @@ function ModalNuevaOC({ onClose, onDone }) {
           precio_unitario: Number(l.precio_unitario),
           descuento_pct: Number(l.descuento_pct) || 0,
           impuesto: l.impuesto || 'itbis_18',
+          cuenta_contable_id: l.cuenta_contable_id ? Number(l.cuenta_contable_id) : null,
+          unidad_negocio_id: l.unidad_negocio_id || null,
+          departamento_id: l.departamento_id || null,
+          almacen_id: l.almacen_id || null,
         })),
       })
       const ocId = result.oc_id || nextId
@@ -222,7 +245,8 @@ function ModalNuevaOC({ onClose, onDone }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {lineas.map((l, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.7fr 0.9fr 0.6fr 0.9fr 1fr auto', gap: 8, alignItems: 'end' }}>
+              <div key={i}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.7fr 0.9fr 0.6fr 0.9fr 1fr auto', gap: 8, alignItems: 'end' }}>
                 <div>
                   {i === 0 && <label style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Producto</label>}
                   <select className="select" value={l.producto_id} onChange={e => updateLinea(i, 'producto_id', e.target.value)} required>
@@ -256,6 +280,11 @@ function ModalNuevaOC({ onClose, onDone }) {
                 </div>
                 <button type="button" className="btn-danger" onClick={() => removeLinea(i)} style={{ marginTop: i === 0 ? 18 : 0 }}><Trash2 size={13} /></button>
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <span style={{ fontSize: 10, color: '#6b7280', whiteSpace: 'nowrap' }}>Cuenta presupuestaria</span>
+                <div style={{ flex: 1, maxWidth: 420 }}><CuentaLinea value={l.cuenta_contable_id} cuentas={cuentas} onChange={v => updateLinea(i, 'cuenta_contable_id', v)} /></div>
+              </div>
+              </div>
             ))}
           </div>
         )}
@@ -281,6 +310,7 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
   const [showRecepcion, setShowRecepcion] = useState(false)
   const [recepcion, setRecepcion] = useState([])
   const [numFactura, setNumFactura] = useState('')
+  const [fechaRec, setFechaRec] = useState(new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
   const [dims, setDims] = useState<{ unidades: any[]; deptos: any[]; almacenes: any[] }>({ unidades: [], deptos: [], almacenes: [] })
   const [genDimsAsig, setGenDimsAsig] = useState<any[]>([])
@@ -326,7 +356,7 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
       toast.success('OC aprobada — compromiso presupuestario creado')
       onDone()
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al aprobar')
+      toast.error(apiError(err, 'Error al aprobar'), { duration: 8000 })
     }
   }
 
@@ -357,10 +387,13 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
 
   async function submitRecepcion(e) {
     e.preventDefault()
+    const excedida = recepcion.find(r => Number(r.cantidad_recibida) > Number(r.pendiente) + 1e-6)
+    if (excedida) return toast.error(`${excedida.producto_nombre}: quedan ${excedida.pendiente} por recibir. No se puede recibir más de lo pedido.`)
     setSaving(true)
     try {
       const payload = {
         num_factura: numFactura || null,
+        fecha: fechaRec || null,
         lineas: recepcion.filter(r => r.cantidad_recibida > 0).map(r => ({
           linea_id: r.linea_id,
           cantidad_recibida: Number(r.cantidad_recibida),
@@ -371,7 +404,7 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
       toast.success(`Recepción registrada — Estado: ${result.estado}${refs ? ` · ${refs}` : ''}`)
       onDone()
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al registrar recepción')
+      toast.error(apiError(err, 'Error al registrar recepción'), { duration: 8000 })
     } finally { setSaving(false) }
   }
 
@@ -412,7 +445,7 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
         (result.nc_numero ? ` · NC ${result.nc_numero}` : '') +
         (result.cxp_ajustada ? ` · CxP ${result.cxp_ajustada} ajustada` : ''))
       onDone()
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error al procesar devolución') }
+    } catch (err) { toast.error(apiError(err, 'Error al procesar devolución'), { duration: 10000 }) }
     finally { setSavingDev(false) }
   }
 
@@ -433,7 +466,11 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
     return (
       <Modal title={`Recepción — ${orden.oc_id}`} subtitle={`${orden.proveedor || ''}`} onClose={() => setShowRecepcion(false)} width={800}>
         <form onSubmit={submitRecepcion}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Fecha de recepción</label>
+              <input className="input" type="date" value={fechaRec} max={new Date().toISOString().slice(0, 10)} onChange={e => setFechaRec(e.target.value)} required />
+            </div>
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>N° Factura del Proveedor</label>
               <input className="input" value={numFactura} onChange={e => setNumFactura(e.target.value)} placeholder="Ej: FAC-001234" />
@@ -706,6 +743,8 @@ function ModalDetalleOC({ ocId, onClose, onDone }) {
 
 // ─── Modal Editar OC ────────────────────────────────────────────────────────
 function ModalEditarOC({ ocId, onClose, onDone }) {
+  const cuentas = useCuentasGasto()
+  const [estado, setEstado] = useState('')
   const [loading, setLoading] = useState(true)
   const [productos, setProductos] = useState([])
   const [proveedoresLista, setProveedoresLista] = useState([])
@@ -730,6 +769,7 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
       api.get(`/contabilidad/entidad-dimensiones/OC/${ocId}`),
     ]).then(([oc, p, prov, c, un, dep, alm, gd, gda]) => {
       const o = oc.data.orden
+      setEstado(o.estado)
       setForm({
         fecha: o.fecha ? o.fecha.slice(0, 10) : '',
         proveedor_id: o.proveedor_id || '',
@@ -751,6 +791,10 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
         precio_unitario: l.precio_unitario,
         descuento_pct: l.descuento_pct || 0,
         impuesto: l.impuesto || 'itbis_18',
+        cuenta_contable_id: l.cuenta_contable_id || '',
+        unidad_negocio_id: l.unidad_negocio_id || null,
+        departamento_id: l.departamento_id || null,
+        almacen_id: l.almacen_id || null,
       })))
       setProductos(p.data)
       setProveedoresLista(prov.data)
@@ -759,7 +803,7 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
       .finally(() => setLoading(false))
   }, [ocId])
 
-  function addLinea() { setLineas([...lineas, { producto_id: '', cantidad: 1, precio_unitario: 0, descuento_pct: 0, impuesto: 'itbis_18' }]) }
+  function addLinea() { setLineas([...lineas, { producto_id: '', cantidad: 1, precio_unitario: 0, descuento_pct: 0, impuesto: 'itbis_18', cuenta_contable_id: '' }]) }
   function removeLinea(i) { setLineas(lineas.filter((_, j) => j !== i)) }
   function updateLinea(i, field, val) {
     const updated = [...lineas]
@@ -779,7 +823,7 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
     if (lineas.length === 0) return toast.error('Agrega al menos una línea')
     setSaving(true)
     try {
-      await api.put(`/ordenes-compra/${ocId}`, {
+      const { data: r } = await api.put(`/ordenes-compra/${ocId}`, {
         fecha: form.fecha || null,
         proveedor_id: form.proveedor_id ? Number(form.proveedor_id) : null,
         proveedor: form.proveedor || null,
@@ -794,16 +838,21 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
           precio_unitario: Number(l.precio_unitario),
           descuento_pct: Number(l.descuento_pct) || 0,
           impuesto: l.impuesto || 'itbis_18',
+          cuenta_contable_id: l.cuenta_contable_id ? Number(l.cuenta_contable_id) : null,
+          unidad_negocio_id: l.unidad_negocio_id || null,
+          departamento_id: l.departamento_id || null,
+          almacen_id: l.almacen_id || null,
         })),
       })
       const assigns = Object.entries(dimSelections)
         .filter(([, vid]) => vid)
         .map(([did, vid]) => ({ dimension_id: Number(did), valor_id: vid }))
       try { await api.post(`/contabilidad/entidad-dimensiones/OC/${ocId}`, assigns) } catch {}
-      toast.success('Orden actualizada')
+      toast.success(r?.requiere_aprobacion ? 'Orden actualizada — volvió a Borrador y hay que aprobarla de nuevo' : 'Orden actualizada',
+        { duration: r?.requiere_aprobacion ? 7000 : 4000 })
       onDone()
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al guardar')
+      toast.error(apiError(err, 'Error al guardar'), { duration: 8000 })
     } finally { setSaving(false) }
   }
 
@@ -812,8 +861,13 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
   const total = lineas.reduce((s, l) => s + calcSubtotal(l), 0)
 
   return (
-    <Modal title={`Editar — ${ocId}`} onClose={onClose} width={800}>
+    <Modal title={`Editar — ${ocId}`} onClose={onClose} width={900}>
       <form onSubmit={save} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        {estado === 'Aprobada' && (
+          <div style={{ gridColumn: '1/-1', background: '#fef9c3', border: '1px solid #fde047', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#854d0e' }}>
+            Esta OC está aprobada. Al guardar vuelve a Borrador, se libera su compromiso presupuestario y hay que aprobarla de nuevo.
+          </div>
+        )}
         <div>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Fecha</label>
           <input className="input" type="date" value={form.fecha} onChange={e => setForm({ ...form, fecha: e.target.value })} />
@@ -879,6 +933,7 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
                 <th style={{ width: 100 }}>Precio Unit.</th>
                 <th style={{ width: 70 }}>Desc.%</th>
                 <th style={{ width: 100 }}>Impuesto</th>
+                <th style={{ width: 200 }}>Cuenta presupuestaria</th>
                 <th style={{ width: 100, textAlign: 'right' }}>Subtotal</th>
                 <th style={{ width: 40 }}></th>
               </tr>
@@ -902,6 +957,7 @@ function ModalEditarOC({ ocId, onClose, onDone }) {
                       <option value="exento">Exento</option>
                     </select>
                   </td>
+                  <td><CuentaLinea value={l.cuenta_contable_id} cuentas={cuentas} onChange={v => updateLinea(i, 'cuenta_contable_id', v)} /></td>
                   <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(calcSubtotal(l))}</td>
                   <td><button type="button" onClick={() => removeLinea(i)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={13} /></button></td>
                 </tr>
@@ -1875,8 +1931,13 @@ export default function Compras() {
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button className="btn-secondary" style={{ padding: '4px 8px' }} onClick={() => setModalDetalle(o.oc_id)} title="Ver"><Eye size={12} /></button>
                     <button className="btn-secondary" style={{ padding: '4px 8px' }} onClick={() => duplicarOC(o.oc_id)} title="Duplicar"><Copy size={12} /></button>
-                    <button className="btn-secondary" style={{ padding: '4px 8px' }} onClick={() => setModalEditar(o.oc_id)} title="Editar"><Edit2 size={12} /></button>
-                    <button className="btn-danger" style={{ padding: '4px 8px' }} onClick={() => deleteOC(o.oc_id)} title="Eliminar"><Trash2 size={12} /></button>
+                    {['Borrador', 'Aprobada'].includes(o.estado) && (
+                      <button className="btn-secondary" style={{ padding: '4px 8px' }} onClick={() => setModalEditar(o.oc_id)}
+                        title={o.estado === 'Aprobada' ? 'Editar (vuelve a Borrador y requiere nueva aprobación)' : 'Editar'}><Edit2 size={12} /></button>
+                    )}
+                    {['Borrador', 'Cancelada'].includes(o.estado) && (
+                      <button className="btn-danger" style={{ padding: '4px 8px' }} onClick={() => deleteOC(o.oc_id)} title="Eliminar"><Trash2 size={12} /></button>
+                    )}
                   </div>
                 </td>
               </tr>

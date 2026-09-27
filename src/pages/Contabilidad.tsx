@@ -1879,10 +1879,10 @@ function TabDGII() {
         {data && <button className="btn-secondary" onClick={() => {
           const q = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
           let csv = formato === '606'
-            ? 'RNC/Cédula,Proveedor,NCF,Fecha,Monto,ITBIS,Ret. ISR,Total\n'
+            ? 'RNC/Cédula,Proveedor,NCF,Fecha,Fecha pago,Monto,ITBIS,Ret. ITBIS,Ret. ISR,Total\n'
             : 'RNC/Cédula,Cliente,NCF,Fecha,Monto,ITBIS,Total\n'
           data.registros.forEach((r: any) => {
-            if (formato === '606') csv += `${q(r.rnc_cedula)},${q(r.proveedor)},${q(r.ncf)},${q(r.fecha_comprobante)},${r.monto_facturado},${r.itbis_facturado},${r.isr_retenido},${r.total}\n`
+            if (formato === '606') csv += `${q(r.rnc_cedula)},${q(r.proveedor)},${q(r.ncf)},${q(r.fecha_comprobante)},${q(r.fecha_pago)},${r.monto_facturado},${r.itbis_facturado},${r.itbis_retenido},${r.isr_retenido},${r.total}\n`
             else csv += `${q(r.rnc_cedula)},${q(r.cliente)},${q(r.ncf)},${q(r.fecha_comprobante)},${r.monto_facturado},${r.itbis_facturado},${r.total}\n`
           })
           const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
@@ -1898,26 +1898,34 @@ function TabDGII() {
             <div className="card" style={{ padding: '8px 14px', margin: 0 }}><span style={{ fontSize: 11, color: '#6b7280' }}>Registros</span><div style={{ fontWeight: 700 }}>{data.cantidad_registros}</div></div>
             <div className="card" style={{ padding: '8px 14px', margin: 0 }}><span style={{ fontSize: 11, color: '#6b7280' }}>Monto Total</span><div style={{ fontWeight: 700 }}>RD$ {fmt(data.total_monto)}</div></div>
             <div className="card" style={{ padding: '8px 14px', margin: 0 }}><span style={{ fontSize: 11, color: '#6b7280' }}>ITBIS Total</span><div style={{ fontWeight: 700 }}>RD$ {fmt(data.total_itbis)}</div></div>
+            {formato === '606' && <div className="card" style={{ padding: '8px 14px', margin: 0 }}><span style={{ fontSize: 11, color: '#6b7280' }}>ITBIS Retenido</span><div style={{ fontWeight: 700 }}>RD$ {fmt(data.total_itbis_retenido)}</div></div>}
           </div>
+          {(data.alertas || []).map((a: string) => (
+            <div key={a} style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#991b1b' }}>
+              {a}{data.sin_ncf?.length ? ` (${data.sin_ncf.join(', ')})` : ''}
+            </div>
+          ))}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ fontSize: 11 }}>
               <thead><tr>
                 <th>RNC/Cédula</th><th>NCF</th><th>{formato === '606' ? 'Proveedor' : 'Cliente'}</th>
                 <th>Fecha</th><th style={{ textAlign: 'right' }}>Monto</th><th style={{ textAlign: 'right' }}>ITBIS</th>
+                {formato === '606' && <th style={{ textAlign: 'right' }}>Ret. ITBIS</th>}
                 {formato === '606' && <th style={{ textAlign: 'right' }}>Ret. ISR</th>}
                 <th style={{ textAlign: 'right' }}>Total</th>
               </tr></thead>
               <tbody>
                 {data.registros.length === 0 ? (
-                  <tr><td colSpan={formato === '606' ? 7 : 6} style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Sin registros</td></tr>
+                  <tr><td colSpan={formato === '606' ? 8 : 6} style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Sin registros</td></tr>
                 ) : data.registros.map((r: any, i: number) => (
                   <tr key={i}>
                     <td style={{ fontFamily: 'monospace' }}>{r.rnc_cedula || '—'}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: 10 }}>{r.ncf || '—'}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 10, color: r.ncf ? undefined : '#dc2626', fontWeight: r.ncf ? undefined : 700 }}>{r.ncf || 'SIN NCF'}</td>
                     <td>{formato === '606' ? r.proveedor : r.cliente}</td>
                     <td>{r.fecha_comprobante}</td>
                     <td style={{ textAlign: 'right' }}>{fmt(r.monto_facturado)}</td>
                     <td style={{ textAlign: 'right' }}>{fmt(r.itbis_facturado)}</td>
+                    {formato === '606' && <td style={{ textAlign: 'right' }}>{fmt(r.itbis_retenido)}</td>}
                     {formato === '606' && <td style={{ textAlign: 'right' }}>{fmt(r.isr_retenido)}</td>}
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(r.total)}</td>
                   </tr>
