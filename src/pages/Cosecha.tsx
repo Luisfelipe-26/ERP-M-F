@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Sprout, Plus, X, ShieldAlert, Ban, Scale, Edit2, Trash2, Tags, History } from 'lucide-react'
+import { Sprout, Plus, X, ShieldAlert, Ban, Scale, Edit2, Trash2, Tags, History, Search } from 'lucide-react'
 import api, { apiError } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -360,13 +360,30 @@ function NuevaCosecha({ calibres, campos, isAdmin, onClose, onDone }: any) {
   )
 }
 
+// Minúsculas y sin acentos: "fertilizante" encuentra "Fertilizante Nitrogenado" y "abono" encuentra "Abonó".
+const normalizar = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
 function Calibres({ calibres, onChange }: any) {
   const [productos, setProductos] = useState<any[]>([])
   const [edit, setEdit] = useState<any>(null)
+  const [buscar, setBuscar] = useState('')
 
   useEffect(() => {
-    api.get('/inventario/articulos').then(r => setProductos((r.data || []).filter((p: any) => p.es_inventariable))).catch(() => {})
+    api.get('/inventario/articulos').then(r => setProductos((r.data || [])
+      .filter((p: any) => p.es_inventariable)
+      .sort((a: any, b: any) => (a.producto || '').localeCompare(b.producto || '', 'es', { sensitivity: 'base', numeric: true }))))
+      .catch(() => {})
   }, [])
+
+  // El producto ya elegido se mantiene en la lista aunque no coincida con la búsqueda.
+  const productosFiltrados = useMemo(() => {
+    const q = normalizar(buscar.trim())
+    if (!q) return productos
+    return productos.filter((p: any) => p.id_prod === edit?.producto_id ||
+      normalizar(`${p.producto} ${p.id_prod}`).includes(q))
+  }, [productos, buscar, edit?.producto_id])
+
+  const abrir = (c: any) => { setBuscar(''); setEdit(c) }
 
   async function guardar(e: any) {
     e.preventDefault()
@@ -390,7 +407,7 @@ function Calibres({ calibres, onChange }: any) {
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>Cada calibre apunta al producto de inventario donde entran sus kg, al costo unitario de ese producto. Un calibre sin producto (p. ej. rechazo) se registra pero no entra al stock.</p>
-        <button className="btn-primary" onClick={() => setEdit({ nombre: '', orden: calibres.length + 1, producto_id: '' })}><Plus size={14} /> Calibre</button>
+        <button className="btn-primary" onClick={() => abrir({ nombre: '', orden: calibres.length + 1, producto_id: '' })}><Plus size={14} /> Calibre</button>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead><tr style={{ background: '#f9fafb' }}>
@@ -406,7 +423,7 @@ function Calibres({ calibres, onChange }: any) {
                 {c.producto_unidad || '—'}{c.producto_unidad && c.producto_unidad.toLowerCase() !== 'kg' ? ' ⚠ la cosecha se registra en kg' : ''}
               </td>
               <td style={{ padding: '7px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                <button className="btn-secondary" style={{ padding: '3px 8px', marginRight: 4 }} onClick={() => setEdit({ ...c, producto_id: c.producto_id || '' })}><Edit2 size={12} /></button>
+                <button className="btn-secondary" style={{ padding: '3px 8px', marginRight: 4 }} onClick={() => abrir({ ...c, producto_id: c.producto_id || '' })}><Edit2 size={12} /></button>
                 <button className="btn-secondary" style={{ padding: '3px 8px', color: '#dc2626' }} onClick={() => borrar(c)}><Trash2 size={12} /></button>
               </td>
             </tr>
@@ -423,10 +440,20 @@ function Calibres({ calibres, onChange }: any) {
               <div><label style={label}>Orden</label><input className="input" type="number" value={edit.orden} onChange={e => setEdit({ ...edit, orden: e.target.value })} /></div>
             </div>
             <label style={label}>Producto de inventario</label>
-            <select className="select" value={edit.producto_id} onChange={e => setEdit({ ...edit, producto_id: e.target.value })} style={{ marginBottom: 14 }}>
+            <div style={{ position: 'relative', marginBottom: 6 }}>
+              <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+              <input className="input" value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Buscar por nombre o código…"
+                style={{ paddingLeft: 28 }} autoFocus={!edit.id} />
+            </div>
+            <select className="select" value={edit.producto_id} onChange={e => setEdit({ ...edit, producto_id: e.target.value })}>
               <option value="">— No entra a inventario —</option>
-              {productos.map((p: any) => <option key={p.id_prod} value={p.id_prod}>{p.id_prod} — {p.producto} ({p.unidad})</option>)}
+              {productosFiltrados.map((p: any) => <option key={p.id_prod} value={p.id_prod}>{p.producto} ({p.unidad}) — {p.id_prod}</option>)}
             </select>
+            <div style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 14px' }}>
+              {buscar.trim()
+                ? (productosFiltrados.length ? `${productosFiltrados.length} de ${productos.length} productos` : 'Ningún producto coincide con la búsqueda')
+                : `${productos.length} productos, en orden alfabético`}
+            </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button type="button" className="btn-secondary" onClick={() => setEdit(null)}>Cancelar</button>
               <button type="submit" className="btn-primary">Guardar</button>
