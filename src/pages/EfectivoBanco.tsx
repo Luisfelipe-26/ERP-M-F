@@ -1,12 +1,16 @@
 import { useEffect, useState, useCallback } from 'react'
-import api from '../api'
+import api, { apiError } from '../api'
 import toast from 'react-hot-toast'
+import { useAuth } from '../contexts/AuthContext'
 import {
   Plus, Search, RefreshCw, Landmark, X, Edit2, Trash2, ArrowUpRight, ArrowDownLeft,
   CreditCard, DollarSign, Eye, Building2, CheckCircle, AlertTriangle, FileText, Package
 } from 'lucide-react'
 
 const fmt = (n: number) => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
+// Montos en la moneda del documento: una factura en dólares no se muestra como pesos.
+const fmtMon = (n: number, moneda?: string) => moneda === 'USD'
+  ? `US$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : fmt(n)
 const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('es-DO') : '—'
 
 const ESTADO_COLORS = {
@@ -625,9 +629,9 @@ function ModalPago({ cxp, onClose, onDone }) {
 function ModalNuevaCxC({ onClose, onDone }) {
   const [clientesLista, setClientesLista] = useState([])
   const [form, setForm] = useState({
-    cliente_id: '', tipo_ncf: 'E31',
+    cliente_id: '', tipo_ncf: 'E31', ncf: '',
     fecha: new Date().toISOString().slice(0, 10), fecha_vencimiento: '',
-    moneda: 'DOP', tasa_cambio: '1',
+    moneda: 'USD', tasa_cambio: '',
     subtotal: '', itbis: '',
     campo_id: '', temporada: '', kg_vendidos: '', precio_por_kg: '',
   })
@@ -650,24 +654,26 @@ function ModalNuevaCxC({ onClose, onDone }) {
     e.preventDefault()
     if (!form.cliente_id) return toast.error('Seleccione un cliente')
     if (subtotal <= 0) return toast.error('El subtotal debe ser mayor a 0')
+    if (form.moneda === 'USD' && !(Number(form.tasa_cambio) > 1)) return toast.error('Indique la tasa de cambio (RD$ por US$)')
     setSaving(true)
     try {
       await api.post('/contabilidad/cxc', {
         cliente_id: Number(form.cliente_id),
         tipo_ncf: form.tipo_ncf || null,
+        ncf: form.ncf ? form.ncf.toUpperCase().replace(/[\s-]/g, '') : null,
         fecha: form.fecha,
         fecha_vencimiento: form.fecha_vencimiento || null,
         moneda: form.moneda,
-        tasa_cambio: Number(form.tasa_cambio) || 1,
+        tasa_cambio: form.moneda === 'USD' ? Number(form.tasa_cambio) : 1,
         subtotal, itbis, total,
         campo_id: form.campo_id || null,
         temporada: form.temporada || null,
         kg_vendidos: form.kg_vendidos ? Number(form.kg_vendidos) : null,
         precio_por_kg: form.precio_por_kg ? Number(form.precio_por_kg) : null,
       })
-      toast.success('Cuenta por Cobrar registrada')
+      toast.success('Factura de venta registrada')
       onDone()
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
+    } catch (err) { toast.error(apiError(err, 'No se pudo registrar la factura'), { duration: 8000 }) }
     finally { setSaving(false) }
   }
 
@@ -708,10 +714,14 @@ function ModalNuevaCxC({ onClose, onDone }) {
           </div>
           {form.moneda === 'USD' && (
             <div>
-              <Label>Tasa de Cambio</Label>
-              <input className="input" type="number" step="0.01" value={form.tasa_cambio} onChange={e => set('tasa_cambio', e.target.value)} />
+              <Label>Tasa de cambio (RD$ por US$) *</Label>
+              <input className="input" type="number" step="0.0001" min="1" value={form.tasa_cambio} onChange={e => set('tasa_cambio', e.target.value)} placeholder="Ej: 60.25" required />
             </div>
           )}
+          <div>
+            <Label>NCF</Label>
+            <input className="input" value={form.ncf} onChange={e => set('ncf', e.target.value)} placeholder="E310000000001" style={{ fontFamily: 'monospace' }} />
+          </div>
           <div>
             <Label>Campo</Label>
             <select className="select" value={form.campo_id} onChange={e => set('campo_id', e.target.value)}>
@@ -745,7 +755,10 @@ function ModalNuevaCxC({ onClose, onDone }) {
           </div>
           <div style={{ display: 'flex', alignItems: 'end' }}>
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 20px', fontSize: 18, fontWeight: 800, color: '#166534' }}>
-              Total: {fmt(total)}
+              Total: {fmtMon(total, form.moneda)}
+              {form.moneda === 'USD' && Number(form.tasa_cambio) > 1 && (
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>= {fmt(total * Number(form.tasa_cambio))} en contabilidad</div>
+              )}
             </div>
           </div>
         </div>
@@ -761,9 +774,11 @@ function ModalNuevaCxC({ onClose, onDone }) {
 // ─── Modal Cobro CxC ───────────────────────────────────────────────────────
 function ModalCobro({ cxc, onClose, onDone }) {
   const [cuentasBanc, setCuentasBanc] = useState([])
+  const enUsd = cxc.moneda === 'USD'
   const [form, setForm] = useState({
     fecha: new Date().toISOString().slice(0, 10),
     monto: cxc.saldo_pendiente || 0,
+    tasa_cambio: '',
     metodo_pago: 'transferencia',
     referencia_bancaria: '',
     cuenta_bancaria_id: '',
@@ -776,22 +791,31 @@ function ModalCobro({ cxc, onClose, onDone }) {
   async function submit(e) {
     e.preventDefault()
     if (Number(form.monto) <= 0) return toast.error('El monto debe ser mayor a 0')
+    if (enUsd && !(Number(form.tasa_cambio) > 1)) return toast.error('Indique la tasa de cambio del día del cobro')
     setSaving(true)
     try {
-      await api.post('/contabilidad/cobros', {
+      const { data: r } = await api.post('/contabilidad/cobros', {
         cxc_id: cxc.id, fecha: form.fecha, monto: Number(form.monto),
+        tasa_cambio: enUsd ? Number(form.tasa_cambio) : null,
         metodo_pago: form.metodo_pago,
         referencia_bancaria: form.referencia_bancaria || null,
         cuenta_bancaria_id: form.cuenta_bancaria_id ? Number(form.cuenta_bancaria_id) : null,
       })
-      toast.success('Cobro registrado')
+      const dif = r.diferencia_cambiaria || 0
+      toast.success(enUsd
+        ? `Cobro registrado: ${fmt(r.monto_dop)}${dif ? ` · ${dif > 0 ? 'ganancia' : 'pérdida'} cambiaria ${fmt(Math.abs(dif))}` : ''}`
+        : 'Cobro registrado', { duration: 6000 })
       onDone()
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error') }
+    } catch (err) { toast.error(apiError(err, 'No se pudo registrar el cobro'), { duration: 8000 }) }
     finally { setSaving(false) }
   }
 
+  const tasaFact = Number(cxc.tasa_cambio) || 0
+  const tasaHoy = Number(form.tasa_cambio) || 0
+  const difEst = enUsd && tasaHoy > 1 ? (tasaHoy - tasaFact) * (Number(form.monto) || 0) : 0
+
   return (
-    <Modal title={`Cobro — ${cxc.numero}`} subtitle={`Saldo pendiente: ${fmt(cxc.saldo_pendiente)}`} onClose={onClose}>
+    <Modal title={`Cobro — ${cxc.numero}`} subtitle={`Saldo pendiente: ${fmtMon(cxc.saldo_pendiente, cxc.moneda)}${enUsd ? ` · facturada a ${tasaFact}` : ''}`} onClose={onClose}>
       <form onSubmit={submit}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
           <div>
@@ -799,9 +823,25 @@ function ModalCobro({ cxc, onClose, onDone }) {
             <input className="input" type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} required />
           </div>
           <div>
-            <Label>Monto *</Label>
+            <Label>Monto{enUsd ? ' (US$)' : ''} *</Label>
             <input className="input" type="number" step="0.01" min="0.01" max={cxc.saldo_pendiente} value={form.monto} onChange={e => set('monto', e.target.value)} required />
           </div>
+          {enUsd && (
+            <div style={{ gridColumn: '1/-1', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14, alignItems: 'end' }}>
+              <div>
+                <Label>Tasa del día (RD$ por US$) *</Label>
+                <input className="input" type="number" step="0.0001" min="1" value={form.tasa_cambio} onChange={e => set('tasa_cambio', e.target.value)} placeholder="Ej: 60.40" required />
+              </div>
+              <div style={{ fontSize: 12, color: '#374151', paddingBottom: 8 }}>
+                {tasaHoy > 1 ? <>
+                  Entra al banco {fmt((Number(form.monto) || 0) * tasaHoy)}.{' '}
+                  {Math.abs(difEst) >= 0.01 && <span style={{ color: difEst > 0 ? '#166534' : '#b91c1c', fontWeight: 700 }}>
+                    {difEst > 0 ? 'Ganancia' : 'Pérdida'} cambiaria de {fmt(Math.abs(difEst))} (facturada a {tasaFact})
+                  </span>}
+                </> : 'La diferencia contra la tasa de la factura se registra como ganancia o pérdida cambiaria.'}
+              </div>
+            </div>
+          )}
           <div>
             <Label>Método</Label>
             <select className="select" value={form.metodo_pago} onChange={e => set('metodo_pago', e.target.value)}>
@@ -836,6 +876,7 @@ function ModalCobro({ cxc, onClose, onDone }) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 export default function EfectivoBanco() {
+  const { isAdmin } = useAuth()
   const [tab, setTab] = useState('cuentas')
   const [cuentasBanc, setCuentasBanc] = useState([])
   const [cxpList, setCxpList] = useState([])
@@ -872,6 +913,22 @@ export default function EfectivoBanco() {
     setModalCuenta(false); setModalCxP(false); setModalPago(null)
     setModalDetalleCxP(null); setModalCxC(false); setModalCobro(null)
     load()
+  }
+
+  async function ajustarUsd() {
+    try {
+      const { data: p } = await api.post('/contabilidad/cxc/ajuste-moneda', null, { params: { dry_run: true } })
+      if (!p.documentos) { toast.success('No hay facturas ni cobros en US$ que ajustar'); return }
+      const bancos = (p.saldos_banco_ajustados || []).map((b: any) => `  ${b.cuenta}: +${fmt(b.ajuste_saldo_libro)}`).join('\n')
+      const ok = confirm(`Se llevarán a pesos ${p.facturas} factura(s) y ${p.cobros} cobro(s) en US$ que entraron al mayor por su monto en dólares.\n\n` +
+        `Ajuste total: ${fmt(p.ajuste_dop)} (a la tasa de cada factura).` +
+        (bancos ? `\n\nSaldos según libro de bancos en pesos que se corrigen:\n${bancos}` : '') +
+        `\n\nLos asientos se fechan hoy. ¿Continuar?`)
+      if (!ok) return
+      const { data: r } = await api.post('/contabilidad/cxc/ajuste-moneda', null, { params: { dry_run: false } })
+      toast.success(`Ajustados ${r.documentos} documento(s): ${fmt(r.ajuste_dop)}`)
+      load()
+    } catch (err) { toast.error(apiError(err, 'No se pudo ajustar'), { duration: 8000 }) }
   }
 
   async function desactivarCuenta(c) {
@@ -1057,6 +1114,14 @@ export default function EfectivoBanco() {
       )}
 
       {/* ─── Tab: CxC ──────────────────────────────────────── */}
+      {tab === 'cxc' && isAdmin && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <button className="btn-secondary" onClick={ajustarUsd} style={{ fontSize: 12 }}
+            title="Las facturas y cobros en US$ registrados antes de la corrección entraron al mayor por el monto en dólares como si fueran pesos">
+            Llevar a pesos facturas en US$ anteriores
+          </button>
+        </div>
+      )}
       {tab === 'cxc' && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table>
@@ -1087,8 +1152,8 @@ export default function EfectivoBanco() {
                   <td style={{ fontSize: 12 }}>{fmtDate(c.fecha)}</td>
                   <td style={{ fontSize: 12 }}>{fmtDate(c.fecha_vencimiento)}</td>
                   <td><span style={{ background: c.moneda === 'USD' ? '#dbeafe' : '#f0fdf4', color: c.moneda === 'USD' ? '#1e40af' : '#166534', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{c.moneda}</span></td>
-                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(c.total)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 800, color: c.saldo_pendiente > 0 ? '#b45309' : '#166534' }}>{fmt(c.saldo_pendiente)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtMon(c.total, c.moneda)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 800, color: c.saldo_pendiente > 0 ? '#b45309' : '#166534' }}>{fmtMon(c.saldo_pendiente, c.moneda)}</td>
                   <td><Badge estado={c.estado} /></td>
                   <td>
                     {c.estado === 'pendiente' || c.estado === 'parcial' ? (
