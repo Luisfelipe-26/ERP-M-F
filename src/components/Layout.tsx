@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   LayoutDashboard, MapPin, Users, Package, Wrench, ClipboardList, LogOut, Leaf, Menu,
   DollarSign, TrendingUp, Warehouse, CloudSun, Bug, Droplets, BarChart3,
-  UserCheck, Landmark, Truck, BookOpen, Building2, PiggyBank, Bell, X, Settings, Shield, Sprout
+  UserCheck, Landmark, Truck, BookOpen, Building2, PiggyBank, Bell, X, Settings, Shield, Sprout, HandCoins
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../api'
@@ -19,6 +19,7 @@ const nav: any[] = [
   { to: '/sanidad', icon: Bug, label: 'Sanidad (MIP)', modulo: 'sanidad' },
   { to: '/riego', icon: Droplets, label: 'Riego', modulo: 'riego' },
   { to: '/cosecha', icon: Sprout, label: 'Cosecha', modulo: 'cosecha' },
+  { to: '/ventas', icon: HandCoins, label: 'Ventas de fruta', modulo: 'ventas' },
   { divider: true, label: 'FINANZAS' },
   { to: '/contabilidad', icon: BookOpen, label: 'Contabilidad', modulo: 'contabilidad' },
   { to: '/activos-fijos', icon: Building2, label: 'Activos Fijos', modulo: 'activos_fijos' },
