@@ -105,7 +105,7 @@ export default function Cosecha() {
 
       {!calibres.length && (
         <div style={{ background: '#fef9c3', border: '1px solid #fde047', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#854d0e' }}>
-          No hay calibres configurados. {isAdmin ? 'Créelos en la pestaña Calibres, cada uno vinculado al producto de inventario donde entra la fruta.' : 'Pida a un administrador que los configure.'}
+          No hay calibres configurados. {isAdmin ? 'Cree en la pestaña Calibres uno "A granel" (fruta sin clasificar) vinculado al producto de inventario donde entra la fruta, y los calibres comerciales con los que liquida el cliente.' : 'Pida a un administrador que los configure.'}
         </div>
       )}
 
@@ -179,7 +179,7 @@ export default function Cosecha() {
       )}
 
       {tab === 'resumen' && <Resumen data={resumen} />}
-      {tab === 'precios' && <LibroPrecios calibres={calibres} puedeEditar={puedeAnular} />}
+      {tab === 'precios' && <LibroPrecios calibres={calibres.filter((c: any) => !c.es_granel)} puedeEditar={puedeAnular} />}
       {tab === 'calibres' && isAdmin && <Calibres calibres={calibres} onChange={loadBase} />}
 
       {modalNueva && (
@@ -253,6 +253,11 @@ function Resumen({ data }: any) {
 function NuevaCosecha({ calibres, campos, isAdmin, onClose, onDone }: any) {
   const [form, setForm] = useState({ fecha: hoy(), campo_id: '', temporada: String(new Date().getFullYear()), ot_id: '', observaciones: '' })
   const [kg, setKg] = useState<Record<number, string>>({})
+  // Lo normal es cosechar sin clasificar: el calibre lo pone la planta de empaque del cliente.
+  const granel = calibres.filter((c: any) => c.es_granel)
+  const comerciales = calibres.filter((c: any) => !c.es_granel)
+  const [clasificada, setClasificada] = useState(granel.length === 0)
+  const visibles = clasificada ? [...granel, ...comerciales] : granel
   const [carencia, setCarencia] = useState<any>(null)
   const [forzar, setForzar] = useState(false)
   const [justificacion, setJustificacion] = useState('')
@@ -273,7 +278,7 @@ function NuevaCosecha({ calibres, campos, isAdmin, onClose, onDone }: any) {
       .then(r => setOts((r.data || []).slice(0, 50))).catch(() => {})
   }, [form.campo_id])
 
-  const total = Object.values(kg).reduce((s, v) => s + (Number(v) || 0), 0)
+  const total = visibles.reduce((s: number, c: any) => s + (Number(kg[c.id]) || 0), 0)
   const bloqueado = carencia && !carencia.permitido
   const puedeGuardar = form.campo_id && total > 0 && (!bloqueado || (forzar && justificacion.trim().length >= 15))
 
@@ -284,7 +289,7 @@ function NuevaCosecha({ calibres, campos, isAdmin, onClose, onDone }: any) {
       const { data } = await api.post('/cosecha', {
         fecha: form.fecha, campo_id: form.campo_id, temporada: form.temporada || null,
         ot_id: form.ot_id ? Number(form.ot_id) : null, observaciones: form.observaciones || null,
-        lineas: calibres.filter((c: any) => Number(kg[c.id]) > 0).map((c: any) => ({ calibre_id: c.id, kg: Number(kg[c.id]) })),
+        lineas: visibles.filter((c: any) => Number(kg[c.id]) > 0).map((c: any) => ({ calibre_id: c.id, kg: Number(kg[c.id]) })),
         forzar_carencia: bloqueado ? forzar : false,
         justificacion_carencia: bloqueado ? justificacion : null,
       })
@@ -334,17 +339,29 @@ function NuevaCosecha({ calibres, campos, isAdmin, onClose, onDone }: any) {
           </div>
         )}
 
-        <label style={label}><Scale size={12} style={{ verticalAlign: 'middle' }} /> Kg por calibre *</label>
+        <label style={label}><Scale size={12} style={{ verticalAlign: 'middle' }} /> {clasificada ? 'Kg por calibre *' : 'Kg cosechados (sin clasificar) *'}</label>
+        {granel.length === 0 && (
+          <div style={{ fontSize: 11, color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '6px 10px', marginBottom: 8 }}>
+            Para registrar la cosecha sin clasificar, un administrador debe crear en Calibres uno "A granel" marcado como fruta sin clasificar.
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, marginBottom: 8 }}>
-          {calibres.map((c: any) => (
-            <div key={c.id} style={{ background: '#f9fafb', borderRadius: 8, padding: '6px 8px' }}>
+          {visibles.map((c: any) => (
+            <div key={c.id} style={{ background: c.es_granel ? '#f0fdf4' : '#f9fafb', borderRadius: 8, padding: '6px 8px', gridColumn: c.es_granel && !clasificada ? 'span 2' : undefined }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#374151' }}>{c.nombre}{!c.producto_id && <span style={{ color: '#9ca3af', fontWeight: 400 }}> · no entra a inv.</span>}</div>
               <input className="input" type="number" min="0" step="0.01" placeholder="0" value={kg[c.id] || ''}
                 onChange={e => setKg({ ...kg, [c.id]: e.target.value })} style={{ textAlign: 'right', marginTop: 3 }} />
             </div>
           ))}
         </div>
-        <div style={{ textAlign: 'right', fontSize: 15, fontWeight: 800, color: '#166534', marginBottom: 12 }}>Total: {fmtKg(total)}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          {granel.length > 0 && comerciales.length > 0
+            ? <label style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="checkbox" checked={clasificada} onChange={e => setClasificada(e.target.checked)} /> La fruta ya viene clasificada por calibre
+              </label>
+            : <span />}
+          <span style={{ fontSize: 15, fontWeight: 800, color: '#166534' }}>Total: {fmtKg(total)}</span>
+        </div>
 
         <label style={label}>Observaciones</label>
         <input className="input" value={form.observaciones} onChange={e => setForm({ ...form, observaciones: e.target.value })} style={{ marginBottom: 14 }} />
@@ -387,7 +404,7 @@ function Calibres({ calibres, onChange }: any) {
 
   async function guardar(e: any) {
     e.preventDefault()
-    const body = { nombre: edit.nombre, orden: Number(edit.orden) || 0, producto_id: edit.producto_id || null }
+    const body = { nombre: edit.nombre, orden: Number(edit.orden) || 0, producto_id: edit.producto_id || null, es_granel: !!edit.es_granel }
     try {
       if (edit.id) await api.put(`/cosecha/calibres/${edit.id}`, body)
       else await api.post('/cosecha/calibres', body)
@@ -406,19 +423,27 @@ function Calibres({ calibres, onChange }: any) {
   return (
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>Cada calibre apunta al producto de inventario donde entran sus kg, al costo unitario de ese producto. Un calibre sin producto (p. ej. rechazo) se registra pero no entra al stock.</p>
-        <button className="btn-primary" onClick={() => abrir({ nombre: '', orden: calibres.length + 1, producto_id: '' })}><Plus size={14} /> Calibre</button>
+        <p style={{ margin: 0, fontSize: 13, color: '#6b7280', maxWidth: 760 }}>
+          La finca cosecha y despacha <strong>a granel</strong> (fruta sin clasificar): ese calibre va vinculado al producto de inventario donde entra la fruta.
+          Los <strong>calibres comerciales</strong> (Cal 12, 14…) son los de la liquidación del cliente y del libro de precios; solo necesitan producto si algún día se clasifica en finca.
+        </p>
+        <button className="btn-primary" onClick={() => abrir({ nombre: '', orden: calibres.length + 1, producto_id: '', es_granel: false })}><Plus size={14} /> Calibre</button>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead><tr style={{ background: '#f9fafb' }}>
-          {['Orden', 'Calibre', 'Producto de inventario', 'Unidad', ''].map(h => <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: 11, color: '#6b7280' }}>{h}</th>)}
+          {['Orden', 'Calibre', 'Tipo', 'Producto de inventario', 'Unidad', ''].map(h => <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: 11, color: '#6b7280' }}>{h}</th>)}
         </tr></thead>
         <tbody>
           {calibres.map((c: any) => (
             <tr key={c.id} style={{ borderTop: '1px solid #f1f5f9' }}>
               <td style={{ padding: '7px 10px', color: '#6b7280' }}>{c.orden}</td>
               <td style={{ padding: '7px 10px', fontWeight: 700 }}>{c.nombre}</td>
-              <td style={{ padding: '7px 10px' }}>{c.producto_id ? `${c.producto_id} — ${c.producto_nombre}` : <span style={{ color: '#9ca3af' }}>No entra a inventario</span>}</td>
+              <td style={{ padding: '7px 10px' }}>
+                {c.es_granel
+                  ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, color: '#166534', background: '#dcfce7' }}>A granel</span>
+                  : <span style={{ fontSize: 11, color: '#6b7280' }}>Comercial</span>}
+              </td>
+              <td style={{ padding: '7px 10px' }}>{c.producto_id ? `${c.producto_id} — ${c.producto_nombre}` : <span style={{ color: '#9ca3af' }}>{c.es_granel ? 'Falta el producto' : 'Solo para liquidación y precios'}</span>}</td>
               <td style={{ padding: '7px 10px', color: c.producto_unidad && c.producto_unidad.toLowerCase() !== 'kg' ? '#b45309' : '#6b7280' }}>
                 {c.producto_unidad || '—'}{c.producto_unidad && c.producto_unidad.toLowerCase() !== 'kg' ? ' ⚠ la cosecha se registra en kg' : ''}
               </td>
@@ -428,7 +453,7 @@ function Calibres({ calibres, onChange }: any) {
               </td>
             </tr>
           ))}
-          {!calibres.length && <tr><td colSpan={5} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sin calibres. Cree el primero.</td></tr>}
+          {!calibres.length && <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sin calibres. Cree primero el de fruta a granel.</td></tr>}
         </tbody>
       </table>
 
@@ -439,7 +464,12 @@ function Calibres({ calibres, onChange }: any) {
               <div><label style={label}>Nombre *</label><input className="input" value={edit.nombre} onChange={e => setEdit({ ...edit, nombre: e.target.value })} placeholder="Cal 18" required /></div>
               <div><label style={label}>Orden</label><input className="input" type="number" value={edit.orden} onChange={e => setEdit({ ...edit, orden: e.target.value })} /></div>
             </div>
-            <label style={label}>Producto de inventario</label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, marginBottom: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!edit.es_granel} onChange={e => setEdit({ ...edit, es_granel: e.target.checked })} style={{ marginTop: 3 }} />
+              <span><strong>Fruta sin clasificar (a granel)</strong><br />
+                <span style={{ fontSize: 11, color: '#6b7280' }}>Se usa para cosechar y despachar; no lleva precio ni aparece en la liquidación. Necesita producto de inventario.</span></span>
+            </label>
+            <label style={label}>Producto de inventario{edit.es_granel ? ' *' : ''}</label>
             <div style={{ position: 'relative', marginBottom: 6 }}>
               <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
               <input className="input" value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Buscar por nombre o código…"

@@ -293,7 +293,7 @@ function NuevoDespacho({ onClose, onDone }: any) {
           <tbody>
             {calibres.map(c => (
               <tr key={c.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                <td style={{ ...td, fontWeight: 600 }}>{c.nombre} <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>{c.producto_id}</span></td>
+                <td style={{ ...td, fontWeight: 600 }}>{c.nombre}{c.es_granel && <span style={{ color: '#166534', fontSize: 11, fontWeight: 400 }}> · sin clasificar</span>} <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 400 }}>{c.producto_id}</span></td>
                 <td style={{ ...tdNum, color: c.stock_kg > 0 ? '#111827' : '#d1d5db' }}>{kg(c.stock_kg)}</td>
                 <td style={{ ...tdNum, color: '#6b7280' }}>{rd(c.costo_promedio)}</td>
                 <td style={{ ...td, textAlign: 'right' }}>
@@ -326,7 +326,8 @@ function LiquidarDespacho({ despacho, onClose, onDone }: any) {
   const [sugeridos, setSugeridos] = useState<Record<string, any>>({})
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { api.get('/ventas/calibres-stock').then(r => setCalibres(r.data || [])).catch(() => {}) }, [])
+  // La liquidación va por los calibres del cliente, no por la fruta a granel de la finca.
+  useEffect(() => { api.get('/ventas/calibres-stock').then(r => setCalibres((r.data || []).filter((c: any) => !c.es_granel))).catch(() => {}) }, [])
   // Precio del libro del cliente para la fecha y moneda de la liquidación.
   useEffect(() => {
     api.get('/ventas/precios-sugeridos', { params: { cliente_id: despacho.cliente_id, fecha: form.fecha || hoy(), moneda: form.moneda } })
