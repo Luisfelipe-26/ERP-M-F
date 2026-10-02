@@ -236,7 +236,9 @@ function NuevoDespacho({ onClose, onDone }: any) {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    Promise.all([api.get('/clientes'), api.get('/campos'), api.get('/ventas/calibres-stock')]).then(([c, ca, k]) => {
+    Promise.all([api.get('/clientes'), api.get('/campos'), api.get('/ventas/calibres-stock'), api.get('/cosecha/temporadas')]).then(([c, ca, k, t]) => {
+      // La fruta que sale es de la temporada que se está cosechando, aunque el despacho caiga en otro año.
+      if (t.data?.length) setForm(f => ({ ...f, temporada: t.data[0] }))
       setClientes(c.data || [])
       setCampos((ca.data || []).filter((x: any) => x.activo !== false))
       setCalibres((k.data || []).filter((x: any) => x.producto_id))
@@ -469,11 +471,17 @@ function Rentabilidad() {
         </select>
         {t.kg_por_liquidar > 0 && <span style={{ fontSize: 12, color: '#1d4ed8' }}>{kg(t.kg_por_liquidar)} despachados aún sin liquidar (no entran en venta ni margen)</span>}
       </div>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#6b7280', maxWidth: 820 }}>
+        <strong>Costo producción</strong>: órdenes de trabajo del campo (mano de obra, insumos, equipo) y servicios comprados para él
+        {data.periodo_costos?.desde ? ` entre ${fmtDate(data.periodo_costos.desde)} y ${fmtDate(data.periodo_costos.hasta)}` : ''}.
+        <strong> Resultado</strong> = venta liquidada − costo de producción; si queda fruta por vender o por liquidar, el resultado final será mayor.
+        {t.costo_kg !== null && <> Use el <strong>costo por kg</strong> como costo unitario del producto de fruta a granel para que el margen de cada liquidación sea realista.</>}
+      </p>
       <div className="card" style={{ padding: 0, overflowX: 'auto', marginBottom: 16 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: '#f9fafb' }}>
             <th style={th}>Campo</th>
-            {['Cosechado', 'Despachado', 'Liquidado', 'Rechazo', 'Merma', 'Venta RD$', 'Costo', 'Margen'].map(h => <th key={h} style={{ ...th, textAlign: 'right' }}>{h}</th>)}
+            {['Cosechado', 'Despachado', 'Liquidado', 'Rechazo', 'Venta RD$', 'Costo producción', 'Costo /kg', 'Resultado'].map(h => <th key={h} style={{ ...th, textAlign: 'right' }}>{h}</th>)}
           </tr></thead>
           <tbody>
             {data.por_campo.map((f: any) => (
@@ -483,10 +491,10 @@ function Rentabilidad() {
                 <td style={tdNum}>{kg(f.kg_despachados)}</td>
                 <td style={{ ...tdNum, fontWeight: 700 }}>{kg(f.kg_liquidados)}</td>
                 <td style={{ ...tdNum, color: f.kg_rechazo > 0 ? '#b45309' : '#9ca3af' }}>{kg(f.kg_rechazo)}{f.pct_rechazo !== null && f.kg_rechazo > 0 && <span style={{ fontSize: 10 }}> ({f.pct_rechazo}%)</span>}</td>
-                <td style={{ ...tdNum, color: '#9ca3af' }}>{kg(f.kg_merma)}</td>
                 <td style={tdNum}>{rd(f.venta_dop)}</td>
-                <td style={tdNum}>{rd(f.costo)}</td>
-                <td style={{ ...tdNum, fontWeight: 700, color: f.margen_dop >= 0 ? '#166534' : '#b91c1c' }}>{rd(f.margen_dop)}</td>
+                <td style={tdNum} title="Órdenes de trabajo del campo y servicios comprados para él en la temporada">{rd(f.costo_produccion)}</td>
+                <td style={{ ...tdNum, color: '#6b7280' }}>{f.costo_kg !== null ? rd(f.costo_kg) : '—'}</td>
+                <td style={{ ...tdNum, fontWeight: 700, color: f.resultado >= 0 ? '#166534' : '#b91c1c' }}>{rd(f.resultado)}</td>
               </tr>
             ))}
             {!data.por_campo.length && <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sin cosecha ni ventas en la temporada {temporada}</td></tr>}
@@ -495,8 +503,8 @@ function Rentabilidad() {
                 <td style={td}>Total</td>
                 <td style={tdNum}>{kg(t.kg_cosechados)}</td><td style={tdNum}>{kg(t.kg_despachados)}</td>
                 <td style={tdNum}>{kg(t.kg_liquidados)}</td><td style={tdNum}>{kg(t.kg_rechazo)}</td>
-                <td style={tdNum}>{kg(t.kg_merma)}</td><td style={tdNum}>{rd(t.venta_dop)}</td>
-                <td style={tdNum}>{rd(t.costo)}</td><td style={tdNum}>{rd(t.margen_dop)}</td>
+                <td style={tdNum}>{rd(t.venta_dop)}</td><td style={tdNum}>{rd(t.costo_produccion)}</td>
+                <td style={tdNum}>{t.costo_kg !== null ? rd(t.costo_kg) : '—'}</td><td style={tdNum}>{rd(t.resultado)}</td>
               </tr>
             )}
           </tbody>

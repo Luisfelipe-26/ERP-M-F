@@ -614,6 +614,8 @@ export default function Inventario() {
   const [filtroMovDoc, setFiltroMovDoc] = useState('')
   const [filtroMovDesde, setFiltroMovDesde] = useState('')
   const [filtroMovHasta, setFiltroMovHasta] = useState('')
+  // Cosechas y despachos anulados: su entrada y su reverso netean a cero y se ocultan juntos.
+  const [ocultarAnulados, setOcultarAnulados] = useState(true)
 
   // Modals
   const [modalGR, setModalGR] = useState(null)    // producto o true
@@ -633,14 +635,14 @@ export default function Inventario() {
     setLoading(true)
     try {
       const off = appendFrom ?? 0
-      const { data } = await api.get('/inventario/movimientos', { params: { producto_id: filtroMovProd || undefined, tipo_doc: filtroMovDoc || undefined, fecha_desde: filtroMovDesde || undefined, fecha_hasta: filtroMovHasta || undefined, limit: 500, offset: off } })
+      const { data } = await api.get('/inventario/movimientos', { params: { producto_id: filtroMovProd || undefined, tipo_doc: filtroMovDoc || undefined, fecha_desde: filtroMovDesde || undefined, fecha_hasta: filtroMovHasta || undefined, ocultar_anulados: ocultarAnulados, limit: 500, offset: off } })
       setMovimientos(prev => appendFrom != null ? [...prev, ...data.items] : data.items)
       setMovTotal(data.total)
       setMovHasMore(data.has_more)
       setMovOffset(off + data.items.length)
     } catch { toast.error('Error al cargar movimientos') }
     finally { setLoading(false) }
-  }, [filtroMovProd, filtroMovDoc, filtroMovDesde, filtroMovHasta])
+  }, [filtroMovProd, filtroMovDoc, filtroMovDesde, filtroMovHasta, ocultarAnulados])
 
   const loadValoracion = useCallback(async () => {
     setLoading(true)
@@ -955,6 +957,10 @@ export default function Inventario() {
             <input className="input" type="date" style={{ width: 150 }} value={filtroMovDesde} onChange={e => setFiltroMovDesde(e.target.value)} title="Desde" />
             <input className="input" type="date" style={{ width: 150 }} value={filtroMovHasta} onChange={e => setFiltroMovHasta(e.target.value)} title="Hasta" />
             <button className="btn-secondary" onClick={() => loadMovimientos()}><Search size={14} /> Buscar</button>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#6b7280', cursor: 'pointer' }}
+              title="La entrada de una cosecha o despacho anulado y su reverso se compensan; se ocultan juntos sin cambiar existencias ni valores">
+              <input type="checkbox" checked={ocultarAnulados} onChange={e => setOcultarAnulados(e.target.checked)} /> Ocultar cosechas y despachos anulados
+            </label>
           </div>
 
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
