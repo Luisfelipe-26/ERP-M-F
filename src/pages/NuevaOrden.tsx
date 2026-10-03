@@ -103,6 +103,8 @@ export default function NuevaOrden() {
   const { editId } = useParams()
   const [searchParams] = useSearchParams()
   const duplicarId = searchParams.get('duplicar')
+  const planificacionId = searchParams.get('planificacion_id')
+  const actividadParam = searchParams.get('actividad_id')
   const isEdit = !!editId
   const [campos, setCampos] = useState([])
   const [actividades, setActividades] = useState([])
@@ -110,6 +112,7 @@ export default function NuevaOrden() {
   const [productos, setProductos] = useState([])
   const [saving, setSaving] = useState(false)
   const [nextOtId, setNextOtId] = useState(null)
+  const [planVinculado, setPlanVinculado] = useState<any>(null)
 
   // Draft key for localStorage persistence
   const draftKey = isEdit ? `corvus_ot_draft_${editId}` : 'corvus_ot_draft_new'
@@ -119,13 +122,14 @@ export default function NuevaOrden() {
     fecha_ejecucion: new Date().toISOString().split('T')[0],
     hora_inicio: '',
     campo_id: '',
-    actividad_id: '',
+    actividad_id: actividadParam || '',
     supervisor: '',
     estado: 'Abierta',
     equipo: '',
     horas_equipo: '',
     tarifa_equipo: '',
     observaciones: '',
+    planificacion_id: planificacionId ? Number(planificacionId) : null,
   })
 
   const [manoObra, setManoObra] = useState(savedDraft?.manoObra || [])
@@ -234,6 +238,33 @@ export default function NuevaOrden() {
           })))
           toast.success(`Datos copiados de OT-${duplicarId}`)
         }).catch(() => toast.error('Error al cargar OT para duplicar'))
+      }
+
+      // Load data from linked Planificacion
+      if (!isEdit && !duplicarId && planificacionId) {
+        api.get(`/planificaciones/${planificacionId}`).then(({ data: plan }) => {
+          setPlanVinculado(plan)
+          setForm(prev => ({
+            ...prev,
+            planificacion_id: plan.id,
+            actividad_id: plan.actividad_id || prev.actividad_id,
+            campo_id: plan.campos && plan.campos.length > 0 ? plan.campos[0].campo_id : prev.campo_id,
+            supervisor: plan.responsable_nombre || prev.supervisor,
+            observaciones: plan.observaciones ? `Plan: ${plan.numero}. ${plan.observaciones}` : `Planificación vinculada ${plan.numero}`,
+          }))
+          if (plan.insumos && plan.insumos.length > 0) {
+            const firstArea = plan.campos && plan.campos.length > 0 ? (plan.campos[0].area_ha || 1) : 1
+            setDetalles(plan.insumos.map((ins: any) => ({
+              producto_id: ins.producto_id,
+              cantidad_usada: Number((ins.dosis_por_ha * firstArea).toFixed(2)) || '',
+              unidad: ins.producto_unidad || 'L',
+              costo_unitario: ins.costo_unitario || 0,
+              costo_real: Number((ins.dosis_por_ha * firstArea * (ins.costo_unitario || 0)).toFixed(2)),
+              _manualCosto: false,
+            })))
+          }
+          toast.success(`Vinculado con Planificación #${plan.numero}`)
+        }).catch(() => toast.error('Error al cargar planificación vinculada'))
       }
     })
   }, [])
@@ -392,6 +423,7 @@ export default function NuevaOrden() {
         hora_inicio: form.hora_inicio || null,
         horas_equipo: form.horas_equipo ? Number(form.horas_equipo) : null,
         tarifa_equipo: form.tarifa_equipo ? Number(form.tarifa_equipo) : null,
+        planificacion_id: form.planificacion_id ? Number(form.planificacion_id) : (planificacionId ? Number(planificacionId) : undefined),
         mano_obra: manoObra.map(m => ({
           trabajador_id: m.trabajador_id,
           modalidad: m.modalidad,
@@ -455,6 +487,30 @@ export default function NuevaOrden() {
           <div style={{ fontSize: 28, fontWeight: 800, color: '#166534', lineHeight: 1 }}>{nextOtId !== null ? nextOtId : '—'}</div>
         </div>
       </div>
+
+      {planVinculado && (
+        <div style={{
+          background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8,
+          padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>
+              📌 Orden vinculada a Planificación #{planVinculado.numero}: {planVinculado.actividad_nombre || planVinculado.actividad_id}
+            </div>
+            <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 2 }}>
+              Semana {planVinculado.semana} / {planVinculado.anio} • {planVinculado.campos?.length || 0} lotes asignados ({planVinculado.total_area_ha} ha)
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ fontSize: 11, padding: '4px 8px' }}
+            onClick={() => { setPlanVinculado(null); setForm(f => ({ ...f, planificacion_id: null })) }}
+          >
+            Desvincular
+          </button>
+        </div>
+      )}
 
       <form onSubmit={save}>
         {/* Info básica */}

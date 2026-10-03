@@ -16,6 +16,8 @@ const OrdenDetalle = lazy(() => import('./pages/OrdenDetalle'))
 const NuevaOrden = lazy(() => import('./pages/NuevaOrden'))
 const Nomina = lazy(() => import('./pages/Nomina'))
 const CostosCampo = lazy(() => import('./pages/CostosCampo'))
+const PlanificacionList = lazy(() => import('./pages/planificacion/PlanificacionList'))
+const PlanificacionReportes = lazy(() => import('./pages/planificacion/PlanificacionReportes'))
 
 const Clima = lazy(() => import('./pages/Clima'))
 const Sanidad = lazy(() => import('./pages/Sanidad'))
@@ -91,6 +93,8 @@ export default function App() {
           <Route path="inventario" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="inventario"><Inventario /></PermissionRoute></Suspense>} />
           <Route path="actividades" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="actividades"><Actividades /></PermissionRoute></Suspense>} />
           <Route path="ordenes" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="ordenes"><Ordenes /></PermissionRoute></Suspense>} />
+          <Route path="planificacion" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="ordenes"><PlanificacionList /></PermissionRoute></Suspense>} />
+          <Route path="planificacion/reportes" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="ordenes"><PlanificacionReportes /></PermissionRoute></Suspense>} />
           <Route path="ordenes/nueva" element={<Suspense fallback={<PageLoader />}><PermissionRoute permisos={['ordenes.create', 'ordenes.update']}><NuevaOrden /></PermissionRoute></Suspense>} />
           <Route path="ordenes/:editId/editar" element={<Suspense fallback={<PageLoader />}><PermissionRoute permisos={['ordenes.create', 'ordenes.update']}><NuevaOrden /></PermissionRoute></Suspense>} />
           <Route path="ordenes/:id" element={<Suspense fallback={<PageLoader />}><PermissionRoute modulo="ordenes"><OrdenDetalle /></PermissionRoute></Suspense>} />
