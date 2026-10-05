@@ -678,8 +678,13 @@ function ModalNuevaCxC({ onClose, onDone }) {
   }
 
   return (
-    <Modal title="Nueva Cuenta por Cobrar" subtitle="Factura de venta de aguacate" onClose={onClose} width={750}>
+    <Modal title="Nueva Cuenta por Cobrar" subtitle="Factura manual de otros ingresos" onClose={onClose} width={750}>
       <form onSubmit={submit}>
+        {/* Una venta de fruta facturada aquí no descuenta el inventario ni reconoce su costo. */}
+        <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#92400e' }}>
+          <strong>¿Es venta de fruta?</strong> Regístrela en <strong>Ventas de fruta → Liquidar</strong> el despacho: así sale del inventario,
+          lleva los precios por calibre y calcula el margen. Use esta factura solo para otros ingresos.
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
           <div style={{ gridColumn: '1/-1' }}>
             <Label>Cliente *</Label>
@@ -734,20 +739,8 @@ function ModalNuevaCxC({ onClose, onDone }) {
             <input className="input" value={form.temporada} onChange={e => set('temporada', e.target.value)} placeholder="Ej: 2026-A" />
           </div>
           <div>
-            <Label>Kg Vendidos</Label>
-            <input className="input" type="number" step="0.01" min="0" value={form.kg_vendidos} onChange={e => set('kg_vendidos', e.target.value)} />
-          </div>
-          <div>
-            <Label>Precio por Kg</Label>
-            <input className="input" type="number" step="0.01" min="0" value={form.precio_por_kg} onChange={e => set('precio_por_kg', e.target.value)} />
-          </div>
-          <div>
             <Label>Subtotal *</Label>
             <input className="input" type="number" step="0.01" min="0" value={form.subtotal} onChange={e => set('subtotal', e.target.value)} required />
-            {form.kg_vendidos && form.precio_por_kg && (
-              <button type="button" style={{ fontSize: 10, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', marginTop: 2 }}
-                onClick={() => set('subtotal', (Number(form.kg_vendidos) * Number(form.precio_por_kg)).toFixed(2))}>Calcular desde Kg</button>
-            )}
           </div>
           <div>
             <Label>ITBIS</Label>

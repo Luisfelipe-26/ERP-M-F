@@ -481,7 +481,7 @@ function Rentabilidad() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: '#f9fafb' }}>
             <th style={th}>Campo</th>
-            {['Cosechado', 'Despachado', 'Liquidado', 'Rechazo', 'Venta RD$', 'Costo producción', 'Costo /kg', 'Resultado'].map(h => <th key={h} style={{ ...th, textAlign: 'right' }}>{h}</th>)}
+            {['Cosechado', 'Despachado', 'Liquidado', 'Packout', 'Rechazo', 'Venta RD$', 'Retorno /kg', 'Costo producción', 'Costo /kg', 'Resultado'].map(h => <th key={h} style={{ ...th, textAlign: 'right' }}>{h}</th>)}
           </tr></thead>
           <tbody>
             {data.por_campo.map((f: any) => (
@@ -490,20 +490,26 @@ function Rentabilidad() {
                 <td style={tdNum}>{kg(f.kg_cosechados)}</td>
                 <td style={tdNum}>{kg(f.kg_despachados)}</td>
                 <td style={{ ...tdNum, fontWeight: 700 }}>{kg(f.kg_liquidados)}</td>
+                <td style={{ ...tdNum, fontWeight: 700 }} title="Parte de lo despachado (y ya liquidado) que la planta pagó">{f.packout_pct !== null ? `${f.packout_pct}%` : '—'}</td>
                 <td style={{ ...tdNum, color: f.kg_rechazo > 0 ? '#b45309' : '#9ca3af' }}>{kg(f.kg_rechazo)}{f.pct_rechazo !== null && f.kg_rechazo > 0 && <span style={{ fontSize: 10 }}> ({f.pct_rechazo}%)</span>}</td>
                 <td style={tdNum}>{rd(f.venta_dop)}</td>
+                <td style={tdNum} title="Pesos recibidos por kg despachado">{f.retorno_kg !== null ? rd(f.retorno_kg) : '—'}</td>
                 <td style={tdNum} title="Órdenes de trabajo del campo y servicios comprados para él en la temporada">{rd(f.costo_produccion)}</td>
                 <td style={{ ...tdNum, color: '#6b7280' }}>{f.costo_kg !== null ? rd(f.costo_kg) : '—'}</td>
                 <td style={{ ...tdNum, fontWeight: 700, color: f.resultado >= 0 ? '#166534' : '#b91c1c' }}>{rd(f.resultado)}</td>
               </tr>
             ))}
-            {!data.por_campo.length && <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sin cosecha ni ventas en la temporada {temporada}</td></tr>}
+            {!data.por_campo.length && <tr><td colSpan={11} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sin cosecha ni ventas en la temporada {temporada}</td></tr>}
             {data.por_campo.length > 1 && (
               <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f9fafb', fontWeight: 700 }}>
                 <td style={td}>Total</td>
                 <td style={tdNum}>{kg(t.kg_cosechados)}</td><td style={tdNum}>{kg(t.kg_despachados)}</td>
-                <td style={tdNum}>{kg(t.kg_liquidados)}</td><td style={tdNum}>{kg(t.kg_rechazo)}</td>
-                <td style={tdNum}>{rd(t.venta_dop)}</td><td style={tdNum}>{rd(t.costo_produccion)}</td>
+                <td style={tdNum}>{kg(t.kg_liquidados)}</td>
+                <td style={tdNum}>{t.packout_pct !== null ? `${t.packout_pct}%` : '—'}</td>
+                <td style={tdNum}>{kg(t.kg_rechazo)}</td>
+                <td style={tdNum}>{rd(t.venta_dop)}</td>
+                <td style={tdNum}>{t.retorno_kg !== null ? rd(t.retorno_kg) : '—'}</td>
+                <td style={tdNum}>{rd(t.costo_produccion)}</td>
                 <td style={tdNum}>{t.costo_kg !== null ? rd(t.costo_kg) : '—'}</td><td style={tdNum}>{rd(t.resultado)}</td>
               </tr>
             )}
@@ -515,19 +521,20 @@ function Rentabilidad() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: '#f9fafb' }}>
             <th style={th}>Calibre</th>
-            {['Kg liquidados', 'Venta', 'Precio promedio /kg', 'Venta RD$'].map(h => <th key={h} style={{ ...th, textAlign: 'right' }}>{h}</th>)}
+            {['Kg liquidados', '% del total', 'Venta', 'Precio promedio /kg', 'Venta RD$'].map(h => <th key={h} style={{ ...th, textAlign: 'right' }}>{h}</th>)}
           </tr></thead>
           <tbody>
             {data.por_calibre.map((k: any) => (
               <tr key={k.calibre_id} style={{ borderTop: '1px solid #f1f5f9' }}>
                 <td style={{ ...td, fontWeight: 600 }}>{k.calibre}</td>
                 <td style={tdNum}>{kg(k.kg)}</td>
+                <td style={{ ...tdNum, color: '#6b7280' }}>{k.pct !== null ? `${k.pct}%` : '—'}</td>
                 <td style={tdNum}>{mon(k.venta, monedaVenta)}</td>
                 <td style={{ ...tdNum, fontWeight: 700 }}>{k.precio_promedio !== null ? num(k.precio_promedio, 4) : '—'}</td>
                 <td style={tdNum}>{rd(k.venta_dop)}</td>
               </tr>
             ))}
-            {!data.por_calibre.length && <tr><td colSpan={5} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sin liquidaciones en la temporada</td></tr>}
+            {!data.por_calibre.length && <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sin liquidaciones en la temporada</td></tr>}
           </tbody>
         </table>
       </div>
