@@ -48,6 +48,13 @@ const NIVELES = ['', 'read', 'write', 'full']
 const NIVEL_LABELS = { '': 'Sin acceso', read: 'Lectura', write: 'Escritura', full: 'Total' }
 const NIVEL_COLORS = { '': 'gray', read: 'blue', write: 'yellow', full: 'green' }
 
+// Las mismas reglas que exige el API (auth.problemas_contrasena).
+const ReglaClave = () => (
+  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#6b7280' }}>
+    Mínimo 10 caracteres, con letras y números. Sin el nombre o correo del usuario ni palabras obvias (corvus, admin, aguacate, 123456…).
+  </p>
+)
+
 export default function Administracion() {
   const [tab, setTab] = useState('usuarios')
 
@@ -115,7 +122,7 @@ function TabUsuarios() {
       toast.success('Usuario guardado')
       setEditando(null)
       load()
-    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error', { duration: 8000 }) }
   }
 
   async function doReset(e) {
@@ -125,7 +132,7 @@ function TabUsuarios() {
       toast.success('Contraseña actualizada')
       setResetModal(null)
       setNewPass('')
-    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error') }
+    } catch (err: any) { toast.error(err.response?.data?.detail || 'Error', { duration: 8000 }) }
   }
 
   return (
@@ -192,7 +199,8 @@ function TabUsuarios() {
               {!editando.id && (
                 <div>
                   <Label>Contraseña *</Label>
-                  <input className="input" type="password" value={editando.password || ''} onChange={e => setEditando({ ...editando, password: e.target.value })} required />
+                  <input className="input" type="password" value={editando.password || ''} onChange={e => setEditando({ ...editando, password: e.target.value })} required minLength={10} />
+                  <ReglaClave />
                 </div>
               )}
               <div>
@@ -230,7 +238,8 @@ function TabUsuarios() {
           <form onSubmit={doReset}>
             <div style={{ marginBottom: 16 }}>
               <Label>Nueva Contraseña *</Label>
-              <input className="input" type="password" value={newPass} onChange={e => setNewPass(e.target.value)} required minLength={6} />
+              <input className="input" type="password" value={newPass} onChange={e => setNewPass(e.target.value)} required minLength={10} />
+              <ReglaClave />
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="btn-secondary" onClick={() => { setResetModal(null); setNewPass('') }}>Cancelar</button>
