@@ -45,7 +45,8 @@ export function apiError(err: any, contexto: string): string {
     : Array.isArray(detail) ? detail.map((d: any) => `${(d.loc || []).slice(1).join('.')}: ${d.msg}`).join(' · ')
     : detail?.detail
   if (status >= 500) return `${contexto}: el servidor falló (HTTP ${status}) — puede estar desactualizado`
-  if (status === 403) return `${contexto}: no tienes permiso`
+  // El API dice qué permiso falta y dónde se asigna: más útil que un "no tienes permiso".
+  if (status === 403) return `${contexto}: ${msg || 'no tienes permiso'}`
   if (status === 404) return `${contexto}: la ruta no existe en el servidor (HTTP 404)`
   if (status === 422) return `${contexto}: datos inválidos — ${msg}`
   return msg ? `${contexto}: ${msg}` : `${contexto} (HTTP ${status})`
