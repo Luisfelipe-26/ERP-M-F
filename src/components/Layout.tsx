@@ -5,10 +5,11 @@ import {
   DollarSign, TrendingUp, Warehouse, CloudSun, Bug, Droplets, BarChart3,
   UserCheck, Landmark, Truck, BookOpen, Building2, PiggyBank, Bell, X, Settings, Shield,
   Sprout, HandCoins, Calendar, ChevronDown, ChevronRight, PanelLeftClose, PanelLeft,
-  ChevronLeft, FoldVertical, UnfoldVertical
+  ChevronLeft, FoldVertical, UnfoldVertical, KeyRound
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../api'
+import CambiarContrasena from './CambiarContrasena'
 
 interface NavItem {
   to: string
@@ -92,6 +93,7 @@ export default function Layout() {
   const location = useLocation()
   const { user, hasModule, logout } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [cambiarClave, setCambiarClave] = useState(false)
 
   // Desktop sidebar collapse state
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -360,6 +362,10 @@ export default function Layout() {
                   <ChevronLeft size={16} />
                 </button>
               </div>
+              <button onClick={() => setCambiarClave(true)} className="sidebar-link" style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: '#d1fae5' }}>
+                <KeyRound size={16} />
+                <span>Cambiar contraseña</span>
+              </button>
               <button onClick={handleLogout} className="sidebar-link" style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: '#fca5a5' }}>
                 <LogOut size={16} />
                 <span>Cerrar sesión</span>
@@ -370,6 +376,9 @@ export default function Layout() {
               <button onClick={toggleSidebar} className="sidebar-link-collapsed" style={{ background: 'rgba(255,255,255,0.1)', cursor: 'pointer', border: 'none' }} title="Expandir menú lateral">
                 <PanelLeft size={18} color="white" />
               </button>
+              <button onClick={() => setCambiarClave(true)} className="sidebar-link-collapsed" style={{ color: '#d1fae5', background: 'transparent', border: 'none', cursor: 'pointer' }} title="Cambiar contraseña">
+                <KeyRound size={18} />
+              </button>
               <button onClick={handleLogout} className="sidebar-link-collapsed" style={{ color: '#fca5a5', background: 'transparent', border: 'none', cursor: 'pointer' }} title={`Cerrar sesión (${user?.nombre})`}>
                 <LogOut size={18} />
               </button>
@@ -377,6 +386,7 @@ export default function Layout() {
           )}
         </div>
       </aside>
+      {cambiarClave && <CambiarContrasena onClose={() => setCambiarClave(false)} />}
 
       {/* Main Content Shell */}
       <div className={`app-main${isCollapsed ? ' collapsed' : ''}`} style={{ flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
