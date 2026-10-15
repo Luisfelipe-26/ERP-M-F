@@ -26,7 +26,7 @@ function Modal({ title, onClose, children, width = 640 }: any) {
 export default function Cosecha() {
   const { isAdmin, hasRole } = useAuth()
   const puedeAnular = isAdmin || hasRole('supervisor')
-  const [tab, setTab] = useState<'registros' | 'resumen' | 'precios' | 'calibres'>('registros')
+  const [tab, setTab] = useState<'registros' | 'resumen' | 'precios' | 'calibres' | 'valor'>('registros')
   const [calibres, setCalibres] = useState<any[]>([])
   const [campos, setCampos] = useState<any[]>([])
   const [temporadas, setTemporadas] = useState<string[]>([])
@@ -114,6 +114,7 @@ export default function Cosecha() {
         {tabBtn('resumen', 'Resumen por campo')}
         {tabBtn('precios', 'Libro de precios')}
         {isAdmin && tabBtn('calibres', 'Calibres')}
+        {puedeAnular && tabBtn('valor', 'Valor razonable')}
       </div>
 
       {(tab === 'registros' || tab === 'resumen') && (
@@ -181,6 +182,7 @@ export default function Cosecha() {
       {tab === 'resumen' && <Resumen data={resumen} />}
       {tab === 'precios' && <LibroPrecios calibres={calibres.filter((c: any) => !c.es_granel)} puedeEditar={puedeAnular} />}
       {tab === 'calibres' && isAdmin && <Calibres calibres={calibres} onChange={loadBase} />}
+      {tab === 'valor' && puedeAnular && <ValorRazonable isAdmin={isAdmin} />}
 
       {modalNueva && (
         <NuevaCosecha calibres={calibres} campos={campos} isAdmin={isAdmin}
@@ -278,6 +280,15 @@ function NuevaCosecha({ calibres, campos, isAdmin, onClose, onDone }: any) {
       .then(r => setOts((r.data || []).slice(0, 50))).catch(() => {})
   }, [form.campo_id])
 
+  // Con valor razonable activo, la fruta a granel entra al valor del mes: se muestra antes de guardar.
+  const [valorMes, setValorMes] = useState<any>(null)
+  useEffect(() => {
+    if (!form.fecha) return
+    api.get('/cosecha/valor-razonable/para-fecha', { params: { fecha: form.fecha } })
+      .then(r => setValorMes(r.data)).catch(() => setValorMes(null))
+  }, [form.fecha])
+  const kgGranel = granel.reduce((s: number, c: any) => s + (Number(kg[c.id]) || 0), 0)
+
   const total = visibles.reduce((s: number, c: any) => s + (Number(kg[c.id]) || 0), 0)
   const bloqueado = carencia && !carencia.permitido
   const puedeGuardar = form.campo_id && total > 0 && (!bloqueado || (forzar && justificacion.trim().length >= 15))
@@ -362,6 +373,14 @@ function NuevaCosecha({ calibres, campos, isAdmin, onClose, onDone }: any) {
             : <span />}
           <span style={{ fontSize: 15, fontWeight: 800, color: '#166534' }}>Total: {fmtKg(total)}</span>
         </div>
+        {valorMes?.valor_razonable && kgGranel > 0 && (
+          <div style={{ fontSize: 12, borderRadius: 8, padding: '8px 12px', marginBottom: 12,
+            color: valorMes.valor ? '#166534' : '#92400e', background: valorMes.valor ? '#f0fdf4' : '#fffbeb' }}>
+            {valorMes.valor
+              ? <>La fruta a granel entra a <strong>RD$ {Number(valorMes.valor.valor_kg).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kg</strong> (valor razonable: {valorMes.valor.origen}) — {fmtKg(kgGranel)} = <strong>RD$ {(kgGranel * valorMes.valor.valor_kg).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></>
+              : <>Aún no hay valor razonable para esta fecha: la fruta entra al costo estándar del producto.</>}
+          </div>
+        )}
 
         <label style={label}>Observaciones</label>
         <input className="input" value={form.observaciones} onChange={e => setForm({ ...form, observaciones: e.target.value })} style={{ marginBottom: 14 }} />
@@ -788,5 +807,149 @@ function EditarPrecio({ precio, onClose, onDone }: any) {
         </div>
       </form>
     </Modal>
+  )
+}
+
+// ─── Valor razonable de la fruta cosechada ──────────────────────────────────
+// NIC 41 párr. 13 y NIIF para PYMES 34.5 y 34.9: la fruta se mide al cosecharla a su valor
+// de mercado menos los costos de venta. El del mes sale de las liquidaciones facturadas.
+
+const rdKg = (n: number | null | undefined) => (n === null || n === undefined ? '—'
+  : `RD$ ${Number(n).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+const rd = (n: number) => `RD$ ${Number(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+function ValorRazonable({ isAdmin }: any) {
+  const [data, setData] = useState<any>(null)
+  const [cfg, setCfg] = useState({ valor_razonable: false, costo_venta_kg: '' })
+  const [fijando, setFijando] = useState<any>(null)
+  const [saving, setSaving] = useState(false)
+
+  const cargar = useCallback(() => {
+    api.get('/cosecha/valor-razonable', { params: { meses: 12 } }).then(r => {
+      setData(r.data)
+      setCfg({ valor_razonable: r.data.valor_razonable, costo_venta_kg: String(r.data.costo_venta_kg || 0) })
+    }).catch(err => toast.error(apiError(err, 'Error cargando el valor razonable')))
+  }, [])
+  useEffect(() => { cargar() }, [cargar])
+
+  async function guardarConfig() {
+    setSaving(true)
+    try {
+      await api.put('/cosecha/valor-razonable/config', { valor_razonable: cfg.valor_razonable, costo_venta_kg: Number(cfg.costo_venta_kg) || 0 })
+      toast.success(cfg.valor_razonable ? 'Valor razonable activado: las próximas cosechas a granel entran al valor del mes' : 'Valor razonable desactivado: las cosechas entran al costo estándar')
+      cargar()
+    } catch (err) { toast.error(apiError(err, 'No se pudo guardar'), { duration: 8000 }) }
+    finally { setSaving(false) }
+  }
+
+  async function guardarFijado(e: any) {
+    e.preventDefault()
+    try {
+      const valor = fijando.valor === '' ? null : Number(fijando.valor)
+      await api.put(`/cosecha/valor-razonable/${fijando.anio}/${fijando.mes}`, { valor_kg: valor, observacion: fijando.observacion || null })
+      toast.success(valor === null ? 'Valor fijado borrado: el mes usa el calculado' : 'Valor fijado')
+      setFijando(null); cargar()
+    } catch (err) { toast.error(apiError(err, 'No se pudo fijar'), { duration: 8000 }) }
+  }
+
+  if (!data) return <p style={{ color: '#9ca3af' }}>Cargando…</p>
+  const cta = data.cuenta_regla
+  const cambiado = cfg.valor_razonable !== data.valor_razonable || Number(cfg.costo_venta_kg || 0) !== Number(data.costo_venta_kg || 0)
+  const th: any = { textAlign: 'left', padding: '8px 10px', fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap' }
+  const num: any = { padding: '7px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
+
+  return (
+    <div>
+      <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: isAdmin ? 'pointer' : 'default', maxWidth: 460 }}>
+            <input type="checkbox" checked={cfg.valor_razonable} disabled={!isAdmin} onChange={e => setCfg({ ...cfg, valor_razonable: e.target.checked })} style={{ marginTop: 3 }} />
+            <span style={{ fontSize: 13 }}>
+              <strong>Valorar la cosecha a granel al valor razonable del mes</strong>
+              <span style={{ display: 'block', fontSize: 12, color: '#6b7280' }}>NIC 41 párr. 13 y NIIF para PYMES 34.5 y 34.9: la fruta se mide al cosecharla a su valor de mercado menos los costos de venta. Desactivado, entra al costo estándar de su producto.</span>
+            </span>
+          </label>
+          <div>
+            <label style={label}>Costos de venta por kg (RD$)</label>
+            <input className="input" type="number" min="0" step="0.01" value={cfg.costo_venta_kg} disabled={!isAdmin}
+              onChange={e => setCfg({ ...cfg, costo_venta_kg: e.target.value })} style={{ width: 150 }} title="Flete hasta la planta, comisiones u otros costos de vender que paga la finca" />
+          </div>
+          {isAdmin && <button className="btn-primary" disabled={!cambiado || saving} onClick={guardarConfig}>{saving ? 'Guardando…' : 'Guardar'}</button>}
+          <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+            <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>Cosechas de hoy</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#166534' }}>{data.vigente_hoy ? `${rdKg(data.vigente_hoy.valor_kg)}/kg` : '—'}</div>
+            <div style={{ fontSize: 11, color: '#6b7280' }}>{data.vigente_hoy ? data.vigente_hoy.origen : 'Sin liquidaciones facturadas ni valor fijado'}</div>
+          </div>
+        </div>
+        {data.valor_razonable && cta && !cta.es_ingreso && (
+          <div style={{ marginTop: 12, fontSize: 12, color: '#92400e', background: '#fffbeb', borderRadius: 8, padding: '8px 12px' }}>
+            La regla contable <strong>cosecha / producción</strong> acredita <strong>{cta.codigo} {cta.nombre}</strong>, que no es de ingreso. Con valor razonable, la diferencia entre el valor de la fruta y su costo es una ganancia: conviene que acredite una cuenta de ingreso (por ejemplo "Ganancia por medición de producto agrícola"). Ajústela en Contabilidad → Reglas con su contador.
+          </div>
+        )}
+        {data.valor_razonable && !data.vigente_hoy && (
+          <div style={{ marginTop: 12, fontSize: 12, color: '#92400e', background: '#fffbeb', borderRadius: 8, padding: '8px 12px' }}>
+            Todavía no hay liquidaciones facturadas ni un valor fijado: las cosechas entran al costo estándar hasta que lo haya. Puede fijar el valor del mes abajo.
+          </div>
+        )}
+      </div>
+
+      <p style={{ margin: '0 0 10px', fontSize: 12, color: '#6b7280', maxWidth: 860 }}>
+        El <strong>valor del mes</strong> es lo que pagó la planta en las liquidaciones facturadas ese mes, en pesos, dividido entre los kg despachados (así ya descuenta el rechazo y la merma).
+        Las cosechas de un mes usan el valor del <strong>mes anterior</strong>, que ya cerró; si ese mes no tuvo liquidaciones, el último que las tuvo. Un valor <strong>fijado</strong> a mano reemplaza al calculado para las cosechas de ese mes.
+        A todos se les restan los costos de venta por kg.
+      </p>
+      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ background: '#f9fafb' }}>
+            <th style={th}>Mes</th>
+            <th style={{ ...th, textAlign: 'right' }}>Liquidaciones</th>
+            <th style={{ ...th, textAlign: 'right' }}>Kg despachados</th>
+            <th style={{ ...th, textAlign: 'right' }}>Venta</th>
+            <th style={{ ...th, textAlign: 'right' }}>Valor del mes</th>
+            <th style={{ ...th, textAlign: 'right' }}>Fijado</th>
+            <th style={th}>Las cosechas de este mes entran a</th>
+            <th style={th}></th>
+          </tr></thead>
+          <tbody>
+            {data.meses.map((m: any) => (
+              <tr key={`${m.anio}-${m.mes}`} style={{ borderTop: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '7px 10px', fontWeight: 600, textTransform: 'capitalize' }}>{MESES[m.mes - 1]} {m.anio}</td>
+                <td style={num}>{m.liquidaciones || '—'}</td>
+                <td style={num}>{m.kg ? fmtKg(m.kg) : '—'}</td>
+                <td style={num}>{m.venta_dop ? rd(m.venta_dop) : '—'}</td>
+                <td style={{ ...num, fontWeight: 700 }}>{m.valor_kg ? `${rdKg(m.valor_kg)}/kg` : '—'}</td>
+                <td style={{ ...num, color: '#1d4ed8' }} title={m.observacion || ''}>{m.valor_fijado ? `${rdKg(m.valor_fijado)}/kg` : '—'}</td>
+                <td style={{ padding: '7px 10px' }}>
+                  {m.cosechas_del_mes
+                    ? <><strong style={{ color: '#166534' }}>{rdKg(m.cosechas_del_mes.valor_kg)}/kg</strong> <span style={{ fontSize: 11, color: '#6b7280' }}>{m.cosechas_del_mes.origen}</span></>
+                    : <span style={{ fontSize: 11, color: '#9ca3af' }}>Costo estándar (sin valor)</span>}
+                </td>
+                <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                  {isAdmin && <button className="btn-secondary" style={{ padding: '3px 10px', fontSize: 12 }}
+                    onClick={() => setFijando({ anio: m.anio, mes: m.mes, valor: m.valor_fijado ?? '', observacion: m.observacion || '' })}>Fijar</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {fijando && (
+        <Modal title={`Fijar el valor de ${MESES[fijando.mes - 1]} ${fijando.anio}`} onClose={() => setFijando(null)} width={440}>
+          <form onSubmit={guardarFijado}>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: '#6b7280' }}>Valor de mercado por kg de la fruta a granel, en pesos y antes de los costos de venta. Reemplaza al calculado para las cosechas de ese mes. Déjelo vacío para volver al calculado.</p>
+            <label style={label}>Valor de mercado por kg (RD$)</label>
+            <input className="input" type="number" min="0" step="0.01" value={fijando.valor} onChange={e => setFijando({ ...fijando, valor: e.target.value })} style={{ marginBottom: 10 }} />
+            <label style={label}>Motivo</label>
+            <input className="input" value={fijando.observacion} onChange={e => setFijando({ ...fijando, observacion: e.target.value })} placeholder="p. ej. según la lista de precios de la planta" style={{ marginBottom: 14 }} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setFijando(null)}>Cancelar</button>
+              <button type="submit" className="btn-primary">Guardar</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
   )
 }
