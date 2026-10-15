@@ -2,6 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { X } from 'lucide-react'
 import api from '../api'
+import { useAuth } from '../contexts/AuthContext'
 
 // Cada usuario cambia su propia contraseña. Las reglas son las del API (auth.problemas_contrasena).
 const label: any = { fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4, textTransform: 'uppercase' }
@@ -9,6 +10,7 @@ const label: any = { fontSize: 11, fontWeight: 700, color: '#374151', display: '
 export default function CambiarContrasena({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({ actual: '', nueva: '', confirmar: '' })
   const [saving, setSaving] = useState(false)
+  const { login, user } = useAuth()
   const distinta = form.confirmar !== '' && form.nueva !== form.confirmar
 
   async function guardar(e: any) {
@@ -16,8 +18,10 @@ export default function CambiarContrasena({ onClose }: { onClose: () => void }) 
     if (form.nueva !== form.confirmar) return toast.error('La confirmación no coincide con la contraseña nueva')
     setSaving(true)
     try {
-      await api.post('/auth/cambiar-contrasena', { actual: form.actual, nueva: form.nueva })
-      toast.success('Contraseña actualizada. Úsela la próxima vez que inicie sesión.', { duration: 6000 })
+      const { data } = await api.post('/auth/cambiar-contrasena', { actual: form.actual, nueva: form.nueva })
+      // Las demás sesiones se cierran; esta sigue con el token nuevo.
+      if (data?.access_token) login(data.access_token, user)
+      toast.success('Contraseña actualizada. Se cerraron sus sesiones en otros equipos.', { duration: 6000 })
       onClose()
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'No se pudo cambiar la contraseña', { duration: 8000 })

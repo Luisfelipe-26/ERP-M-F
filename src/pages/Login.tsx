@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import api from '../api'
@@ -10,6 +10,14 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { login } = useAuth()
+
+  // Aviso de por qué se cerró la sesión (p. ej. la contraseña cambió en otro equipo).
+  useEffect(() => {
+    try {
+      const aviso = sessionStorage.getItem('aviso_login')
+      if (aviso) { toast(aviso, { icon: '🔒', duration: 8000 }); sessionStorage.removeItem('aviso_login') }
+    } catch { /* sin almacenamiento */ }
+  }, [])
 
   async function handleSubmit(e) {
     e.preventDefault()

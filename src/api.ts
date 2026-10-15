@@ -18,6 +18,11 @@ api.interceptors.response.use(
   response => response,
   error => {
     if (error.response?.status === 401) {
+      // Si la sesión se cerró porque cambió la contraseña, el login lo explica.
+      const detalle = error.response?.data?.detail
+      if (typeof detalle === 'string' && detalle.includes('contraseña cambió')) {
+        try { sessionStorage.setItem('aviso_login', detalle) } catch { /* sin almacenamiento: solo no se avisa */ }
+      }
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.dispatchEvent(new Event('auth:logout'))
