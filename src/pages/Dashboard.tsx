@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api'
+import { useAuth } from '../contexts/AuthContext'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import {
@@ -183,7 +184,11 @@ export default function Dashboard() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  // El inicio lo ve todo usuario, pero sus datos son del módulo Dashboard: sin él, el API
+  // rechaza las consultas y solo se muestra la bienvenida.
+  const { hasModule, user } = useAuth()
+  const verPanel = hasModule('dashboard')
+  useEffect(() => { if (verPanel) load() }, [load, verPanel])
 
   async function exportNomina() {
     const now = new Date()
@@ -199,6 +204,16 @@ export default function Dashboard() {
       window.URL.revokeObjectURL(url)
     } catch { toast.error('Error al exportar nómina') }
   }
+
+  if (!verPanel) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+      <div style={{ textAlign: 'center', color: '#374151', maxWidth: 420 }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🌱</div>
+        <h2 style={{ margin: '0 0 8px', fontSize: 20 }}>Bienvenido{user?.nombre ? `, ${user.nombre}` : ''}</h2>
+        <p style={{ margin: 0, fontSize: 14, color: '#6b7280' }}>Use el menú para ir a sus módulos. El panel de inicio requiere el permiso de Dashboard.</p>
+      </div>
+    </div>
+  )
 
   /* ─── Loading / Error ─── */
   if (loading && !stats) return (
